@@ -23,7 +23,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
+  // withCredentials: true,
 });
 
 // Expose debug info in development to help trace connection errors
