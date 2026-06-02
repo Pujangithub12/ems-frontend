@@ -26,6 +26,21 @@ const api = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.request.use(
+  (config) => {
+    if (typeof window !== "undefined") {
+      // Check localStorage or sessionStorage as a fallback
+      const token =
+        localStorage.getItem("token") || sessionStorage.getItem("token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
 // Expose debug info in development to help trace connection errors
 if (import.meta.env.DEV && typeof window !== "undefined") {
   try {
