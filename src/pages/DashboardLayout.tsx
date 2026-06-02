@@ -20,10 +20,29 @@ type DashboardLayoutProps = {
 };
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!loading && !user) {
+      navigate("/login/user", { replace: true });
+    }
+  }, [loading, user, navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-slate-50">
+        <div className="flex flex-col gap-4 items-center">
+          <div className="w-12 h-12 rounded-full border-4 border-indigo-600 animate-spin border-t-transparent"></div>
+          <p className="font-medium text-slate-500">Verifying session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   const navItems = [
     {
@@ -49,6 +68,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     { path: "/users", label: "Users", icon: UsersIcon, id: "users" },
     { path: "/calendar", label: "Calendar", icon: Calendar, id: "calendar" },
     {
+      path: "/leaverequests",
+      label: "Leave Requests",
+      icon: Calendar,
+      id: "leaverequests",
+    },
+    {
       path: "/dateconverter",
       label: "Date Converter",
       icon: RefreshCw,
@@ -69,19 +94,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="flex min-h-screen bg-slate-50">
       {/* Sidebar for Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 fixed h-full transition-all duration-300">
+      <aside className="hidden fixed flex-col w-64 h-full bg-white border-r transition-all duration-300 lg:flex border-slate-200">
         <div className="p-6">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-xl">E</span>
+          <div className="flex gap-3 items-center mb-8">
+            <div className="flex justify-center items-center w-10 h-10 bg-indigo-600 rounded-xl">
+              <span className="text-xl font-bold text-white">E</span>
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">
                 EMS
               </h2>
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+              <p className="text-xs font-medium tracking-wider uppercase text-slate-500">
                 Management
               </p>
             </div>
@@ -107,16 +132,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 border-2 border-white shadow-sm">
+        <div className="p-6 mt-auto border-t border-slate-100 bg-slate-50/50">
+          <div className="flex gap-3 items-center mb-4">
+            <div className="flex justify-center items-center w-10 h-10 text-indigo-700 bg-indigo-100 rounded-full border-2 border-white shadow-sm">
               <UserIcon className="w-5 h-5" />
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-semibold text-slate-900 truncate">
-                {user?.name || "Guest"}
+              <p className="text-sm font-semibold truncate text-slate-900">
+                {user?.fullName || "Guest"}
               </p>
-              <p className="text-xs text-slate-500 capitalize">
+              <p className="text-xs capitalize text-slate-500">
                 {user?.role || "No role"}
               </p>
             </div>
@@ -132,16 +157,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       </aside>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-lg">E</span>
+      <div className="flex fixed top-0 right-0 left-0 z-50 justify-between items-center px-4 py-3 bg-white border-b lg:hidden border-slate-200">
+        <div className="flex gap-3 items-center">
+          <div className="flex justify-center items-center w-8 h-8 bg-indigo-600 rounded-lg">
+            <span className="text-lg font-bold text-white">E</span>
           </div>
           <h2 className="text-lg font-bold text-slate-900">EMS</h2>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg"
+          className="p-2 rounded-lg text-slate-600 hover:bg-slate-50"
         >
           {isMobileMenuOpen ? (
             <X className="w-6 h-6" />
@@ -154,11 +179,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm"
+          className="fixed inset-0 z-40 backdrop-blur-sm lg:hidden bg-slate-900/50"
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <aside
-            className="w-72 h-full bg-white flex flex-col"
+            className="flex flex-col w-72 h-full bg-white"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 pt-20">
@@ -182,16 +207,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 ))}
               </nav>
             </div>
-            <div className="mt-auto p-6 border-t border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700">
+            <div className="p-6 mt-auto border-t border-slate-100 bg-slate-50/50">
+              <div className="flex gap-3 items-center mb-4">
+                <div className="flex justify-center items-center w-10 h-10 text-indigo-700 bg-indigo-100 rounded-full">
                   <UserIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    {user?.name || "Guest"}
+                    {user?.fullName || "Guest"}
                   </p>
-                  <p className="text-xs text-slate-500 capitalize">
+                  <p className="text-xs capitalize text-slate-500">
                     {user?.role || "No role"}
                   </p>
                 </div>
@@ -209,22 +234,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 lg:ml-64 min-h-screen">
-        <div className="p-4 lg:p-8 pt-20 lg:pt-8 max-w-7xl mx-auto">
+      <main className="flex-1 min-h-screen lg:ml-64">
+        <div className="p-4 pt-20 mx-auto max-w-7xl lg:p-8 lg:pt-8">
           <header className="mb-8">
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
+            <div className="flex gap-2 items-center mb-1 text-sm text-slate-500">
               <span>Pages</span>
               <span>/</span>
-              <span className="text-slate-900 font-medium capitalize">
+              <span className="font-medium capitalize text-slate-900">
                 {activeSection}
               </span>
             </div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold lg:text-3xl text-slate-900">
               {currentTitle}
             </h1>
           </header>
 
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="duration-500 animate-in fade-in slide-in-from-bottom-4">
             {children}
           </div>
         </div>

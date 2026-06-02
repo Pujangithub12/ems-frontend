@@ -23,7 +23,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  // withCredentials: true,
+  withCredentials: true,
 });
 
 // Expose debug info in development to help trace connection errors
@@ -40,18 +40,5 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     // ignore
   }
 }
-
-// Attach token from localStorage if present
-api.interceptors.request.use((config) => {
-  try {
-    const raw = localStorage.getItem("auth:token");
-    if (raw && config.headers) {
-      config.headers.Authorization = `Bearer ${raw}`;
-    }
-  } catch (e) {
-    // ignore
-  }
-  return config;
-});
 
 export default api;

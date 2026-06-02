@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import api from "../api/axios";
 
-type User = { id: string; name?: string; role?: string } | null;
+type User = { id: string; fullName?: string; email?: string; role?: string } | null;
 
 type AuthContextType = {
   user: User;
@@ -11,6 +11,7 @@ type AuthContextType = {
     role?: string;
   }) => Promise<void>;
   logout: () => void;
+  loading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,6 +20,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<User>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await api.get("/api/me");
+        setUser(res.data.user);
+      } catch (e) {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAuth();
+  }, []);
 
   const login = async (credentials: {
     email: string;
@@ -26,26 +42,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     role?: string;
   }) => {
     const res = await api.post("/api/login", credentials);
-    const { token, user: u } = res.data;
-    if (token) {
-      try {
-        localStorage.setItem("auth:token", token);
-      } catch (e) {
-        // ignore
-      }
-    }
+    const { user: u } = res.data;
     setUser(u || null);
   };
 
-  const logout = () => {
+  const logout = async () => {
     try {
-      localStorage.removeItem("auth:token");
-    } catch (e) {}
+      await api.post("/api/logout");
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

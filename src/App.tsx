@@ -11,6 +11,7 @@ import ProjectDetails from "./pages/ProjectDetails";
 import MyTasks from "./pages/MyTasks";
 import CalendarPage from "./pages/Calendar";
 import DateConverter from "./pages/DateConverter";
+import LeaveRequests from "./pages/LeaveRequests";
 import DashboardLayout from "./pages/DashboardLayout";
 import { AuthProvider } from "./context/AuthProvider";
 
@@ -84,6 +85,14 @@ function App() {
             element={
               <DashboardLayout>
                 <CalendarPage />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/leaverequests"
+            element={
+              <DashboardLayout>
+                <LeaveRequests />
               </DashboardLayout>
             }
           />

@@ -12,7 +12,10 @@ import {
   Calendar,
   ChevronRight,
   Send,
-  Bell
+  Bell,
+  Plus,
+  X,
+  UserCheck
 } from "lucide-react";
 
 type Announcement = {
@@ -42,35 +45,43 @@ const Announcements: React.FC = () => {
     number | null
   >(null);
 
-  useEffect(() => {
-    const loadAnnouncements = async () => {
-      setAnnouncementsLoading(true);
-      setAnnouncementsError(null);
+  // New Announcement Form State
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [targetType, setTargetType] = useState<"all" | "specific">("specific");
+  const [targetEmailsInput, setTargetEmailsInput] = useState("");
 
-      try {
-        const response = await api.get<any>("/api/announcements");
-        if (Array.isArray(response.data)) {
-          setAnnouncements(response.data);
-        } else if (Array.isArray(response.data.announcements)) {
-          setAnnouncements(response.data.announcements);
-        } else if (response.data?.announcement) {
-          setAnnouncements([response.data.announcement]);
-        } else if (Array.isArray(response.data?.history)) {
-          setAnnouncements(response.data.history);
-        } else {
-          setAnnouncements([]);
-        }
-      } catch (err: any) {
-        setAnnouncementsError(
-          err?.response?.data?.message ||
-            err.message ||
-            "Unable to load announcements.",
-        );
-      } finally {
-        setAnnouncementsLoading(false);
+  const loadAnnouncements = async () => {
+    setAnnouncementsLoading(true);
+    setAnnouncementsError(null);
+
+    try {
+      const response = await api.get<any>("/api/announcements");
+      if (Array.isArray(response.data)) {
+        setAnnouncements(response.data);
+      } else if (Array.isArray(response.data.announcements)) {
+        setAnnouncements(response.data.announcements);
+      } else if (response.data?.announcement) {
+        setAnnouncements([response.data.announcement]);
+      } else if (Array.isArray(response.data?.history)) {
+        setAnnouncements(response.data.history);
+      } else {
+        setAnnouncements([]);
       }
-    };
+    } catch (err: any) {
+      setAnnouncementsError(
+        err?.response?.data?.message ||
+          err.message ||
+          "Unable to load announcements.",
+      );
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadAnnouncements();
   }, []);
 
@@ -98,6 +109,37 @@ const Announcements: React.FC = () => {
     }
   };
 
+  const handleCreateAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setAnnouncementsError(null);
+
+    const targetEmails = targetEmailsInput
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e !== "");
+
+    try {
+      await api.post("/api/announcements", {
+        subject,
+        message,
+        targetType,
+        targetEmails: targetType === "specific" ? targetEmails : [],
+      });
+      setShowForm(false);
+      setSubject("");
+      setMessage("");
+      setTargetEmailsInput("");
+      loadAnnouncements();
+    } catch (err: any) {
+      setAnnouncementsError(
+        err?.response?.data?.message || "Failed to create announcement.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-12">
       {/* Header Section */}
@@ -111,12 +153,136 @@ const Announcements: React.FC = () => {
             <p className="text-sm text-slate-500 font-medium">Broadcast updates and stay informed.</p>
           </div>
         </div>
-        {!announcementsLoading && (
-          <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100 uppercase tracking-widest">
-            {announcements.length} Published
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {user?.role === "admin" && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+            >
+              {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {showForm ? "Cancel" : "Make Announcement"}
+            </button>
+          )}
+          {!announcementsLoading && (
+            <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100 uppercase tracking-widest">
+              {announcements.length} Published
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Announcement Form (Admin Only) */}
+      {showForm && user?.role === "admin" && (
+        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-xl shadow-slate-100/50 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+              <Megaphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">New Broadcast</h3>
+              <p className="text-sm text-slate-500">Create an announcement and notify recipients.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreateAnnouncement} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 ml-1">Subject Line</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <FileText className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <input
+                    required
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    placeholder="e.g., Office Holiday Update"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 ml-1">Recipient Type</label>
+                <div className="flex p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setTargetType("specific")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl transition-all ${
+                      targetType === "specific"
+                        ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <UsersIcon className="w-4 h-4" />
+                    Specific
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetType("all")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl transition-all ${
+                      targetType === "all"
+                        ? "bg-white text-indigo-600 shadow-sm border border-slate-100"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    Everyone
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {targetType === "specific" && (
+              <div className="space-y-2 animate-in fade-in duration-200">
+                <label className="text-sm font-bold text-slate-700 ml-1">Recipient Emails</label>
+                <div className="relative">
+                  <div className="absolute top-3.5 left-4 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <input
+                    required={targetType === "specific"}
+                    value={targetEmailsInput}
+                    onChange={(e) => setTargetEmailsInput(e.target.value)}
+                    className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    placeholder="email1@example.com, email2@example.com"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 ml-1">Separate multiple emails with commas.</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-slate-700 ml-1">Announcement Message</label>
+              <textarea
+                required
+                rows={4}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                placeholder="Write your message here..."
+              />
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex items-center justify-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Send Announcement
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Announcements Content */}
       <div className="grid gap-6">
@@ -181,15 +347,21 @@ const Announcements: React.FC = () => {
                         Target Recipients
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {announcement.targetEmails.map((email, idx) => (
-                          <div 
-                            key={idx} 
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:border-indigo-100 hover:text-indigo-600 transition-all cursor-default"
-                          >
-                            <Mail className="w-3 h-3 opacity-60" />
-                            {email}
+                        {announcement.targetEmails && announcement.targetEmails.length > 0 ? (
+                          announcement.targetEmails.map((email, idx) => (
+                            <div 
+                              key={idx} 
+                              className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-medium text-slate-600 hover:bg-white hover:border-indigo-100 hover:text-indigo-600 transition-all cursor-default"
+                            >
+                              <Mail className="w-3 h-3 opacity-60" />
+                              {email}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-600">
+                            All Employees
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
                   </div>
@@ -222,5 +394,25 @@ const Announcements: React.FC = () => {
     </div>
   );
 };
+
+// Added missing FileText icon
+const FileText = ({ className }: { className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <line x1="10" y1="9" x2="8" y2="9" />
+  </svg>
+);
 
 export default Announcements;
