@@ -26,19 +26,21 @@ const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== "undefined") {
-      // Check localStorage or sessionStorage as a fallback
-      const token =
-        localStorage.getItem("token") || sessionStorage.getItem("token");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+// Response interceptor to handle 401s
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Don't redirect if we're already on a login page or checking initial auth
+      const isLoginPath = window.location.pathname.startsWith("/login");
+      const isMePath = error.config.url?.includes("/api/me");
+
+      if (!isLoginPath && !isMePath) {
+        window.location.href = "/login/user";
       }
     }
-    return config;
+    return Promise.reject(error);
   },
-  (error) => Promise.reject(error),
 );
 
 // Expose debug info in development to help trace connection errors

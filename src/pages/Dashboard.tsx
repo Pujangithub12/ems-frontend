@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/axios";
+import { useAuth } from "../context/AuthProvider";
 import { 
   Clock, 
   CheckCircle2, 
@@ -46,12 +47,14 @@ const formatDate = (dateString: string) =>
   });
 
 const Dashboard: React.FC = () => {
+  const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDashboard = async () => {
+      if (!user) return;
       setDashboardLoading(true);
       setDashboardError(null);
       try {
@@ -67,7 +70,7 @@ const Dashboard: React.FC = () => {
     };
 
     loadDashboard();
-  }, []);
+  }, [user]);
 
   const stats = [
     {
