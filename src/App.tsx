@@ -6,7 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import AssignedTasks from "./pages/AssignedTasks";
 import Announcements from "./pages/Announcements";
 import Users from "./pages/Users";
-import ProjectPage from "./pages/Project";
+import ProjectPage from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
 import MyTasks from "./pages/MyTasks";
 import CalendarPage from "./pages/Calendar";

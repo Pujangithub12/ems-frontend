@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/axios";
+import { useAuth } from "../context/AuthProvider";
 import {
   UserPlus,
   Search,
@@ -40,6 +41,7 @@ const formatDate = (dateString: string) =>
   });
 
 const Users: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -195,16 +197,18 @@ const Users: React.FC = () => {
             <Filter className="w-4 h-4" />
             Filters
           </button>
-          <button
-            onClick={() => {
-              if (showUserForm) resetUserForm();
-              setShowUserForm(!showUserForm);
-            }}
-            className="flex gap-2 items-center px-5 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200"
-          >
-            <UserPlus className="w-4 h-4" />
-            {editingUser ? "Edit User" : "Add New User"}
-          </button>
+          {currentUser?.role === "admin" && (
+            <button
+              onClick={() => {
+                if (showUserForm) resetUserForm();
+                setShowUserForm(!showUserForm);
+              }}
+              className="flex gap-2 items-center px-5 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200"
+            >
+              <UserPlus className="w-4 h-4" />
+              {editingUser ? "Edit User" : "Add New User"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -465,9 +469,11 @@ const Users: React.FC = () => {
                   <th className="px-6 py-4 text-xs font-bold tracking-widest uppercase text-slate-500">
                     Role
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold tracking-widest text-right uppercase text-slate-500">
-                    Actions
-                  </th>
+                  {currentUser?.role === "admin" && (
+                    <th className="px-6 py-4 text-xs font-bold tracking-widest text-right uppercase text-slate-500">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -521,24 +527,26 @@ const Users: React.FC = () => {
                         {userItem.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex gap-2 justify-end items-center transition-opacity">
-                        <button
-                          onClick={() => handleStartEditUser(userItem)}
-                          className="p-2 rounded-xl transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                          title="Edit User"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(userItem.id)}
-                          className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {currentUser?.role === "admin" && (
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex gap-2 justify-end items-center transition-opacity">
+                          <button
+                            onClick={() => handleStartEditUser(userItem)}
+                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            title="Edit User"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(userItem.id)}
+                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
