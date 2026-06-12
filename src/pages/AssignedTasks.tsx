@@ -86,10 +86,10 @@ const AssignedTasks: React.FC = () => {
   const [newProjectName, setNewProjectName] = useState("");
   const [editProjectName, setEditProjectName] = useState("");
 
-    type ModalSubTask = {
+  type ModalSubTask = {
     id: string;
     title: string;
-    subTasks: ModalSubTask[]; // Changed to self-reference for infinite nesting
+    subTasks: ModalSubTask[]; 
   };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
   const [editSubTasks, setEditSubTasks] = useState<ModalSubTask[]>([]);
@@ -166,7 +166,6 @@ const AssignedTasks: React.FC = () => {
     "Usolar Janda Energy Pvt Ltd",
   ].sort((a, b) => a.localeCompare(b));
 
-  // Helper: convert backend subtask (with children) to DetailedSubTask
   const convertToDetailed = (subTasks: any[]): DetailedSubTask[] =>
     subTasks.map((st) => ({
       id: st.id,
@@ -174,7 +173,6 @@ const AssignedTasks: React.FC = () => {
       subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
 
-  // Helper: convert DetailedSubTask to ModalSubTask for the update modal
   const convertToModal = (subTasks: DetailedSubTask[]): ModalSubTask[] =>
     subTasks.map((st) => ({
       id: st.id.toString(),
@@ -234,7 +232,6 @@ const AssignedTasks: React.FC = () => {
     setEditUserIds(task.assignedUsers.map((u) => u.id));
     setEditProgress(task.progress);
     setEditProjectName(task.projectName || "");
-    // Seed from taskSubTasks (full nested structure with real DB IDs)
     setEditSubTasks(convertToModal(taskSubTasks[task.id] || []));
     setEditTaskError(null);
     setShowUpdateModal(true);
@@ -293,9 +290,8 @@ const AssignedTasks: React.FC = () => {
         }
       }
 
-      const res = await api.put<any>(`/api/tasks/${editingTaskId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Header removed to allow Axios to set correct multipart boundary
+      const res = await api.put<any>(`/api/tasks/${editingTaskId}`, formData);
       const updatedTask: Task = res.data.task || res.data;
       const detailed = convertToDetailed(updatedTask.subTasks || []);
       setAssignedTasks((prev) =>
@@ -313,7 +309,6 @@ const AssignedTasks: React.FC = () => {
     }
   };
 
-  // Save updated subtask list to backend and sync state from server response
   const saveSubTasksToBackend = async (
     taskId: number,
     updatedSubTasks: DetailedSubTask[],
@@ -321,11 +316,9 @@ const AssignedTasks: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append("subTasks", JSON.stringify(updatedSubTasks));
-      const res = await api.put<any>(`/api/tasks/${taskId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Header removed
+      const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
       const updatedTask: Task = res.data.task || res.data;
-      // Sync from server so IDs are real DB IDs (not Date.now() strings)
       const detailed = convertToDetailed(updatedTask.subTasks || []);
       setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
       setAssignedTasks((prev) =>
@@ -346,7 +339,6 @@ const AssignedTasks: React.FC = () => {
       subTasks: [],
     };
 
-    // Build updated list synchronously before any state update
     let updatedSubTasks: DetailedSubTask[];
     if (parentId) {
       const updateNested = (subTasks: DetailedSubTask[]): DetailedSubTask[] =>
@@ -361,7 +353,6 @@ const AssignedTasks: React.FC = () => {
       updatedSubTasks = [...(taskSubTasks[taskId] || []), newSubTask];
     }
 
-    // Clear input immediately
     if (!overrideTitle) {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
     }
@@ -369,13 +360,12 @@ const AssignedTasks: React.FC = () => {
     await saveSubTasksToBackend(taskId, updatedSubTasks);
   };
 
-    const removeSubTaskFromTask = async (
+  const removeSubTaskFromTask = async (
     taskId: number,
     subTaskId: string | number,
   ) => {
     const removeNested = (subTasks: DetailedSubTask[]): DetailedSubTask[] =>
       subTasks
-        // FIX: Use .toString() to prevent Number vs String mismatch
         .filter((st) => st.id.toString() !== subTaskId.toString())
         .map((st) => ({ ...st, subTasks: removeNested(st.subTasks) }));
 
@@ -430,9 +420,9 @@ const AssignedTasks: React.FC = () => {
           formData.append("files", newFiles[i]);
         }
       }
-      const response = await api.post<any>("/api/tasks", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      
+      // Header removed to allow Axios to set correct multipart boundary
+      const response = await api.post<any>("/api/tasks", formData);
       const task: Task = response.data.task || response.data;
       setAssignedTasks((prev) => [task, ...prev]);
       setTaskSubTasks((prev) => ({
@@ -908,7 +898,7 @@ const AssignedTasks: React.FC = () => {
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                {/* Sub-Tasks */}
+                {/* Sub-Tasks (Read-Only View) */}
                 <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
                   <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">Sub-Tasks</p>
                   <div className="space-y-2">
@@ -917,7 +907,7 @@ const AssignedTasks: React.FC = () => {
                         const safeSubTasks = st.subTasks || [];
                         return (
                           <div key={st.id} className="overflow-hidden bg-white border rounded-xl border-slate-100">
-                            <div className="flex items-center justify-between px-3 py-2" style={{ paddingLeft: `${level * 20 + 12}px` }}>
+                            <div className="flex items-center px-3 py-2" style={{ paddingLeft: `${level * 20 + 12}px` }}>
                               <div className="flex items-center gap-2">
                                 {safeSubTasks.length > 0 ? (
                                   <button onClick={() => {
@@ -931,22 +921,6 @@ const AssignedTasks: React.FC = () => {
                                 ) : <div className="w-4 h-4" />}
                                 <span className="text-sm text-slate-700">{st.title}</span>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => {
-                                    const nestedTitle = prompt("Enter nested sub-task title:");
-                                    if (nestedTitle?.trim()) {
-                                      addSubTaskToTask(expandedTaskId, st.id.toString(), nestedTitle.trim());
-                                    }
-                                  }}
-                                  className="p-1.5 text-slate-400 hover:text-indigo-600"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => removeSubTaskFromTask(expandedTaskId, st.id)} className="p-1.5 text-slate-400 hover:text-rose-600">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
                             </div>
                             {safeSubTasks.length > 0 && expandedNestedSubTasks.has(st.id.toString()) && (
                               <div className="border-t border-slate-100">
@@ -958,19 +932,6 @@ const AssignedTasks: React.FC = () => {
                       };
                       return (taskSubTasks[expandedTaskId] || []).map((st) => renderSubTask(st));
                     })()}
-                    <div className="flex gap-2 mt-3">
-                      <input
-                        type="text"
-                        value={newSubTaskTitle[expandedTaskId] || ""}
-                        onChange={(e) => setNewSubTaskTitle((prev) => ({ ...prev, [expandedTaskId]: e.target.value }))}
-                        onKeyDown={(e) => e.key === "Enter" && addSubTaskToTask(expandedTaskId)}
-                        placeholder="Add a new sub-task..."
-                        className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      />
-                      <button onClick={() => addSubTaskToTask(expandedTaskId)} className="px-6 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors">
-                        Add
-                      </button>
-                    </div>
                   </div>
                 </div>
                 {/* Assigned To */}
