@@ -13,6 +13,7 @@ import {
   User as UserIcon,
   Menu,
   X,
+  History,
 } from "lucide-react";
 
 type DashboardLayoutProps = {
@@ -72,6 +73,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       label: "Leave Requests",
       icon: Calendar,
       id: "leaverequests",
+    },
+    {
+      path: "/activities",
+      label: "Activity History",
+      icon: History,
+      id: "activities",
     },
     {
       path: "/dateconverter",
