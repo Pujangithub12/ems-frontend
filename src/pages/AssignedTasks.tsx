@@ -89,7 +89,7 @@ const AssignedTasks: React.FC = () => {
   type ModalSubTask = {
     id: string;
     title: string;
-    subTasks: ModalSubTask[]; 
+    subTasks?: ModalSubTask[]; // Made optional to fix TS errors
   };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
   const [editSubTasks, setEditSubTasks] = useState<ModalSubTask[]>([]);
@@ -754,14 +754,14 @@ const AssignedTasks: React.FC = () => {
                         </button>
                       </div>
                       <div className="pl-4 space-y-2">
-                        {subTask.subTasks.map((child, cIdx) => (
+                        {(subTask.subTasks || []).map((child, cIdx) => (
                           <div key={child.id} className="flex items-center gap-2">
                             <div className="w-4 h-px bg-slate-300 shrink-0" />
                             <input
                               value={child.title}
                               onChange={(e) => {
                                 const updated = [...newSubTasks];
-                                const children = [...updated[idx].subTasks];
+                                const children = [...(updated[idx].subTasks || [])];
                                 children[cIdx] = { ...child, title: e.target.value };
                                 updated[idx] = { ...updated[idx], subTasks: children };
                                 setNewSubTasks(updated);
@@ -771,7 +771,7 @@ const AssignedTasks: React.FC = () => {
                             />
                             <button type="button" onClick={() => {
                               const updated = [...newSubTasks];
-                              const children = [...updated[idx].subTasks];
+                              const children = [...(updated[idx].subTasks || [])];
                               children.splice(cIdx, 1);
                               updated[idx] = { ...updated[idx], subTasks: children };
                               setNewSubTasks(updated);
@@ -782,7 +782,7 @@ const AssignedTasks: React.FC = () => {
                         ))}
                         <button type="button" onClick={() => {
                           const updated = [...newSubTasks];
-                          updated[idx] = { ...updated[idx], subTasks: [...updated[idx].subTasks, { id: Date.now().toString(), title: "" }] };
+                          updated[idx] = { ...updated[idx], subTasks: [...(updated[idx].subTasks || []), { id: Date.now().toString(), title: "", subTasks: [] }] };
                           setNewSubTasks(updated);
                         }} className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700">
                           <Plus className="w-3 h-3" />
@@ -1054,14 +1054,14 @@ const AssignedTasks: React.FC = () => {
                           </button>
                         </div>
                         <div className="pl-4 space-y-2">
-                          {subTask.subTasks.map((child, cIdx) => (
+                          {(subTask.subTasks || []).map((child, cIdx) => (
                             <div key={child.id} className="flex items-center gap-2">
                               <div className="w-4 h-px bg-slate-300 shrink-0" />
                               <input
                                 value={child.title}
                                 onChange={(e) => {
                                   const updated = [...editSubTasks];
-                                  const children = [...updated[idx].subTasks];
+                                  const children = [...(updated[idx].subTasks || [])];
                                   children[cIdx] = { ...child, title: e.target.value };
                                   updated[idx] = { ...updated[idx], subTasks: children };
                                   setEditSubTasks(updated);
@@ -1071,7 +1071,7 @@ const AssignedTasks: React.FC = () => {
                               />
                               <button type="button" onClick={() => {
                                 const updated = [...editSubTasks];
-                                const children = [...updated[idx].subTasks];
+                                const children = [...(updated[idx].subTasks || [])];
                                 children.splice(cIdx, 1);
                                 updated[idx] = { ...updated[idx], subTasks: children };
                                 setEditSubTasks(updated);
@@ -1082,7 +1082,7 @@ const AssignedTasks: React.FC = () => {
                           ))}
                           <button type="button" onClick={() => {
                             const updated = [...editSubTasks];
-                            updated[idx] = { ...updated[idx], subTasks: [...updated[idx].subTasks, { id: Date.now().toString(), title: "" }] };
+                            updated[idx] = { ...updated[idx], subTasks: [...(updated[idx].subTasks || []), { id: Date.now().toString(), title: "", subTasks: [] }] };
                             setEditSubTasks(updated);
                           }} className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700">
                             <Plus className="w-3 h-3" />
