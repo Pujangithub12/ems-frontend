@@ -88,8 +88,16 @@ const MyTasks: React.FC = () => {
     return subTasks.map((st) => ({
       id: st.id,
       title: st.title,
-      subTasks: st.children ? convertToDetailed(st.children) : [],
+      subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
+  };
+
+  const buildSubTasksMap = (taskList: Task[]) => {
+    const subTasksMap: Record<number, DetailedSubTask[]> = {};
+    taskList.forEach((task) => {
+      subTasksMap[task.id] = convertToDetailed(task.subTasks || []);
+    });
+    return subTasksMap;
   };
 
   const loadData = async () => {
@@ -98,20 +106,16 @@ const MyTasks: React.FC = () => {
     try {
       const tasksRes = await api.get<any>("/api/tasks");
 
+      let taskList: Task[] = [];
       if (Array.isArray(tasksRes.data)) {
-        setTasks(tasksRes.data);
-        const subTasksMap: Record<number, DetailedSubTask[]> = {};
-        tasksRes.data.forEach((task: Task) => {
-          subTasksMap[task.id] = convertToDetailed(task.subTasks || []);
-        });
-        setTaskSubTasks(subTasksMap);
+        taskList = tasksRes.data;
       } else if (tasksRes.data?.task) {
-        setTasks([tasksRes.data.task]);
+        taskList = [tasksRes.data.task];
       } else if (tasksRes.data?.tasks) {
-        setTasks(tasksRes.data.tasks);
-      } else {
-        setTasks([]);
+        taskList = tasksRes.data.tasks;
       }
+      setTasks(taskList);
+      setTaskSubTasks(buildSubTasksMap(taskList));
     } catch (err: any) {
       setTasksError(
         err?.response?.data?.message ||
