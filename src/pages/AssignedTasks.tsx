@@ -81,6 +81,12 @@ const AssignedTasks: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [newProgress, setNewProgress] = useState(0);
+  // Filter state variables
+  const [filterCompanyName, setFilterCompanyName] = useState("");
+  const [filterProjectName, setFilterProjectName] = useState("");
+  const [filterPriority, setFilterPriority] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterEmployee, setFilterEmployee] = useState("");
   const [editProgress, setEditProgress] = useState(0);
 
   const [newProjectName, setNewProjectName] = useState("");
@@ -109,6 +115,8 @@ const AssignedTasks: React.FC = () => {
   type DetailedSubTask = {
     id: string | number;
     title: string;
+    progress?: number;
+    history?: { id: string; date: string; title: string; progress: number }[];
     subTasks: DetailedSubTask[];
   };
   const [taskSubTasks, setTaskSubTasks] = useState<
@@ -125,6 +133,19 @@ const AssignedTasks: React.FC = () => {
   );
   const [showActivityPopup, setShowActivityPopup] = useState(false);
 
+  // Sub-task update popup state
+  const [showSubTaskUpdatePopup, setShowSubTaskUpdatePopup] = useState(false);
+  const [editingSubTask, setEditingSubTask] = useState<DetailedSubTask | null>(
+    null,
+  );
+  const [newSubTaskUpdateTitle, setNewSubTaskUpdateTitle] = useState("");
+  const [subTaskProgress, setSubTaskProgress] = useState(0);
+  const [subTaskUpdateFiles, setSubTaskUpdateFiles] = useState<FileList | null>(
+    null,
+  );
+  const [showSubTaskActivityPopup, setShowSubTaskActivityPopup] =
+    useState(false);
+
   const toggleCompany = (companyName: string) => {
     setExpandedCompanies((prev) => {
       const newSet = new Set(prev);
@@ -137,11 +158,48 @@ const AssignedTasks: React.FC = () => {
     });
   };
 
-  const filteredTasks = assignedTasks.filter(
-    (task) =>
+  const filteredTasks = assignedTasks.filter((task) => {
+    // Search term filter
+    const matchesSearch =
       task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.companyName.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+      task.companyName.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // Company name filter
+    const matchesCompany = filterCompanyName
+      ? task.companyName.toLowerCase() === filterCompanyName.toLowerCase()
+      : true;
+
+    // Project name filter
+    const matchesProject = filterProjectName
+      ? (task.projectName || "")
+          .toLowerCase()
+          .includes(filterProjectName.toLowerCase())
+      : true;
+
+    // Priority filter
+    const matchesPriority = filterPriority
+      ? task.priority.toLowerCase() === filterPriority.toLowerCase()
+      : true;
+
+    // Status filter
+    const matchesStatus = filterStatus
+      ? task.status.toLowerCase() === filterStatus.toLowerCase()
+      : true;
+
+    // Employee filter (assigned user)
+    const matchesEmployee = filterEmployee
+      ? task.assignedUsers.some((u) => u.id.toString() === filterEmployee)
+      : true;
+
+    return (
+      matchesSearch &&
+      matchesCompany &&
+      matchesProject &&
+      matchesPriority &&
+      matchesStatus &&
+      matchesEmployee
+    );
+  });
 
   const groupedTasks = filteredTasks.reduce(
     (acc, task) => {
@@ -152,6 +210,11 @@ const AssignedTasks: React.FC = () => {
     },
     {} as Record<string, Task[]>,
   );
+
+  // Collect all unique project names from existing tasks
+  const uniqueProjectNames = Array.from(
+    new Set(assignedTasks.map((task) => task.projectName).filter(Boolean)),
+  ).sort();
 
   const COMPANY_NAMES = [
     "Janda Devi Nepal Energy Pvt Ltd",
@@ -170,6 +233,8 @@ const AssignedTasks: React.FC = () => {
     subTasks.map((st) => ({
       id: st.id,
       title: st.title,
+      progress: st.progress || 0,
+      history: st.history || [],
       subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
 
@@ -314,27 +379,56 @@ const AssignedTasks: React.FC = () => {
     updatedSubTasks: DetailedSubTask[],
   ) => {
     try {
+      const existingTask = assignedTasks.find((t) => t.id === taskId);
       const formData = new FormData();
+      if (existingTask) {
+        formData.append("companyName", existingTask.companyName);
+        formData.append("title", existingTask.title);
+        formData.append("description", existingTask.description || "");
+        formData.append("priority", existingTask.priority);
+        // Ensure date is YYYY-MM-DD, not a full ISO string
+        formData.append("dueDate", existingTask.dueDate.slice(0, 10));
+        formData.append("progress", String(existingTask.progress));
+        formData.append(
+          "userIds",
+          existingTask.assignedUsers.map((u) => u.id).join(","),
+        );
+        if (existingTask.projectName) {
+          formData.append("projectName", existingTask.projectName);
+        }
+      }
       formData.append("subTasks", JSON.stringify(updatedSubTasks));
-      // Header removed
       const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
       const updatedTask: Task = res.data.task || res.data;
-      const detailed = convertToDetailed(updatedTask.subTasks || []);
-      setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
+      // Only update from backend if it returned subtasks; otherwise keep optimistic state
+      const backendSubTasks = updatedTask.subTasks || [];
+      if (backendSubTasks.length > 0 || updatedSubTasks.length === 0) {
+        const detailed = convertToDetailed(backendSubTasks);
+        setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
+      }
       setAssignedTasks((prev) =>
         prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)),
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error saving sub-task", err);
+      alert(
+        err?.response?.data?.message ||
+          err.message ||
+          "Failed to save sub-task. Please try again.",
+      );
     }
   };
 
-  const addSubTaskToTask = async (taskId: number, parentId?: string, overrideTitle?: string) => {
+  const addSubTaskToTask = async (
+    taskId: number,
+    parentId?: string,
+    overrideTitle?: string,
+  ) => {
     const title = overrideTitle ?? (newSubTaskTitle[taskId] || "");
     if (!title.trim()) return;
 
     const newSubTask: DetailedSubTask = {
-      id: Date.now().toString(),
+      id: `temp-${Date.now()}`, // Temporary ID for optimistic UI
       title,
       subTasks: [],
     };
@@ -353,11 +447,94 @@ const AssignedTasks: React.FC = () => {
       updatedSubTasks = [...(taskSubTasks[taskId] || []), newSubTask];
     }
 
+    // Optimistically update UI immediately
+    setTaskSubTasks((prev) => ({ ...prev, [taskId]: updatedSubTasks }));
+
     if (!overrideTitle) {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
     }
 
-    await saveSubTasksToBackend(taskId, updatedSubTasks);
+    try {
+      // Call the dedicated addSubTask endpoint
+      // Note: Check your backend routes file to confirm if it's /subtasks or /subtask
+      const res = await api.post(`/api/tasks/${taskId}/subtasks`, {
+        title,
+        parentSubTaskId: parentId,
+      });
+
+      // Replace optimistic UI with the real database tree returned from backend
+      if (res.data.subTasks) {
+        const detailed = convertToDetailed(res.data.subTasks);
+        setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
+      }
+    } catch (err: any) {
+      console.error("Error adding sub-task", err);
+      alert(
+        err?.response?.data?.message ||
+          err.message ||
+          "Failed to save sub-task. Please try again.",
+      );
+    }
+  };
+
+  const handleSubTaskUpdate = async () => {
+    if (!editingSubTask || !expandedTaskId) return;
+
+    try {
+      console.log("Updating sub-task:", {
+        editingSubTask,
+        newSubTaskUpdateTitle,
+        subTaskProgress,
+      });
+
+      // 1. Send update to backend
+      await api.put(
+        `/api/tasks/${expandedTaskId}/subtasks/${editingSubTask.id}`,
+        {
+          title: newSubTaskUpdateTitle,
+          progress: subTaskProgress,
+        },
+      );
+
+      console.log("Subtask updated! Refreshing...");
+
+      // 2. Refetch the subtask tree to get the updated history and progress
+      const res = await api.get(`/api/tasks/${expandedTaskId}/subtasks`);
+      console.log("Refreshed subtasks from backend:", res.data);
+
+      const detailed = convertToDetailed(res.data);
+      console.log("Converted to detailed subtasks:", detailed);
+
+      setTaskSubTasks((prev) => ({ ...prev, [expandedTaskId]: detailed }));
+
+      // 3. Sync editingSubTask with fresh data so history renders immediately
+      const findSubTask = (
+        list: DetailedSubTask[],
+        id: number | string,
+      ): DetailedSubTask | null => {
+        for (const st of list) {
+          console.log("Checking st.id vs id:", st.id, id);
+          if (String(st.id) === String(id)) {
+            console.log("Found matching subtask!", st);
+            return st;
+          }
+          const found = findSubTask(st.subTasks, id);
+          if (found) return found;
+        }
+        return null;
+      };
+
+      const refreshed = findSubTask(detailed, editingSubTask.id);
+      console.log("Refreshed subtask:", refreshed);
+      if (refreshed) {
+        setEditingSubTask(refreshed);
+      }
+
+      // 4. Keep popup open, but show success toast (we'll just keep it open for now)
+    } catch (err: any) {
+      console.error("Error updating sub-task", err);
+      alert(err?.response?.data?.message || "Failed to update sub-task.");
+    }
   };
 
   const removeSubTaskFromTask = async (
@@ -420,7 +597,7 @@ const AssignedTasks: React.FC = () => {
           formData.append("files", newFiles[i]);
         }
       }
-      
+
       // Header removed to allow Axios to set correct multipart boundary
       const response = await api.post<any>("/api/tasks", formData);
       const task: Task = response.data.task || response.data;
@@ -452,50 +629,187 @@ const AssignedTasks: React.FC = () => {
 
   const getPriorityStyle = (priority: string) => {
     switch (priority.toLowerCase()) {
-      case "high": return "bg-rose-100 text-rose-700 border-rose-200";
-      case "medium": return "bg-amber-100 text-amber-700 border-amber-200";
-      case "low": return "bg-emerald-100 text-emerald-700 border-emerald-200";
-      default: return "bg-slate-100 text-slate-700 border-slate-200";
+      case "high":
+        return "bg-rose-100 text-rose-700 border-rose-200";
+      case "medium":
+        return "bg-amber-100 text-amber-700 border-amber-200";
+      case "low":
+        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+      default:
+        return "bg-slate-100 text-slate-700 border-slate-200";
     }
   };
 
   const getStatusStyle = (status: string) => {
     switch (status.toLowerCase()) {
-      case "completed": return "bg-emerald-50 text-emerald-700 border-emerald-100";
-      case "in_progress": return "bg-indigo-50 text-indigo-700 border-indigo-100";
-      case "pending": return "bg-amber-50 text-amber-700 border-amber-100";
-      default: return "bg-slate-50 text-slate-700 border-slate-100";
+      case "completed":
+        return "bg-emerald-50 text-emerald-700 border-emerald-100";
+      case "in_progress":
+        return "bg-indigo-50 text-indigo-700 border-indigo-100";
+      case "pending":
+        return "bg-amber-50 text-amber-700 border-amber-100";
+      default:
+        return "bg-slate-50 text-slate-700 border-slate-100";
     }
+  };
+
+  const renderSubTaskItem = (
+    st: DetailedSubTask,
+    level: number = 0,
+  ): React.ReactNode => {
+    const safeChildren = st.subTasks || [];
+    const isExpanded = expandedNestedSubTasks.has(st.id.toString());
+    return (
+      <div
+        key={st.id}
+        className="overflow-hidden bg-white rounded-xl border border-slate-100"
+      >
+        <div
+          className="flex justify-between items-center py-2 pr-3"
+          style={{ paddingLeft: `${level * 20 + 12}px` }}
+        >
+          <div className="flex gap-2 items-center">
+            {safeChildren.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedNestedSubTasks((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(st.id.toString()))
+                      next.delete(st.id.toString());
+                    else next.add(st.id.toString());
+                    return next;
+                  });
+                }}
+                className="p-0.5 text-slate-400 hover:text-indigo-600"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+            ) : (
+              <div className="w-4 h-4" />
+            )}
+            <span className="text-sm text-slate-700">{st.title}</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="p-1.5 rounded-lg transition-all text-slate-400 hover:text-green-600 hover:bg-green-50"
+              onClick={() => {
+                console.log("Selected Subtask:", st);
+                console.log("History:", st.history);
+                setEditingSubTask(st);
+                setNewSubTaskUpdateTitle(st.title);
+                setSubTaskProgress(st.progress || 0);
+                setShowSubTaskUpdatePopup(true);
+              }}
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              className="p-1.5 rounded-lg transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+              onClick={() => setShowSubTaskActivityPopup(true)}
+            >
+              <Clock className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        {safeChildren.length > 0 && isExpanded && (
+          <div className="border-t border-slate-100">
+            {safeChildren.map((child) => renderSubTaskItem(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <div className="pb-12 space-y-6">
-      {/* Search and Action Bar */}
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div className="relative flex-1 max-w-md group">
-          <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-            <Search className="w-5 h-5 transition-colors text-slate-400 group-focus-within:text-indigo-500" />
+      {/* Search and Filter Bar */}
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4 justify-between md:flex-row md:items-center">
+          <div className="relative flex-1 max-w-md group">
+            <div className="flex absolute inset-y-0 left-0 items-center pl-4 pointer-events-none">
+              <Search className="w-5 h-5 transition-colors text-slate-400 group-focus-within:text-indigo-500" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search tasks by title, company..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block py-3 pr-4 pl-11 w-full text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search tasks by title, company..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full py-3 pr-4 text-sm transition-all bg-white border shadow-sm pl-11 rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all bg-white border shadow-sm rounded-2xl border-slate-200 text-slate-600 hover:bg-slate-50">
-            <Filter className="w-4 h-4" />
-            Filters
-          </button>
           <button
             onClick={openAddTaskModal}
-            className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white transition-all bg-indigo-600 shadow-lg rounded-2xl hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
+            className="flex gap-2 items-center px-6 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
           >
             <Plus className="w-5 h-5" />
             Create Task
           </button>
+        </div>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3">
+          {/* Company Name Filter */}
+          <select
+            value={filterCompanyName}
+            onChange={(e) => setFilterCompanyName(e.target.value)}
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          >
+            <option value="">All Companies</option>
+            {COMPANY_NAMES.map((company) => (
+              <option key={company} value={company}>
+                {company}
+              </option>
+            ))}
+          </select>
+          {/* Project Name Filter */}
+          <input
+            type="text"
+            placeholder="Filter by Project Name"
+            value={filterProjectName}
+            onChange={(e) => setFilterProjectName(e.target.value)}
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          />
+          {/* Priority Filter */}
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          >
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          {/* Status Filter */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
+          {/* Employee Filter */}
+          <select
+            value={filterEmployee}
+            onChange={(e) => setFilterEmployee(e.target.value)}
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+          >
+            <option value="">All Employees</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id.toString()}>
+                {user.fullName}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -504,38 +818,49 @@ const AssignedTasks: React.FC = () => {
         {tasksLoading ? (
           <div className="flex flex-col justify-center items-center py-20 bg-white rounded-[32px] border border-slate-200 shadow-sm">
             <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-            <p className="mt-4 font-medium text-slate-500">Loading your assignments...</p>
+            <p className="mt-4 font-medium text-slate-500">
+              Loading your assignments...
+            </p>
           </div>
         ) : tasksError ? (
-          <div className="flex items-center gap-4 p-6 m-8 font-medium border text-rose-700 bg-rose-50 rounded-2xl border-rose-100">
+          <div className="flex gap-4 items-center p-6 m-8 font-medium text-rose-700 bg-rose-50 rounded-2xl border border-rose-100">
             <AlertCircle className="w-6 h-6" />
             {tasksError}
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col justify-center items-center px-4 py-20 text-center bg-white rounded-[32px] border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-center w-20 h-20 mb-6 rounded-full bg-slate-50">
+            <div className="flex justify-center items-center mb-6 w-20 h-20 rounded-full bg-slate-50">
               <CheckCircle2 className="w-10 h-10 text-slate-300" />
             </div>
-            <h3 className="mb-2 text-xl font-bold text-slate-900">No tasks found</h3>
-            <p className="max-w-sm mx-auto text-slate-500">
+            <h3 className="mb-2 text-xl font-bold text-slate-900">
+              No tasks found
+            </h3>
+            <p className="mx-auto max-w-sm text-slate-500">
               Either you're all caught up or no tasks match your current search.
             </p>
           </div>
         ) : (
           Object.entries(groupedTasks).map(([companyName, tasks]) => (
-            <div key={companyName} className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            <div
+              key={companyName}
+              className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden"
+            >
               <button
                 onClick={() => toggleCompany(companyName)}
-                className="flex items-center justify-between w-full px-8 py-5 text-left transition-all border-b bg-slate-50/50 hover:bg-slate-100 border-slate-100"
+                className="flex justify-between items-center px-8 py-5 w-full text-left border-b transition-all bg-slate-50/50 hover:bg-slate-100 border-slate-100"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex gap-3 items-center">
                   <Building2 className="w-5 h-5 text-slate-600" />
-                  <h3 className="text-base font-bold text-slate-900">{companyName}</h3>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {companyName}
+                  </h3>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                     {tasks.length} Tasks
                   </span>
                 </div>
-                <div className={`transition-transform duration-300 ${expandedCompanies.has(companyName) ? "rotate-180" : ""}`}>
+                <div
+                  className={`transition-transform duration-300 ${expandedCompanies.has(companyName) ? "rotate-180" : ""}`}
+                >
                   <ChevronDown className="w-5 h-5 text-slate-500" />
                 </div>
               </button>
@@ -544,69 +869,106 @@ const AssignedTasks: React.FC = () => {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-white border-b border-slate-100">
-                        <th className="px-8 py-5 text-xs font-bold tracking-widest uppercase text-slate-500">Task</th>
-                        <th className="px-8 py-5 text-xs font-bold tracking-widest uppercase text-slate-500">Assigned To</th>
-                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-center uppercase text-slate-500">Priority</th>
-                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-center uppercase text-slate-500">Progress & Status</th>
-                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-right uppercase text-slate-500">Actions</th>
+                        <th className="px-8 py-5 text-xs font-bold tracking-widest uppercase text-slate-500">
+                          Task
+                        </th>
+                        <th className="px-8 py-5 text-xs font-bold tracking-widest uppercase text-slate-500">
+                          Project Name
+                        </th>
+                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-center uppercase text-slate-500">
+                          Priority
+                        </th>
+                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-center uppercase text-slate-500">
+                          Progress & Status
+                        </th>
+                        <th className="px-8 py-5 text-xs font-bold tracking-widest text-right uppercase text-slate-500">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {tasks.map((task) => (
-                        <tr key={task.id} className="transition-colors group hover:bg-slate-50/30">
+                        <tr
+                          key={task.id}
+                          className="transition-colors group hover:bg-slate-50/30"
+                        >
                           <td className="px-8 py-6">
-                            <div className="max-w-[250px]">
+                            <div className="max-w-[300px]">
                               <button
-                                onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                                onClick={() =>
+                                  setExpandedTaskId(
+                                    expandedTaskId === task.id ? null : task.id,
+                                  )
+                                }
                                 className="text-left"
                               >
-                                <p className="text-base font-bold transition-colors text-slate-900 group-hover:text-indigo-600">{task.title}</p>
-                                <div className="flex items-center gap-2 mt-1.5">
+                                <p className="text-base font-bold transition-colors text-slate-900 group-hover:text-indigo-600">
+                                  {task.title}
+                                </p>
+                                <div className="flex gap-3 items-center mt-2">
                                   <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-bold text-slate-600 border border-slate-200">
                                     <Calendar className="w-3 h-3" />
                                     {formatDate(task.dueDate)}
                                   </div>
-                                  <span className={`text-[9px] font-bold uppercase tracking-wider ${new Date(task.dueDate) < new Date() && task.status !== "completed" ? "text-rose-600" : "text-slate-400"}`}>
-                                    {new Date(task.dueDate) < new Date() && task.status !== "completed" ? "• Overdue" : "• Remaining"}
-                                  </span>
+                                  <div className="flex -space-x-1">
+                                    {task.assignedUsers.slice(0, 3).map((u) => (
+                                      <div
+                                        key={u.id}
+                                        className="flex items-center justify-center w-7 h-7 text-[10px] font-bold text-indigo-700 bg-indigo-100 border-2 border-white rounded-full shadow-sm"
+                                        title={u.fullName}
+                                      >
+                                        {u.fullName.charAt(0)}
+                                      </div>
+                                    ))}
+                                    {task.assignedUsers.length > 3 && (
+                                      <div className="flex items-center justify-center w-7 h-7 text-[10px] font-bold border-2 border-white rounded-full shadow-sm bg-slate-100 text-slate-600">
+                                        +{task.assignedUsers.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </button>
                             </div>
                           </td>
                           <td className="px-8 py-6">
-                            <div className="flex -space-x-2">
-                              {task.assignedUsers.slice(0, 3).map((u) => (
-                                <div key={u.id} className="flex items-center justify-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 border-2 border-white rounded-full shadow-sm" title={u.fullName}>
-                                  {u.fullName.charAt(0)}
-                                </div>
-                              ))}
-                              {task.assignedUsers.length > 3 && (
-                                <div className="flex items-center justify-center w-8 h-8 text-xs font-bold border-2 border-white rounded-full shadow-sm bg-slate-100 text-slate-600">
-                                  +{task.assignedUsers.length - 3}
-                                </div>
-                              )}
+                            <div className="text-sm font-medium text-slate-700">
+                              {task.projectName || "-"}
                             </div>
                           </td>
                           <td className="px-8 py-6 text-center">
-                            <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border ${getPriorityStyle(task.priority)}`}>
+                            <span
+                              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border ${getPriorityStyle(task.priority)}`}
+                            >
                               {task.priority}
                             </span>
                           </td>
                           <td className="px-8 py-6">
                             <div className="flex flex-col items-center gap-2 min-w-[150px]">
                               <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                <div className="h-full transition-all duration-500 ease-out rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600" style={{ width: `${task.progress}%` }} />
+                                <div
+                                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
+                                  style={{ width: `${task.progress}%` }}
+                                />
                               </div>
                               <div className="flex justify-between items-center w-full text-[10px] text-slate-500">
-                                <span className="font-bold">{task.progress}%</span>
-                                <div className="relative inline-block text-left">
+                                <span className="font-bold">
+                                  {task.progress}%
+                                </span>
+                                <div className="inline-block relative text-left">
                                   <select
                                     value={task.status}
-                                    onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                                    onChange={(e) =>
+                                      handleStatusChange(
+                                        task.id,
+                                        e.target.value,
+                                      )
+                                    }
                                     className={`appearance-none px-3 py-1 pr-6 rounded-full text-[10px] font-bold border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${getStatusStyle(task.status)} uppercase tracking-wider`}
                                   >
                                     <option value="pending">Pending</option>
-                                    <option value="in_progress">In Progress</option>
+                                    <option value="in_progress">
+                                      In Progress
+                                    </option>
                                     <option value="completed">Completed</option>
                                   </select>
                                   <ChevronDown className="absolute right-2 top-1/2 w-2.5 h-2.5 opacity-50 -translate-y-1/2 pointer-events-none" />
@@ -615,7 +977,11 @@ const AssignedTasks: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-8 py-6 text-right">
-                            <button onClick={() => handleDeleteClick(task.id)} className="p-2 transition-all rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete">
+                            <button
+                              onClick={() => handleDeleteClick(task.id)}
+                              className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              title="Delete"
+                            >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
@@ -634,25 +1000,38 @@ const AssignedTasks: React.FC = () => {
       {showAddTaskForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Create Task</h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">Assign new task to team.</p>
+                <h3 className="text-xl font-bold text-slate-900">
+                  Create Task
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Assign new task to team.
+                </p>
               </div>
-              <button onClick={closeTaskModal} className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900">
+              <button
+                onClick={closeTaskModal}
+                className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleAddTask} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form
+              onSubmit={handleAddTask}
+              className="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
+            >
               {addTaskError && (
-                <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+                <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
                   <AlertCircle className="w-4 h-4" />
                   {addTaskError}
                 </div>
               )}
+              {/* Row 1: Company (Dropdown) and Project (Dropdown) */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Company</label>
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Company
+                  </label>
                   <div className="relative">
                     <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                     <select
@@ -661,15 +1040,47 @@ const AssignedTasks: React.FC = () => {
                       required
                       className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
                     >
-                      <option value="" disabled>Select company</option>
+                      <option value="" disabled>
+                        Select company
+                      </option>
                       {COMPANY_NAMES.map((company, idx) => (
-                        <option key={idx} value={company}>{company}</option>
+                        <option key={idx} value={company}>
+                          {company}
+                        </option>
                       ))}
                     </select>
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Task Title</label>
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Project Name
+                  </label>
+                  <div className="relative">
+                    <input
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      list="project-list"
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      placeholder="Select existing or type new"
+                    />
+                    <datalist id="project-list">
+                      {uniqueProjectNames.map((project, idx) => (
+                        <option key={idx} value={project}>
+                          {project}
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Task Title, Priority, Due Date */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Task Title
+                  </label>
                   <input
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
@@ -678,10 +1089,10 @@ const AssignedTasks: React.FC = () => {
                     placeholder="Task title"
                   />
                 </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Priority</label>
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Priority
+                  </label>
                   <select
                     value={newPriority}
                     onChange={(e) => setNewPriority(e.target.value)}
@@ -693,7 +1104,9 @@ const AssignedTasks: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Due Date</label>
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Due Date
+                  </label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                     <input
@@ -706,146 +1119,197 @@ const AssignedTasks: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Row 3: Description (full width) */}
               <div className="space-y-1.5">
-                <label className="ml-1 text-xs font-semibold text-slate-700">Project Name (Optional)</label>
-                <input
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                  placeholder="Project name"
+                <label className="ml-1 text-xs font-semibold text-slate-700">
+                  Description
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                  placeholder="Task description"
                 />
               </div>
+
+              {/* Row 4: Sub-Tasks (full width, no nested) */}
               <div className="space-y-1.5">
-                <label className="ml-1 text-xs font-semibold text-slate-700">Progress: {newProgress}%</label>
-                <input
-                  type="range" min="0" max="100" value={newProgress}
-                  onChange={(e) => setNewProgress(Number(e.target.value))}
-                  className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 accent-indigo-600"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Sub-Tasks</label>
+                <div className="flex gap-2 justify-between items-center">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Sub-Tasks
+                  </label>
                   <button
                     type="button"
-                    onClick={() => setNewSubTasks([...newSubTasks, { id: Date.now().toString(), title: "", subTasks: [] }])}
-                    className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    onClick={() =>
+                      setNewSubTasks([
+                        ...newSubTasks,
+                        { id: Date.now().toString(), title: "", subTasks: [] },
+                      ])
+                    }
+                    className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add Sub-Task
                   </button>
                 </div>
-                <div className="space-y-3">
-                  {newSubTasks.map((subTask, idx) => (
-                    <div key={subTask.id} className="p-3 space-y-2 border rounded-xl border-slate-200 bg-slate-50">
-                      <div className="flex items-center gap-2">
+                <div className="min-h-[100px] p-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50/50">
+                  {newSubTasks.length === 0 ? (
+                    <div className="flex flex-col justify-center items-center py-6 text-center text-slate-400">
+                      <p className="text-sm">No sub-tasks yet</p>
+                      <p className="mt-1 text-xs">
+                        Click "Add Sub-Task" to start
+                      </p>
+                    </div>
+                  ) : (
+                    newSubTasks.map((subTask, idx) => (
+                      <div
+                        key={subTask.id}
+                        className="flex gap-2 items-center p-3 bg-white rounded-xl border border-slate-200"
+                      >
                         <input
                           value={subTask.title}
                           onChange={(e) => {
                             const updated = [...newSubTasks];
-                            updated[idx] = { ...subTask, title: e.target.value };
+                            updated[idx] = {
+                              ...subTask,
+                              title: e.target.value,
+                            };
                             setNewSubTasks(updated);
                           }}
-                          className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="flex-1 px-4 py-2 text-sm rounded-lg border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                           placeholder="Sub-task title"
                         />
-                        <button type="button" onClick={() => { const u = [...newSubTasks]; u.splice(idx, 1); setNewSubTasks(u); }} className="p-2 transition-all rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const u = [...newSubTasks];
+                            u.splice(idx, 1);
+                            setNewSubTasks(u);
+                          }}
+                          className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="pl-4 space-y-2">
-                        {(subTask.subTasks || []).map((child, cIdx) => (
-                          <div key={child.id} className="flex items-center gap-2">
-                            <div className="w-4 h-px bg-slate-300 shrink-0" />
-                            <input
-                              value={child.title}
-                              onChange={(e) => {
-                                const updated = [...newSubTasks];
-                                const children = [...(updated[idx].subTasks || [])];
-                                children[cIdx] = { ...child, title: e.target.value };
-                                updated[idx] = { ...updated[idx], subTasks: children };
-                                setNewSubTasks(updated);
-                              }}
-                              className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                              placeholder="Nested sub-task"
-                            />
-                            <button type="button" onClick={() => {
-                              const updated = [...newSubTasks];
-                              const children = [...(updated[idx].subTasks || [])];
-                              children.splice(cIdx, 1);
-                              updated[idx] = { ...updated[idx], subTasks: children };
-                              setNewSubTasks(updated);
-                            }} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-xl transition-all">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => {
-                          const updated = [...newSubTasks];
-                          updated[idx] = { ...updated[idx], subTasks: [...(updated[idx].subTasks || []), { id: Date.now().toString(), title: "", subTasks: [] }] };
-                          setNewSubTasks(updated);
-                        }} className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700">
-                          <Plus className="w-3 h-3" />
-                          Add nested sub-task
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
+
+              {/* Row 5: Attachments (full width) */}
               <div className="space-y-1.5">
-                <label className="ml-1 text-xs font-semibold text-slate-700">Attachments</label>
+                <label className="ml-1 text-xs font-semibold text-slate-700">
+                  Attachments
+                </label>
                 <div className="relative">
-                  <input type="file" multiple onChange={(e) => setNewFiles(e.target.files)} className="hidden" id="task-files" />
-                  <label htmlFor="task-files" className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => setNewFiles(e.target.files)}
+                    className="hidden"
+                    id="task-files"
+                  />
+                  <label
+                    htmlFor="task-files"
+                    className="flex gap-2 justify-center items-center px-4 py-3 w-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                  >
                     <Paperclip className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                    {newFiles?.length ? <span className="font-bold">{newFiles.length} files selected</span> : "Upload task resources"}
+                    {newFiles?.length ? (
+                      <span className="font-bold">
+                        {newFiles.length} files selected
+                      </span>
+                    ) : (
+                      "Upload task resources"
+                    )}
                   </label>
                 </div>
               </div>
-              <div className="p-4 space-y-3 border rounded-2xl bg-slate-50 border-slate-100">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                      <UsersIcon className="w-3.5 h-3.5 text-indigo-500" />
-                      Assign To
-                    </label>
-                    <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 cursor-pointer group">
-                      <div className={`w-8 h-4.5 rounded-full transition-all duration-300 relative ${newAssignAll ? "bg-blue-600" : "bg-blue-300"}`}>
-                        <div className={`absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full transition-all duration-300 ${newAssignAll ? "left-4" : "left-0.5"}`} />
-                      </div>
-                      <input type="checkbox" checked={newAssignAll} onChange={(e) => setNewAssignAll(e.target.checked)} className="hidden" />
-                      All
-                    </label>
-                  </div>
+
+              {/* Row 6: Assigned To (full width) */}
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-slate-700">
+                  Assign To
+                </label>
+                <div className="space-y-2">
+                  <label className="flex gap-2 items-center text-xs font-medium cursor-pointer text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={newAssignAll}
+                      onChange={(e) => setNewAssignAll(e.target.checked)}
+                      className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                    />
+                    All
+                  </label>
                   {!newAssignAll && (
                     <div className="space-y-2">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                        <input type="text" placeholder="Search users..." value={userSearchTerm} onChange={(e) => setUserSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                        <input
+                          type="text"
+                          placeholder="Search users..."
+                          value={userSearchTerm}
+                          onChange={(e) => setUserSearchTerm(e.target.value)}
+                          className="py-2 pr-4 pl-9 w-full text-sm rounded-xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
                       </div>
-                      <div className="p-2 space-y-1 overflow-y-auto bg-white border shadow-inner max-h-32 rounded-xl border-slate-200">
-                        {users.filter((u) => u.fullName.toLowerCase().includes(userSearchTerm.toLowerCase())).map((u) => {
-                          const isSelected = newUserIds.includes(u.id);
-                          return (
-                            <label key={u.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all ${isSelected ? "text-indigo-700 bg-indigo-50" : "hover:bg-slate-50 text-slate-600"}`}>
-                              <input type="checkbox" checked={isSelected} onChange={(e) => { if (e.target.checked) setNewUserIds([...newUserIds, u.id]); else setNewUserIds(newUserIds.filter((id) => id !== u.id)); }} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
-                              <div className="flex flex-col">
-                                <span className="text-xs font-bold">{u.fullName}</span>
-                                <span className="text-[10px] opacity-60">{u.email}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
+                      <div className="overflow-y-auto max-h-[100px] p-2 space-y-1 bg-white rounded-xl border border-slate-200">
+                        {users
+                          .filter((u) =>
+                            u.fullName
+                              .toLowerCase()
+                              .includes(userSearchTerm.toLowerCase()),
+                          )
+                          .map((u) => {
+                            const isSelected = newUserIds.includes(u.id);
+                            return (
+                              <label
+                                key={u.id}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all text-xs ${isSelected ? "text-indigo-700 bg-indigo-50" : "hover:bg-slate-50 text-slate-600"}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked)
+                                      setNewUserIds([...newUserIds, u.id]);
+                                    else
+                                      setNewUserIds(
+                                        newUserIds.filter((id) => id !== u.id),
+                                      );
+                                  }}
+                                  className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                />
+                                {u.fullName}
+                              </label>
+                            );
+                          })}
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button type="button" onClick={closeTaskModal} className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                <button type="submit" disabled={addingTask} className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed">
-                  {addingTask ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+
+              {/* Buttons */}
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={closeTaskModal}
+                  className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingTask}
+                  className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {addingTask ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
                   Create
                 </button>
               </div>
@@ -858,107 +1322,148 @@ const AssignedTasks: React.FC = () => {
       {expandedTaskId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex sticky top-0 justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
-                {assignedTasks.find((t) => t.id === expandedTaskId)?.companyName}
+                {
+                  assignedTasks.find((t) => t.id === expandedTaskId)
+                    ?.companyName
+                }
               </p>
-              <button onClick={() => setExpandedTaskId(null)} className="p-2 transition-colors rounded-xl hover:bg-slate-200">
+              <button
+                onClick={() => setExpandedTaskId(null)}
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
+              >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
-                    <p className="text-lg font-semibold text-slate-900">
-                      {assignedTasks.find((t) => t.id === expandedTaskId)?.projectName || "N/A"}
-                    </p>
-                  </div>
-                  <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
-                    <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">Due Date</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {new Date(assignedTasks.find((t) => t.id === expandedTaskId)?.dueDate || "").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-                    </p>
-                  </div>
-                </div>
-                <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
-                  <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">Progress</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 overflow-hidden rounded-full bg-slate-200">
-                      <div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600" style={{ width: `${assignedTasks.find((t) => t.id === expandedTaskId)?.progress || 0}%` }} />
+              {/* First Row: Project Name, Due Date, Progress */}
+              {(() => {
+                const task = assignedTasks.find((t) => t.id === expandedTaskId);
+                return (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
+                      <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
+                        Project Name
+                      </p>
+                      <p className="text-lg font-semibold text-slate-900">
+                        {task?.projectName || "N/A"}
+                      </p>
                     </div>
-                    <span className="text-sm font-bold text-slate-700">{assignedTasks.find((t) => t.id === expandedTaskId)?.progress}%</span>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
-                <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">Description</p>
-                <p className="text-sm whitespace-pre-wrap text-slate-700">
-                  {assignedTasks.find((t) => t.id === expandedTaskId)?.description || "No description provided."}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                {/* Sub-Tasks (Read-Only View) */}
-                <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
-                  <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">Sub-Tasks</p>
-                  <div className="space-y-2">
-                    {(() => {
-                      const renderSubTask = (st: DetailedSubTask, level: number = 0) => {
-                        const safeSubTasks = st.subTasks || [];
-                        return (
-                          <div key={st.id} className="overflow-hidden bg-white border rounded-xl border-slate-100">
-                            <div className="flex items-center px-3 py-2" style={{ paddingLeft: `${level * 20 + 12}px` }}>
-                              <div className="flex items-center gap-2">
-                                {safeSubTasks.length > 0 ? (
-                                  <button onClick={() => {
-                                    const newExpanded = new Set(expandedNestedSubTasks);
-                                    if (newExpanded.has(st.id.toString())) newExpanded.delete(st.id.toString());
-                                    else newExpanded.add(st.id.toString());
-                                    setExpandedNestedSubTasks(newExpanded);
-                                  }} className="p-0.5 text-slate-400 hover:text-indigo-600">
-                                    {expandedNestedSubTasks.has(st.id.toString()) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                  </button>
-                                ) : <div className="w-4 h-4" />}
-                                <span className="text-sm text-slate-700">{st.title}</span>
-                              </div>
-                            </div>
-                            {safeSubTasks.length > 0 && expandedNestedSubTasks.has(st.id.toString()) && (
-                              <div className="border-t border-slate-100">
-                                {safeSubTasks.map((child) => renderSubTask(child, level + 1))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      };
-                      return (taskSubTasks[expandedTaskId] || []).map((st) => renderSubTask(st));
-                    })()}
-                  </div>
-                </div>
-                {/* Assigned To */}
-                <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
-                  <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">Assigned To</p>
-                  <div className="flex flex-wrap gap-2">
-                    {assignedTasks.find((t) => t.id === expandedTaskId)?.assignedUsers.map((u) => (
-                      <div key={u.id} className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm">
-                        <div className="flex items-center justify-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">{u.fullName.charAt(0)}</div>
-                        <span className="text-xs font-semibold text-slate-700">{u.fullName}</span>
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
+                      <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
+                        Due Date
+                      </p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {new Date(task?.dueDate || "").toLocaleDateString(
+                          "en-US",
+                          { year: "numeric", month: "long", day: "numeric" },
+                        )}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
+                      <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
+                        Progress
+                      </p>
+                      <div className="flex flex-col gap-2 items-start">
+                        <div className="overflow-hidden w-full h-2 rounded-full bg-slate-200">
+                          <div
+                            className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600"
+                            style={{ width: `${task?.progress || 0}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-bold text-slate-700">
+                          {task?.progress}%
+                        </span>
                       </div>
-                    ))}
+                    </div>
                   </div>
+                );
+              })()}
+
+              {/* Second Row: Description + Assigned To */}
+              {(() => {
+                const task = assignedTasks.find((t) => t.id === expandedTaskId);
+                return (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
+                      <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
+                        Description
+                      </p>
+                      <p className="text-sm whitespace-pre-wrap text-slate-700">
+                        {task?.description || "No description provided."}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
+                      <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
+                        Assigned To
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {task?.assignedUsers.map((u) => (
+                          <div
+                            key={u.id}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm"
+                          >
+                            <div className="flex justify-center items-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                              {u.fullName.charAt(0)}
+                            </div>
+                            <span className="text-xs font-semibold text-slate-700">
+                              {u.fullName}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Third Section: Sub-Tasks */}
+              <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
+                <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">
+                  Sub-Tasks
+                </p>
+                {/* Add input */}
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={newSubTaskTitle[expandedTaskId] || ""}
+                    onChange={(e) =>
+                      setNewSubTaskTitle((prev) => ({
+                        ...prev,
+                        [expandedTaskId]: e.target.value,
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSubTaskToTask(expandedTaskId);
+                      }
+                    }}
+                    className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    placeholder="Enter sub-task title"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addSubTaskToTask(expandedTaskId)}
+                    className="flex gap-1 items-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl transition-all hover:bg-indigo-700"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </button>
                 </div>
-              </div>
-              <div className="flex justify-between">
-                <button
-                  onClick={() => { const task = assignedTasks.find((t) => t.id === expandedTaskId); if (task) handleEditClick(task); }}
-                  className="flex gap-2 items-center px-6 py-2.5 text-sm font-bold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Update
-                </button>
-                <button onClick={() => setShowActivityPopup(true)} className="flex gap-2 items-center px-6 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors">
-                  <Clock className="w-4 h-4" />
-                  View Activity
-                </button>
+                {/* Sub-task list */}
+                <div className="space-y-2">
+                  {(taskSubTasks[expandedTaskId] || []).length === 0 ? (
+                    <p className="py-4 text-sm text-center text-slate-400">
+                      No sub-tasks yet
+                    </p>
+                  ) : (
+                    (taskSubTasks[expandedTaskId] || []).map((st) =>
+                      renderSubTaskItem(st),
+                    )
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -969,17 +1474,212 @@ const AssignedTasks: React.FC = () => {
       {showActivityPopup && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-xl font-bold text-slate-900">Activity History</h3>
-              <button onClick={() => setShowActivityPopup(false)} className="p-2 transition-colors rounded-xl hover:bg-slate-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-xl font-bold text-slate-900">
+                Activity History
+              </h3>
+              <button
+                onClick={() => setShowActivityPopup(false)}
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
+              >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-                <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">Y</div>
+              <div className="flex gap-3 p-3 rounded-xl border bg-slate-50 border-slate-100">
+                <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                  Y
+                </div>
                 <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-900">You changed the task status to "In Progress"</p>
+                  <p className="text-xs font-semibold text-slate-900">
+                    You changed the task status to "In Progress"
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-task Update Popup */}
+      {showSubTaskUpdatePopup && editingSubTask && expandedTaskId && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-xl font-bold text-slate-900">
+                Update Sub-Task
+              </h3>
+              <button
+                onClick={() => setShowSubTaskUpdatePopup(false)}
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* First row: Task title (parent task's title) */}
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-slate-700">
+                  Task Title
+                </label>
+                <p className="text-lg font-semibold text-slate-900">
+                  {assignedTasks.find((t) => t.id === expandedTaskId)?.title ||
+                    "N/A"}
+                </p>
+              </div>
+
+              {/* Second row: New sub-task update + Attachment */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-10">
+                {/* New sub-task update: ~70% width */}
+                <div className="md:col-span-7 space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    New Sub-Task Update
+                  </label>
+                  <input
+                    type="text"
+                    value={newSubTaskUpdateTitle}
+                    onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    placeholder="Enter new sub-task title"
+                  />
+                </div>
+                {/* Attachment: ~30% width */}
+                <div className="md:col-span-3 space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Attachment
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => setSubTaskUpdateFiles(e.target.files)}
+                      className="hidden"
+                      id="subtask-attachment"
+                    />
+                    <label
+                      htmlFor="subtask-attachment"
+                      className="flex flex-col gap-1 justify-center items-center px-4 py-3 w-full text-xs rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      {subTaskUpdateFiles?.length
+                        ? `${subTaskUpdateFiles.length} file(s)`
+                        : "Select file(s)"}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Simplified progress bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Progress
+                  </label>
+                  <span className="text-xs font-medium text-slate-600">
+                    {subTaskProgress}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={subTaskProgress}
+                  onChange={(e) => setSubTaskProgress(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Last update section */}
+              <div className="space-y-1.5">
+                <label className="ml-1 text-xs font-semibold text-slate-700">
+                  Previous Updates
+                </label>
+                <div className="p-3 rounded-xl border bg-slate-50 border-slate-100 min-h-[60px] max-h-[120px] overflow-y-auto space-y-2">
+                  {editingSubTask.history &&
+                  editingSubTask.history.length > 0 ? (
+                    editingSubTask.history.slice(0, 2).map((hist) => (
+                      <div
+                        key={hist.id}
+                        className="text-xs text-slate-600 border-b border-slate-200 pb-1.5 last:border-0"
+                      >
+                        <p className="font-semibold text-slate-800">
+                          {hist.title}{" "}
+                          <span className="font-normal text-slate-500">
+                            ({hist.progress}%)
+                          </span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {new Date(hist.date).toLocaleString()}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="py-2 text-xs italic text-center text-slate-500">
+                      No previous updates available
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Buttons at bottom */}
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSubTaskUpdatePopup(false);
+                    setEditingSubTask(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubTaskUpdate} // Hooked up to the new function
+                  className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-all"
+                >
+                  Update
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSubTaskUpdatePopup(false);
+                    setShowSubTaskActivityPopup(true);
+                  }}
+                  className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all"
+                >
+                  Activity
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-task Activity Popup */}
+      {showSubTaskActivityPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-xl font-bold text-slate-900">
+                Sub-Task Activity History
+              </h3>
+              <button
+                onClick={() => setShowSubTaskActivityPopup(false)}
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+              <div className="flex gap-3 p-3 rounded-xl border bg-slate-50 border-slate-100">
+                <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                  Y
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-slate-900">
+                    Sub-task activity placeholder
+                  </p>
                 </div>
               </div>
             </div>
@@ -991,100 +1691,194 @@ const AssignedTasks: React.FC = () => {
       {showUpdateModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Update Task</h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">Modify task details</p>
+                <h3 className="text-xl font-bold text-slate-900">
+                  Update Task
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Modify task details
+                </p>
               </div>
-              <button onClick={() => setShowUpdateModal(false)} className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900">
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
               {editTaskError && (
-                <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+                <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
                   <AlertCircle className="w-4 h-4" />
                   {editTaskError}
                 </div>
               )}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Description</label>
-                  <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-h-[100px]" placeholder="Task description" />
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Description
+                  </label>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-h-[100px]"
+                    placeholder="Task description"
+                  />
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="ml-1 text-xs font-semibold text-slate-700">Due Date</label>
+                    <label className="ml-1 text-xs font-semibold text-slate-700">
+                      Due Date
+                    </label>
                     <div className="relative">
                       <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} required className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        required
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="ml-1 text-xs font-semibold text-slate-700">Progress: {editProgress}%</label>
-                    <input type="range" min="0" max="100" value={editProgress} onChange={(e) => setEditProgress(Number(e.target.value))} className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 accent-indigo-600" />
+                    <label className="ml-1 text-xs font-semibold text-slate-700">
+                      Progress: {editProgress}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={editProgress}
+                      onChange={(e) => setEditProgress(Number(e.target.value))}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 accent-indigo-600"
+                    />
                   </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div className="col-span-3 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="ml-1 text-xs font-semibold text-slate-700">Sub-Tasks</label>
-                    <button type="button" onClick={() => setEditSubTasks([...editSubTasks, { id: Date.now().toString(), title: "", subTasks: [] }])} className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                  <div className="flex gap-2 justify-between items-center">
+                    <label className="ml-1 text-xs font-semibold text-slate-700">
+                      Sub-Tasks
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditSubTasks([
+                          ...editSubTasks,
+                          {
+                            id: Date.now().toString(),
+                            title: "",
+                            subTasks: [],
+                          },
+                        ])
+                      }
+                      className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
+                    >
                       <Plus className="w-3.5 h-3.5" />
                       Add Sub-Task
                     </button>
                   </div>
                   <div className="space-y-3 max-h-[300px] overflow-y-auto">
                     {editSubTasks.map((subTask, idx) => (
-                      <div key={subTask.id} className="p-3 space-y-2 border rounded-xl border-slate-200 bg-slate-50">
-                        <div className="flex items-center gap-2">
+                      <div
+                        key={subTask.id}
+                        className="p-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <div className="flex gap-2 items-center">
                           <input
                             value={subTask.title}
                             onChange={(e) => {
                               const updated = [...editSubTasks];
-                              updated[idx] = { ...subTask, title: e.target.value };
+                              updated[idx] = {
+                                ...subTask,
+                                title: e.target.value,
+                              };
                               setEditSubTasks(updated);
                             }}
-                            className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             placeholder="Sub-task title"
                           />
-                          <button type="button" onClick={() => { const u = [...editSubTasks]; u.splice(idx, 1); setEditSubTasks(u); }} className="p-2 transition-all rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const u = [...editSubTasks];
+                              u.splice(idx, 1);
+                              setEditSubTasks(u);
+                            }}
+                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                         <div className="pl-4 space-y-2">
                           {(subTask.subTasks || []).map((child, cIdx) => (
-                            <div key={child.id} className="flex items-center gap-2">
+                            <div
+                              key={child.id}
+                              className="flex gap-2 items-center"
+                            >
                               <div className="w-4 h-px bg-slate-300 shrink-0" />
                               <input
                                 value={child.title}
                                 onChange={(e) => {
                                   const updated = [...editSubTasks];
-                                  const children = [...(updated[idx].subTasks || [])];
-                                  children[cIdx] = { ...child, title: e.target.value };
-                                  updated[idx] = { ...updated[idx], subTasks: children };
+                                  const children = [
+                                    ...(updated[idx].subTasks || []),
+                                  ];
+                                  children[cIdx] = {
+                                    ...child,
+                                    title: e.target.value,
+                                  };
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    subTasks: children,
+                                  };
                                   setEditSubTasks(updated);
                                 }}
                                 className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 placeholder="Nested sub-task"
                               />
-                              <button type="button" onClick={() => {
-                                const updated = [...editSubTasks];
-                                const children = [...(updated[idx].subTasks || [])];
-                                children.splice(cIdx, 1);
-                                updated[idx] = { ...updated[idx], subTasks: children };
-                                setEditSubTasks(updated);
-                              }} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-xl transition-all">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...editSubTasks];
+                                  const children = [
+                                    ...(updated[idx].subTasks || []),
+                                  ];
+                                  children.splice(cIdx, 1);
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    subTasks: children,
+                                  };
+                                  setEditSubTasks(updated);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-xl transition-all"
+                              >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           ))}
-                          <button type="button" onClick={() => {
-                            const updated = [...editSubTasks];
-                            updated[idx] = { ...updated[idx], subTasks: [...(updated[idx].subTasks || []), { id: Date.now().toString(), title: "", subTasks: [] }] };
-                            setEditSubTasks(updated);
-                          }} className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...editSubTasks];
+                              updated[idx] = {
+                                ...updated[idx],
+                                subTasks: [
+                                  ...(updated[idx].subTasks || []),
+                                  {
+                                    id: Date.now().toString(),
+                                    title: "",
+                                    subTasks: [],
+                                  },
+                                ],
+                              };
+                              setEditSubTasks(updated);
+                            }}
+                            className="flex gap-1 items-center ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700"
+                          >
                             <Plus className="w-3 h-3" />
                             Add nested sub-task
                           </button>
@@ -1094,46 +1888,110 @@ const AssignedTasks: React.FC = () => {
                   </div>
                 </div>
                 <div className="col-span-1 space-y-1.5">
-                  <label className="ml-1 text-xs font-semibold text-slate-700">Attachments</label>
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Attachments
+                  </label>
                   <div className="relative">
-                    <input type="file" multiple onChange={(e) => setEditFiles(e.target.files)} className="hidden" id="update-task-files" />
-                    <label htmlFor="update-task-files" className="flex flex-col items-center justify-center w-full h-full gap-2 px-4 py-6 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => setEditFiles(e.target.files)}
+                      className="hidden"
+                      id="update-task-files"
+                    />
+                    <label
+                      htmlFor="update-task-files"
+                      className="flex flex-col gap-2 justify-center items-center px-4 py-6 w-full h-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                    >
                       <Paperclip className="w-6 h-6 transition-transform group-hover:rotate-12 text-slate-400 group-hover:text-indigo-500" />
-                      {editFiles?.length ? <span className="font-bold text-center">{editFiles.length} files selected</span> : <span className="text-center">Upload additional files</span>}
+                      {editFiles?.length ? (
+                        <span className="font-bold text-center">
+                          {editFiles.length} files selected
+                        </span>
+                      ) : (
+                        <span className="text-center">
+                          Upload additional files
+                        </span>
+                      )}
                     </label>
                   </div>
                 </div>
               </div>
-              <div className="p-4 space-y-3 border rounded-2xl bg-slate-50 border-slate-100">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <div className="p-4 space-y-3 rounded-2xl border bg-slate-50 border-slate-100">
+                <label className="flex gap-2 items-center text-xs font-bold text-slate-900">
                   <UsersIcon className="w-3.5 h-3.5 text-indigo-500" />
                   Assign To
                 </label>
                 <div className="space-y-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                    <input type="text" placeholder="Search users..." value={userSearchTerm} onChange={(e) => setUserSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                    <input
+                      type="text"
+                      placeholder="Search users..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    />
                   </div>
-                  <div className="p-2 space-y-1 overflow-y-auto bg-white border shadow-inner max-h-32 rounded-xl border-slate-200">
-                    {users.filter((u) => u.fullName.toLowerCase().includes(userSearchTerm.toLowerCase())).map((u) => {
-                      const isSelected = editUserIds.includes(u.id);
-                      return (
-                        <label key={u.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all ${isSelected ? "text-indigo-700 bg-indigo-50" : "hover:bg-slate-50 text-slate-600"}`}>
-                          <input type="checkbox" checked={isSelected} onChange={(e) => { if (e.target.checked) setEditUserIds([...editUserIds, u.id]); else setEditUserIds(editUserIds.filter((id) => id !== u.id)); }} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold">{u.fullName}</span>
-                            <span className="text-[10px] opacity-60">{u.email}</span>
-                          </div>
-                        </label>
-                      );
-                    })}
+                  <div className="overflow-y-auto p-2 space-y-1 max-h-32 bg-white rounded-xl border shadow-inner border-slate-200">
+                    {users
+                      .filter((u) =>
+                        u.fullName
+                          .toLowerCase()
+                          .includes(userSearchTerm.toLowerCase()),
+                      )
+                      .map((u) => {
+                        const isSelected = editUserIds.includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all ${isSelected ? "text-indigo-700 bg-indigo-50" : "hover:bg-slate-50 text-slate-600"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked)
+                                  setEditUserIds([...editUserIds, u.id]);
+                                else
+                                  setEditUserIds(
+                                    editUserIds.filter((id) => id !== u.id),
+                                  );
+                              }}
+                              className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold">
+                                {u.fullName}
+                              </span>
+                              <span className="text-[10px] opacity-60">
+                                {u.email}
+                              </span>
+                            </div>
+                          </label>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setShowUpdateModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                <button type="submit" disabled={editingTaskLoading} className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed">
-                  {editingTaskLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowUpdateModal(false)}
+                  className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editingTaskLoading}
+                  className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {editingTaskLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
                   Update
                 </button>
               </div>
