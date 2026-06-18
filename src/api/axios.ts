@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const rawBase = import.meta.env.VITE_API_BASE_URL;
-let API_BASE = rawBase ?? "";
+let API_BASE = rawBase ?? "http://localhost:3000";
 
 // Normalize common shorthand values like ":4000" or "//host:port"
 if (typeof window !== "undefined") {
