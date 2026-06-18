@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/axios";
+import { useAuth } from "../context/AuthProvider";
 import {
   Plus,
   Search,
@@ -45,6 +46,7 @@ const formatDate = (dateString: string) =>
   });
 
 const MyTasks: React.FC = () => {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -91,6 +93,11 @@ const MyTasks: React.FC = () => {
   );
   const [showSubTaskActivityPopup, setShowSubTaskActivityPopup] =
     useState(false);
+  const [subTaskComments, setSubTaskComments] = useState<any[]>([]);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [feedbackTexts, setFeedbackTexts] = useState<Record<number, string>>(
+    {},
+  );
 
   const convertToDetailed = (subTasks: any[]): DetailedSubTask[] => {
     return subTasks.map((st) => ({
@@ -253,13 +260,10 @@ const MyTasks: React.FC = () => {
 
     try {
       const taskId = selectedTask.id;
-      await api.put(
-        `/api/tasks/${taskId}/subtasks/${editingSubTask.id}`,
-        {
-          title: newSubTaskUpdateTitle,
-          progress: subTaskProgress,
-        },
-      );
+      await api.put(`/api/tasks/${taskId}/subtasks/${editingSubTask.id}`, {
+        title: newSubTaskUpdateTitle,
+        progress: subTaskProgress,
+      });
 
       const res = await api.get(`/api/tasks/${taskId}/subtasks`);
       const detailed = convertToDetailed(res.data);
@@ -337,7 +341,19 @@ const MyTasks: React.FC = () => {
             <button
               type="button"
               className="p-1.5 rounded-lg transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-              onClick={() => setShowSubTaskActivityPopup(true)}
+              onClick={async () => {
+                setEditingSubTask(st);
+                try {
+                  const res = await api.get(
+                    `/api/tasks/${selectedTask?.id}/subtasks/${st.id}/comments`,
+                  );
+                  setSubTaskComments(res.data);
+                } catch (err) {
+                  console.error("Failed to fetch comments", err);
+                  setSubTaskComments([]);
+                }
+                setShowSubTaskActivityPopup(true);
+              }}
             >
               <Clock className="w-3.5 h-3.5" />
             </button>
@@ -353,6 +369,13 @@ const MyTasks: React.FC = () => {
   };
 
   const filteredTasks = tasks.filter((task) => {
+    // Only show tasks where current user is in assigned users
+    const isAssigned = user
+      ? task.assignedUsers.some((u) => u.id === Number(user.id))
+      : false;
+
+    if (!isAssigned) return false;
+
     const matchesSearch =
       task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       task.companyName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -898,12 +921,12 @@ const MyTasks: React.FC = () => {
       )}
 
       {/* Sub-task Activity Popup */}
-      {showSubTaskActivityPopup && (
+      {showSubTaskActivityPopup && editingSubTask && selectedTask && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-bold text-slate-900">
-                Sub-Task Activity History
+                Sub-Task Activity & Feedback
               </h3>
               <button
                 onClick={() => setShowSubTaskActivityPopup(false)}
@@ -912,16 +935,175 @@ const MyTasks: React.FC = () => {
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-                <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
-                  Y
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-900">
-                    Sub-task activity placeholder
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Sub-task History */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
+                  Progress History
+                </p>
+                {editingSubTask.history && editingSubTask.history.length > 0 ? (
+                  editingSubTask.history.map((hist: any) => (
+                    <div
+                      key={hist.id}
+                      className="p-3 rounded-xl border bg-slate-50 border-slate-100"
+                    >
+                      <p className="text-xs font-semibold text-slate-800">
+                        {hist.title}{" "}
+                        <span className="font-normal text-slate-500">
+                          ({hist.progress}%)
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(hist.date).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="py-2 text-xs italic text-center text-slate-500">
+                    No history yet
                   </p>
-                </div>
+                )}
+              </div>
+
+              {/* Comments & Feedback */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
+                  Comments & Feedback
+                </p>
+                {subTaskComments.map((comment: any) => (
+                  <div
+                    key={comment.id}
+                    className="p-3 rounded-xl border bg-slate-50 border-slate-100"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex justify-center items-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                        {comment.author.fullName.charAt(0)}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-700">
+                        {comment.author.fullName}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-800 mb-2">
+                      {comment.commentText}
+                    </p>
+                    {comment.feedback && (
+                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                        <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1">
+                          Feedback
+                        </p>
+                        <p className="text-xs text-slate-700">
+                          {comment.feedback}
+                        </p>
+                      </div>
+                    )}
+                    {/* Add Feedback Input (for admin/assigned users) */}
+                    {!comment.feedback && (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Add feedback..."
+                          value={feedbackTexts[comment.id] || ""}
+                          onChange={(e) =>
+                            setFeedbackTexts({
+                              ...feedbackTexts,
+                              [comment.id]: e.target.value,
+                            })
+                          }
+                          className="flex-1 px-3 py-1.5 text-xs bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!feedbackTexts[comment.id]) {
+                              alert("Please enter some feedback first!");
+                              return;
+                            }
+                            try {
+                              console.log(
+                                "Sending feedback from MyTasks.tsx:",
+                                {
+                                  selectedTaskId: selectedTask?.id,
+                                  subtaskId: editingSubTask?.id,
+                                  commentId: comment.id,
+                                  feedback: feedbackTexts[comment.id],
+                                },
+                              );
+                              await api.put(
+                                `/api/tasks/${selectedTask?.id}/subtasks/${editingSubTask?.id}/comments/${comment.id}/feedback`,
+                                {
+                                  feedback: feedbackTexts[comment.id],
+                                },
+                              );
+                              console.log("Feedback sent successfully!");
+                              // Re-fetch comments to get updated feedback
+                              const res = await api.get(
+                                `/api/tasks/${selectedTask?.id}/subtasks/${editingSubTask?.id}/comments`,
+                              );
+                              setSubTaskComments(res.data);
+                              setFeedbackTexts({
+                                ...feedbackTexts,
+                                [comment.id]: "",
+                              });
+                            } catch (err: any) {
+                              console.error("Failed to add feedback:", err);
+                              alert(
+                                err?.response?.data?.message ||
+                                  "Failed to send feedback!",
+                              );
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
+                        >
+                          Send
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add New Comment */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!newCommentText.trim()) return;
+                    try {
+                      await api.post(
+                        `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
+                        {
+                          commentText: newCommentText,
+                        },
+                      );
+                      // Re-fetch comments to get the new one
+                      const res = await api.get(
+                        `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
+                      );
+                      setSubTaskComments(res.data);
+                      setNewCommentText("");
+                    } catch (err) {
+                      console.error("Failed to add comment", err);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl transition-all hover:bg-indigo-700"
+                >
+                  Send
+                </button>
               </div>
             </div>
           </div>
@@ -932,7 +1114,6 @@ const MyTasks: React.FC = () => {
 };
 
 export default MyTasks;
-
 
 // import React, { useEffect, useState } from "react";
 // import api from "../api/axios";

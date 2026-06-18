@@ -31,6 +31,19 @@ type User = {
   email: string;
 };
 
+type Project = {
+  id: number;
+  name: string;
+  description?: string;
+  dueDate?: string;
+  status: "pending" | "in_progress" | "completed" | "on_hold";
+  priority: "high" | "medium" | "low";
+  assignees?: Array<{ id: number; fullName: string }>;
+  createdAt: string;
+  progress?: number;
+  tasksCount?: number;
+};
+
 type Task = {
   id: number;
   companyName: string;
@@ -64,6 +77,7 @@ const getFileUrl = (path: string) => {
 const AssignedTasks: React.FC = () => {
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
@@ -145,6 +159,11 @@ const AssignedTasks: React.FC = () => {
   );
   const [showSubTaskActivityPopup, setShowSubTaskActivityPopup] =
     useState(false);
+  const [subTaskComments, setSubTaskComments] = useState<any[]>([]);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [feedbackTexts, setFeedbackTexts] = useState<Record<number, string>>(
+    {},
+  );
 
   const toggleCompany = (companyName: string) => {
     setExpandedCompanies((prev) => {
@@ -272,9 +291,10 @@ const AssignedTasks: React.FC = () => {
       setTasksLoading(true);
       setTasksError(null);
       try {
-        const [tasksRes, usersRes] = await Promise.all([
+        const [tasksRes, usersRes, projectsRes] = await Promise.all([
           api.get<any>("/api/tasks"),
           api.get<User[]>("/api/users"),
+          api.get<Project[]>("/api/projects"),
         ]);
 
         const toTasksWithSubTasks = (list: Task[]) => {
@@ -315,6 +335,7 @@ const AssignedTasks: React.FC = () => {
           a.fullName.localeCompare(b.fullName),
         );
         setUsers(sortedUsers);
+        setProjects(projectsRes.data);
       } catch (err: any) {
         setTasksError(
           err?.response?.data?.message ||
@@ -379,16 +400,16 @@ const AssignedTasks: React.FC = () => {
       const originalTask = assignedTasks.find((t) => t.id === editingTaskId);
       if (!originalTask) return;
       const formData = new FormData();
-      formData.append("companyName", originalTask.companyName);
-      formData.append("title", originalTask.title);
+      formData.append("companyName", editCompanyName);
+      formData.append("title", editTitle);
       formData.append("description", editDescription);
-      formData.append("priority", originalTask.priority);
+      formData.append("priority", editPriority);
       formData.append("dueDate", editDueDate);
       formData.append("userIds", editUserIds.join(","));
       formData.append("progress", String(editProgress));
       formData.append("subTasks", JSON.stringify(editSubTasks));
-      if (originalTask.projectName) {
-        formData.append("projectName", originalTask.projectName);
+      if (editProjectName) {
+        formData.append("projectName", editProjectName);
       }
       if (editFiles) {
         for (let i = 0; i < editFiles.length; i++) {
@@ -717,13 +738,13 @@ const AssignedTasks: React.FC = () => {
     return (
       <div
         key={st.id}
-        className="overflow-hidden bg-white border rounded-xl border-slate-100"
+        className="overflow-hidden bg-white rounded-xl border border-slate-100"
       >
         <div
-          className="flex items-center justify-between py-2 pr-3"
+          className="flex justify-between items-center py-2 pr-3"
           style={{ paddingLeft: `${level * 20 + 12}px` }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex gap-2 items-center">
             {safeChildren.length > 0 ? (
               <button
                 type="button"
@@ -767,7 +788,19 @@ const AssignedTasks: React.FC = () => {
             <button
               type="button"
               className="p-1.5 rounded-lg transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-              onClick={() => setShowSubTaskActivityPopup(true)}
+              onClick={async () => {
+                setEditingSubTask(st);
+                try {
+                  const res = await api.get(
+                    `/api/tasks/${expandedTaskId}/subtasks/${st.id}/comments`,
+                  );
+                  setSubTaskComments(res.data);
+                } catch (err) {
+                  console.error("Failed to fetch comments", err);
+                  setSubTaskComments([]);
+                }
+                setShowSubTaskActivityPopup(true);
+              }}
             >
               <Clock className="w-3.5 h-3.5" />
             </button>
@@ -786,9 +819,9 @@ const AssignedTasks: React.FC = () => {
     <div className="pb-12 space-y-6">
       {/* Search and Filter Bar */}
       <div className="space-y-4">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div className="flex flex-col gap-4 justify-between md:flex-row md:items-center">
           <div className="relative flex-1 max-w-md group">
-            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+            <div className="flex absolute inset-y-0 left-0 items-center pl-4 pointer-events-none">
               <Search className="w-5 h-5 transition-colors text-slate-400 group-focus-within:text-indigo-500" />
             </div>
             <input
@@ -796,12 +829,12 @@ const AssignedTasks: React.FC = () => {
               placeholder="Search tasks by title, company..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full py-3 pr-4 text-sm transition-all bg-white border shadow-sm pl-11 rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="block py-3 pr-4 pl-11 w-full text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
           <button
             onClick={openAddTaskModal}
-            className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white transition-all bg-indigo-600 shadow-lg rounded-2xl hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
+            className="flex gap-2 items-center px-6 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
           >
             <Plus className="w-5 h-5" />
             Create Task
@@ -813,7 +846,7 @@ const AssignedTasks: React.FC = () => {
           <select
             value={filterCompanyName}
             onChange={(e) => setFilterCompanyName(e.target.value)}
-            className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             <option value="">All Companies</option>
             {COMPANY_NAMES.map((company) => (
@@ -828,13 +861,13 @@ const AssignedTasks: React.FC = () => {
             placeholder="Filter by Project Name"
             value={filterProjectName}
             onChange={(e) => setFilterProjectName(e.target.value)}
-            className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
           {/* Priority Filter */}
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             <option value="">All Priorities</option>
             <option value="high">High</option>
@@ -845,7 +878,7 @@ const AssignedTasks: React.FC = () => {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -856,7 +889,7 @@ const AssignedTasks: React.FC = () => {
           <select
             value={filterEmployee}
             onChange={(e) => setFilterEmployee(e.target.value)}
-            className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             <option value="">All Employees</option>
             {users.map((user) => (
@@ -878,19 +911,19 @@ const AssignedTasks: React.FC = () => {
             </p>
           </div>
         ) : tasksError ? (
-          <div className="flex items-center gap-4 p-6 m-8 font-medium border text-rose-700 bg-rose-50 rounded-2xl border-rose-100">
+          <div className="flex gap-4 items-center p-6 m-8 font-medium text-rose-700 bg-rose-50 rounded-2xl border border-rose-100">
             <AlertCircle className="w-6 h-6" />
             {tasksError}
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col justify-center items-center px-4 py-20 text-center bg-white rounded-[32px] border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-center w-20 h-20 mb-6 rounded-full bg-slate-50">
+            <div className="flex justify-center items-center mb-6 w-20 h-20 rounded-full bg-slate-50">
               <CheckCircle2 className="w-10 h-10 text-slate-300" />
             </div>
             <h3 className="mb-2 text-xl font-bold text-slate-900">
               No tasks found
             </h3>
-            <p className="max-w-sm mx-auto text-slate-500">
+            <p className="mx-auto max-w-sm text-slate-500">
               Either you're all caught up or no tasks match your current search.
             </p>
           </div>
@@ -902,9 +935,9 @@ const AssignedTasks: React.FC = () => {
             >
               <button
                 onClick={() => toggleCompany(companyName)}
-                className="flex items-center justify-between w-full px-8 py-5 text-left transition-all border-b bg-slate-50/50 hover:bg-slate-100 border-slate-100"
+                className="flex justify-between items-center px-8 py-5 w-full text-left border-b transition-all bg-slate-50/50 hover:bg-slate-100 border-slate-100"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex gap-3 items-center">
                   <Building2 className="w-5 h-5 text-slate-600" />
                   <h3 className="text-base font-bold text-slate-900">
                     {companyName}
@@ -960,7 +993,7 @@ const AssignedTasks: React.FC = () => {
                                 <p className="text-base font-bold transition-colors text-slate-900 group-hover:text-indigo-600">
                                   {task.title}
                                 </p>
-                                <div className="flex items-center gap-3 mt-2">
+                                <div className="flex gap-3 items-center mt-2">
                                   <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-bold text-slate-600 border border-slate-200">
                                     <Calendar className="w-3 h-3" />
                                     {formatDate(task.dueDate)}
@@ -1001,7 +1034,7 @@ const AssignedTasks: React.FC = () => {
                             <div className="flex flex-col items-center gap-2 min-w-[150px]">
                               <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                 <div
-                                  className="h-full transition-all duration-500 ease-out rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600"
+                                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
                                   style={{ width: `${task.progress}%` }}
                                 />
                               </div>
@@ -1009,7 +1042,7 @@ const AssignedTasks: React.FC = () => {
                                 <span className="font-bold">
                                   {task.progress}%
                                 </span>
-                                <div className="relative inline-block text-left">
+                                <div className="inline-block relative text-left">
                                   <select
                                     value={task.status}
                                     onChange={(e) =>
@@ -1034,7 +1067,7 @@ const AssignedTasks: React.FC = () => {
                           <td className="px-8 py-6 text-right">
                             <button
                               onClick={() => handleDeleteClick(task.id)}
-                              className="p-2 transition-all rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                               title="Delete"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1055,7 +1088,7 @@ const AssignedTasks: React.FC = () => {
       {showAddTaskForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">
                   Create Task
@@ -1066,7 +1099,7 @@ const AssignedTasks: React.FC = () => {
               </div>
               <button
                 onClick={closeTaskModal}
-                className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900"
+                className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1076,7 +1109,7 @@ const AssignedTasks: React.FC = () => {
               className="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
             >
               {addTaskError && (
-                <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+                <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
                   <AlertCircle className="w-4 h-4" />
                   {addTaskError}
                 </div>
@@ -1111,21 +1144,23 @@ const AssignedTasks: React.FC = () => {
                     Project Name
                   </label>
                   <div className="relative">
-                    <input
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <select
                       value={newProjectName}
                       onChange={(e) => setNewProjectName(e.target.value)}
-                      list="project-list"
                       required
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                      placeholder="Select existing or type new"
-                    />
-                    <datalist id="project-list">
-                      {uniqueProjectNames.map((project, idx) => (
-                        <option key={idx} value={project}>
-                          {project}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+                    >
+                      <option value="" disabled>
+                        Select a project
+                      </option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.name}>
+                          {project.name}
                         </option>
                       ))}
-                    </datalist>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                   </div>
                 </div>
               </div>
@@ -1191,7 +1226,7 @@ const AssignedTasks: React.FC = () => {
 
               {/* Row 4: Sub-Tasks (full width, no nested) */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex gap-2 justify-between items-center">
                   <label className="ml-1 text-xs font-semibold text-slate-700">
                     Sub-Tasks
                   </label>
@@ -1203,7 +1238,7 @@ const AssignedTasks: React.FC = () => {
                         { id: Date.now().toString(), title: "", subTasks: [] },
                       ])
                     }
-                    className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add Sub-Task
@@ -1211,7 +1246,7 @@ const AssignedTasks: React.FC = () => {
                 </div>
                 <div className="min-h-[100px] p-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50/50">
                   {newSubTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-6 text-center text-slate-400">
+                    <div className="flex flex-col justify-center items-center py-6 text-center text-slate-400">
                       <p className="text-sm">No sub-tasks yet</p>
                       <p className="mt-1 text-xs">
                         Click "Add Sub-Task" to start
@@ -1221,7 +1256,7 @@ const AssignedTasks: React.FC = () => {
                     newSubTasks.map((subTask, idx) => (
                       <div
                         key={subTask.id}
-                        className="flex items-center gap-2 p-3 bg-white border rounded-xl border-slate-200"
+                        className="flex gap-2 items-center p-3 bg-white rounded-xl border border-slate-200"
                       >
                         <input
                           value={subTask.title}
@@ -1233,7 +1268,7 @@ const AssignedTasks: React.FC = () => {
                             };
                             setNewSubTasks(updated);
                           }}
-                          className="flex-1 px-4 py-2 text-sm transition-all border rounded-lg border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="flex-1 px-4 py-2 text-sm rounded-lg border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                           placeholder="Sub-task title"
                         />
                         <button
@@ -1243,7 +1278,7 @@ const AssignedTasks: React.FC = () => {
                             u.splice(idx, 1);
                             setNewSubTasks(u);
                           }}
-                          className="p-2 transition-all rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                          className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1268,7 +1303,7 @@ const AssignedTasks: React.FC = () => {
                   />
                   <label
                     htmlFor="task-files"
-                    className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                    className="flex gap-2 justify-center items-center px-4 py-3 w-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
                   >
                     <Paperclip className="w-4 h-4 transition-transform group-hover:rotate-12" />
                     {newFiles?.length ? (
@@ -1288,7 +1323,7 @@ const AssignedTasks: React.FC = () => {
                   Assign To
                 </label>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-slate-600">
+                  <label className="flex gap-2 items-center text-xs font-medium cursor-pointer text-slate-600">
                     <input
                       type="checkbox"
                       checked={newAssignAll}
@@ -1306,7 +1341,7 @@ const AssignedTasks: React.FC = () => {
                           placeholder="Search users..."
                           value={userSearchTerm}
                           onChange={(e) => setUserSearchTerm(e.target.value)}
-                          className="w-full py-2 pr-4 text-sm transition-all border pl-9 rounded-xl bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="py-2 pr-4 pl-9 w-full text-sm rounded-xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         />
                       </div>
                       <div className="overflow-y-auto max-h-[100px] p-2 space-y-1 bg-white rounded-xl border border-slate-200">
@@ -1347,7 +1382,7 @@ const AssignedTasks: React.FC = () => {
               </div>
 
               {/* Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={closeTaskModal}
@@ -1377,7 +1412,7 @@ const AssignedTasks: React.FC = () => {
       {expandedTaskId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex sticky top-0 justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
                 {
                   assignedTasks.find((t) => t.id === expandedTaskId)
@@ -1386,7 +1421,7 @@ const AssignedTasks: React.FC = () => {
               </p>
               <button
                 onClick={() => setExpandedTaskId(null)}
-                className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
@@ -1397,7 +1432,7 @@ const AssignedTasks: React.FC = () => {
                 const task = assignedTasks.find((t) => t.id === expandedTaskId);
                 return (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
                         Project Name
                       </p>
@@ -1405,7 +1440,7 @@ const AssignedTasks: React.FC = () => {
                         {task?.projectName || "N/A"}
                       </p>
                     </div>
-                    <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
                         Due Date
                       </p>
@@ -1416,12 +1451,12 @@ const AssignedTasks: React.FC = () => {
                         )}
                       </p>
                     </div>
-                    <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+                    <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
                         Progress
                       </p>
-                      <div className="flex flex-col items-start gap-2">
-                        <div className="w-full h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div className="flex flex-col gap-2 items-start">
+                        <div className="overflow-hidden w-full h-2 rounded-full bg-slate-200">
                           <div
                             className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600"
                             style={{ width: `${task?.progress || 0}%` }}
@@ -1441,7 +1476,7 @@ const AssignedTasks: React.FC = () => {
                 const task = assignedTasks.find((t) => t.id === expandedTaskId);
                 return (
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+                    <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
                         Description
                       </p>
@@ -1449,7 +1484,7 @@ const AssignedTasks: React.FC = () => {
                         {task?.description || "No description provided."}
                       </p>
                     </div>
-                    <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+                    <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
                         Assigned To
                       </p>
@@ -1459,7 +1494,7 @@ const AssignedTasks: React.FC = () => {
                             key={u.id}
                             className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm"
                           >
-                            <div className="flex items-center justify-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                            <div className="flex justify-center items-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
                               {u.fullName.charAt(0)}
                             </div>
                             <span className="text-xs font-semibold text-slate-700">
@@ -1474,7 +1509,7 @@ const AssignedTasks: React.FC = () => {
               })()}
 
               {/* Third Section: Sub-Tasks */}
-              <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+              <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
                 <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">
                   Sub-Tasks
                 </p>
@@ -1495,13 +1530,13 @@ const AssignedTasks: React.FC = () => {
                         addSubTaskToTask(expandedTaskId);
                       }
                     }}
-                    className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     placeholder="Enter sub-task title"
                   />
                   <button
                     type="button"
                     onClick={() => addSubTaskToTask(expandedTaskId)}
-                    className="flex items-center gap-1 px-4 py-2 text-sm font-bold text-white transition-all bg-indigo-600 rounded-xl hover:bg-indigo-700"
+                    className="flex gap-1 items-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl transition-all hover:bg-indigo-700"
                   >
                     <Plus className="w-4 h-4" />
                     Add
@@ -1529,20 +1564,20 @@ const AssignedTasks: React.FC = () => {
       {showActivityPopup && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-bold text-slate-900">
                 Activity History
               </h3>
               <button
                 onClick={() => setShowActivityPopup(false)}
-                className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-                <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+              <div className="flex gap-3 p-3 rounded-xl border bg-slate-50 border-slate-100">
+                <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
                   Y
                 </div>
                 <div className="flex-1">
@@ -1560,13 +1595,13 @@ const AssignedTasks: React.FC = () => {
       {showSubTaskUpdatePopup && editingSubTask && expandedTaskId && (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-bold text-slate-900">
                 Update Sub-Task
               </h3>
               <button
                 onClick={() => setShowSubTaskUpdatePopup(false)}
-                className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
@@ -1613,7 +1648,7 @@ const AssignedTasks: React.FC = () => {
                     />
                     <label
                       htmlFor="subtask-attachment"
-                      className="flex flex-col items-center justify-center w-full gap-1 px-4 py-3 text-xs transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                      className="flex flex-col gap-1 justify-center items-center px-4 py-3 w-full text-xs rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
                     >
                       <Paperclip className="w-4 h-4" />
                       {subTaskUpdateFiles?.length
@@ -1626,7 +1661,7 @@ const AssignedTasks: React.FC = () => {
 
               {/* Simplified progress bar */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex justify-between items-center">
                   <label className="ml-1 text-xs font-semibold text-slate-700">
                     Progress
                   </label>
@@ -1712,30 +1747,192 @@ const AssignedTasks: React.FC = () => {
       )}
 
       {/* Sub-task Activity Popup */}
-      {showSubTaskActivityPopup && (
+      {showSubTaskActivityPopup && editingSubTask && expandedTaskId && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-bold text-slate-900">
-                Sub-Task Activity History
+                Sub-Task Activity & Feedback
               </h3>
               <button
                 onClick={() => setShowSubTaskActivityPopup(false)}
-                className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+                className="p-2 rounded-xl transition-colors hover:bg-slate-200"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
-            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-                <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
-                  Y
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-900">
-                    Sub-task activity placeholder
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Sub-task History */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
+                  Progress History
+                </p>
+                {editingSubTask.history && editingSubTask.history.length > 0 ? (
+                  editingSubTask.history.map((hist: any) => (
+                    <div
+                      key={hist.id}
+                      className="p-3 rounded-xl border bg-slate-50 border-slate-100"
+                    >
+                      <p className="text-xs font-semibold text-slate-800">
+                        {hist.title}{" "}
+                        <span className="font-normal text-slate-500">
+                          ({hist.progress}%)
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(hist.date).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="py-2 text-xs italic text-center text-slate-500">
+                    No history yet
                   </p>
-                </div>
+                )}
+              </div>
+
+              {/* Comments & Feedback */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
+                  Comments & Feedback
+                </p>
+                {subTaskComments.map((comment: any) => (
+                  <div
+                    key={comment.id}
+                    className="p-3 rounded-xl border bg-slate-50 border-slate-100"
+                  >
+                    <div className="flex gap-2 items-center mb-1">
+                      <div className="flex justify-center items-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+                        {comment.author.fullName.charAt(0)}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-700">
+                        {comment.author.fullName}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="mb-2 text-sm text-slate-800">
+                      {comment.commentText}
+                    </p>
+                    {comment.feedback && (
+                      <div className="p-2 bg-white rounded-lg border border-indigo-100">
+                        <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1">
+                          Feedback
+                        </p>
+                        <p className="text-xs text-slate-700">
+                          {comment.feedback}
+                        </p>
+                      </div>
+                    )}
+                    {/* Add Feedback Input (for admin/assigned users) */}
+                    {!comment.feedback && (
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="text"
+                          placeholder="Add feedback..."
+                          value={feedbackTexts[comment.id] || ""}
+                          onChange={(e) =>
+                            setFeedbackTexts({
+                              ...feedbackTexts,
+                              [comment.id]: e.target.value,
+                            })
+                          }
+                          className="flex-1 px-3 py-1.5 text-xs bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!feedbackTexts[comment.id]) {
+                              alert("Please enter some feedback first!");
+                              return;
+                            }
+                            try {
+                              console.log(
+                                "Sending feedback from AssignedTasks.tsx:",
+                                {
+                                  expandedTaskId,
+                                  subtaskId: editingSubTask?.id,
+                                  commentId: comment.id,
+                                  feedback: feedbackTexts[comment.id],
+                                },
+                              );
+                              await api.put(
+                                `/api/tasks/${expandedTaskId}/subtasks/${editingSubTask?.id}/comments/${comment.id}/feedback`,
+                                {
+                                  feedback: feedbackTexts[comment.id],
+                                },
+                              );
+                              console.log("Feedback sent successfully!");
+                              // Re-fetch comments to get updated feedback
+                              const res = await api.get(
+                                `/api/tasks/${expandedTaskId}/subtasks/${editingSubTask?.id}/comments`,
+                              );
+                              setSubTaskComments(res.data);
+                              setFeedbackTexts({
+                                ...feedbackTexts,
+                                [comment.id]: "",
+                              });
+                            } catch (err: any) {
+                              console.error("Failed to add feedback:", err);
+                              alert(
+                                err?.response?.data?.message ||
+                                  "Failed to send feedback!",
+                              );
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
+                        >
+                          Send
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add New Comment */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!newCommentText.trim()) return;
+                    const url = `/api/tasks/${expandedTaskId}/subtasks/${editingSubTask?.id}/comments`;
+                    console.log("Calling URL to add comment:", url);
+                    console.log("expandedTaskId:", expandedTaskId);
+                    console.log("editingSubTask.id:", editingSubTask?.id);
+                    try {
+                      await api.post(url, {
+                        commentText: newCommentText,
+                      });
+                      // Re-fetch comments to get the new one
+                      const res = await api.get(url);
+                      setSubTaskComments(res.data);
+                      setNewCommentText("");
+                    } catch (err: any) {
+                      console.error("Failed to add comment", err);
+                      console.error(
+                        "Error details:",
+                        err.response?.data || err.message,
+                      );
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl transition-all hover:bg-indigo-700"
+                >
+                  Send
+                </button>
               </div>
             </div>
           </div>
@@ -1746,7 +1943,7 @@ const AssignedTasks: React.FC = () => {
       {showUpdateModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">
                   Update Task
@@ -1757,18 +1954,101 @@ const AssignedTasks: React.FC = () => {
               </div>
               <button
                 onClick={() => setShowUpdateModal(false)}
-                className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900"
+                className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
               {editTaskError && (
-                <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+                <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
                   <AlertCircle className="w-4 h-4" />
                   {editTaskError}
                 </div>
               )}
+              {/* Row 1: Company (Dropdown) and Project (Dropdown) */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Company
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <select
+                      value={editCompanyName}
+                      onChange={(e) => setEditCompanyName(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+                    >
+                      <option value="" disabled>
+                        Select company
+                      </option>
+                      {COMPANY_NAMES.map((company, idx) => (
+                        <option key={idx} value={company}>
+                          {company}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Project Name
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <select
+                      value={editProjectName}
+                      onChange={(e) => setEditProjectName(e.target.value)}
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+                    >
+                      <option value="" disabled>
+                        Select a project
+                      </option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.name}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+              {/* Row 2: Title, Priority, Due Date */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Task Title
+                  </label>
+                  <input
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    placeholder="Task title"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-xs font-semibold text-slate-700">
+                    Priority
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={editPriority}
+                      onChange={(e) => setEditPriority(e.target.value)}
+                      required
+                      className="w-full pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none"
+                    >
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="ml-1 text-xs font-semibold text-slate-700">
@@ -1814,7 +2094,7 @@ const AssignedTasks: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div className="col-span-3 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex gap-2 justify-between items-center">
                     <label className="ml-1 text-xs font-semibold text-slate-700">
                       Sub-Tasks
                     </label>
@@ -1830,7 +2110,7 @@ const AssignedTasks: React.FC = () => {
                           },
                         ])
                       }
-                      className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                      className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Add Sub-Task
@@ -1840,9 +2120,9 @@ const AssignedTasks: React.FC = () => {
                     {editSubTasks.map((subTask, idx) => (
                       <div
                         key={subTask.id}
-                        className="p-3 space-y-2 border rounded-xl border-slate-200 bg-slate-50"
+                        className="p-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex gap-2 items-center">
                           <input
                             value={subTask.title}
                             onChange={(e) => {
@@ -1853,7 +2133,7 @@ const AssignedTasks: React.FC = () => {
                               };
                               setEditSubTasks(updated);
                             }}
-                            className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             placeholder="Sub-task title"
                           />
                           <button
@@ -1863,7 +2143,7 @@ const AssignedTasks: React.FC = () => {
                               u.splice(idx, 1);
                               setEditSubTasks(u);
                             }}
-                            className="p-2 transition-all rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1872,7 +2152,7 @@ const AssignedTasks: React.FC = () => {
                           {(subTask.subTasks || []).map((child, cIdx) => (
                             <div
                               key={child.id}
-                              className="flex items-center gap-2"
+                              className="flex gap-2 items-center"
                             >
                               <div className="w-4 h-px bg-slate-300 shrink-0" />
                               <input
@@ -1932,7 +2212,7 @@ const AssignedTasks: React.FC = () => {
                               };
                               setEditSubTasks(updated);
                             }}
-                            className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700"
+                            className="flex gap-1 items-center ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700"
                           >
                             <Plus className="w-3 h-3" />
                             Add nested sub-task
@@ -1956,7 +2236,7 @@ const AssignedTasks: React.FC = () => {
                     />
                     <label
                       htmlFor="update-task-files"
-                      className="flex flex-col items-center justify-center w-full h-full gap-2 px-4 py-6 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+                      className="flex flex-col gap-2 justify-center items-center px-4 py-6 w-full h-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
                     >
                       <Paperclip className="w-6 h-6 transition-transform group-hover:rotate-12 text-slate-400 group-hover:text-indigo-500" />
                       {editFiles?.length ? (
@@ -1972,8 +2252,8 @@ const AssignedTasks: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="p-4 space-y-3 border rounded-2xl bg-slate-50 border-slate-100">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <div className="p-4 space-y-3 rounded-2xl border bg-slate-50 border-slate-100">
+                <label className="flex gap-2 items-center text-xs font-bold text-slate-900">
                   <UsersIcon className="w-3.5 h-3.5 text-indigo-500" />
                   Assign To
                 </label>
@@ -1988,7 +2268,7 @@ const AssignedTasks: React.FC = () => {
                       className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                     />
                   </div>
-                  <div className="p-2 space-y-1 overflow-y-auto bg-white border shadow-inner max-h-32 rounded-xl border-slate-200">
+                  <div className="overflow-y-auto p-2 space-y-1 max-h-32 bg-white rounded-xl border shadow-inner border-slate-200">
                     {users
                       .filter((u) =>
                         u.fullName
@@ -2029,7 +2309,7 @@ const AssignedTasks: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowUpdateModal(false)}
@@ -2059,7 +2339,6 @@ const AssignedTasks: React.FC = () => {
 };
 
 export default AssignedTasks;
-
 
 // import React, { useEffect, useState } from "react";
 // import api from "../api/axios";
@@ -2725,13 +3004,13 @@ export default AssignedTasks;
 //     return (
 //       <div
 //         key={st.id}
-//         className="overflow-hidden bg-white border rounded-xl border-slate-100"
+//         className="overflow-hidden bg-white rounded-xl border border-slate-100"
 //       >
 //         <div
-//           className="flex items-center justify-between py-2 pr-3"
+//           className="flex justify-between items-center py-2 pr-3"
 //           style={{ paddingLeft: `${level * 20 + 12}px` }}
 //         >
-//           <div className="flex items-center gap-2">
+//           <div className="flex gap-2 items-center">
 //             {safeChildren.length > 0 ? (
 //               <button
 //                 type="button"
@@ -2794,9 +3073,9 @@ export default AssignedTasks;
 //     <div className="pb-12 space-y-6">
 //       {/* Search and Filter Bar */}
 //       <div className="space-y-4">
-//         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+//         <div className="flex flex-col gap-4 justify-between md:flex-row md:items-center">
 //           <div className="relative flex-1 max-w-md group">
-//             <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+//             <div className="flex absolute inset-y-0 left-0 items-center pl-4 pointer-events-none">
 //               <Search className="w-5 h-5 transition-colors text-slate-400 group-focus-within:text-indigo-500" />
 //             </div>
 //             <input
@@ -2804,12 +3083,12 @@ export default AssignedTasks;
 //               placeholder="Search tasks by title, company..."
 //               value={searchTerm}
 //               onChange={(e) => setSearchTerm(e.target.value)}
-//               className="block w-full py-3 pr-4 text-sm transition-all bg-white border shadow-sm pl-11 rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//               className="block py-3 pr-4 pl-11 w-full text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //             />
 //           </div>
 //           <button
 //             onClick={openAddTaskModal}
-//             className="flex items-center gap-2 px-6 py-3 text-sm font-bold text-white transition-all bg-indigo-600 shadow-lg rounded-2xl hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
+//             className="flex gap-2 items-center px-6 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
 //           >
 //             <Plus className="w-5 h-5" />
 //             Create Task
@@ -2821,7 +3100,7 @@ export default AssignedTasks;
 //           <select
 //             value={filterCompanyName}
 //             onChange={(e) => setFilterCompanyName(e.target.value)}
-//             className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//             className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //           >
 //             <option value="">All Companies</option>
 //             {COMPANY_NAMES.map((company) => (
@@ -2836,13 +3115,13 @@ export default AssignedTasks;
 //             placeholder="Filter by Project Name"
 //             value={filterProjectName}
 //             onChange={(e) => setFilterProjectName(e.target.value)}
-//             className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//             className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //           />
 //           {/* Priority Filter */}
 //           <select
 //             value={filterPriority}
 //             onChange={(e) => setFilterPriority(e.target.value)}
-//             className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//             className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //           >
 //             <option value="">All Priorities</option>
 //             <option value="high">High</option>
@@ -2853,7 +3132,7 @@ export default AssignedTasks;
 //           <select
 //             value={filterStatus}
 //             onChange={(e) => setFilterStatus(e.target.value)}
-//             className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//             className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //           >
 //             <option value="">All Statuses</option>
 //             <option value="pending">Pending</option>
@@ -2864,7 +3143,7 @@ export default AssignedTasks;
 //           <select
 //             value={filterEmployee}
 //             onChange={(e) => setFilterEmployee(e.target.value)}
-//             className="px-4 py-3 text-sm transition-all bg-white border shadow-sm rounded-2xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//             className="px-4 py-3 text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //           >
 //             <option value="">All Employees</option>
 //             {users.map((user) => (
@@ -2886,19 +3165,19 @@ export default AssignedTasks;
 //             </p>
 //           </div>
 //         ) : tasksError ? (
-//           <div className="flex items-center gap-4 p-6 m-8 font-medium border text-rose-700 bg-rose-50 rounded-2xl border-rose-100">
+//           <div className="flex gap-4 items-center p-6 m-8 font-medium text-rose-700 bg-rose-50 rounded-2xl border border-rose-100">
 //             <AlertCircle className="w-6 h-6" />
 //             {tasksError}
 //           </div>
 //         ) : filteredTasks.length === 0 ? (
 //           <div className="flex flex-col justify-center items-center px-4 py-20 text-center bg-white rounded-[32px] border border-slate-200 shadow-sm">
-//             <div className="flex items-center justify-center w-20 h-20 mb-6 rounded-full bg-slate-50">
+//             <div className="flex justify-center items-center mb-6 w-20 h-20 rounded-full bg-slate-50">
 //               <CheckCircle2 className="w-10 h-10 text-slate-300" />
 //             </div>
 //             <h3 className="mb-2 text-xl font-bold text-slate-900">
 //               No tasks found
 //             </h3>
-//             <p className="max-w-sm mx-auto text-slate-500">
+//             <p className="mx-auto max-w-sm text-slate-500">
 //               Either you're all caught up or no tasks match your current search.
 //             </p>
 //           </div>
@@ -2910,9 +3189,9 @@ export default AssignedTasks;
 //             >
 //               <button
 //                 onClick={() => toggleCompany(companyName)}
-//                 className="flex items-center justify-between w-full px-8 py-5 text-left transition-all border-b bg-slate-50/50 hover:bg-slate-100 border-slate-100"
+//                 className="flex justify-between items-center px-8 py-5 w-full text-left border-b transition-all bg-slate-50/50 hover:bg-slate-100 border-slate-100"
 //               >
-//                 <div className="flex items-center gap-3">
+//                 <div className="flex gap-3 items-center">
 //                   <Building2 className="w-5 h-5 text-slate-600" />
 //                   <h3 className="text-base font-bold text-slate-900">
 //                     {companyName}
@@ -2968,7 +3247,7 @@ export default AssignedTasks;
 //                                 <p className="text-base font-bold transition-colors text-slate-900 group-hover:text-indigo-600">
 //                                   {task.title}
 //                                 </p>
-//                                 <div className="flex items-center gap-3 mt-2">
+//                                 <div className="flex gap-3 items-center mt-2">
 //                                   <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-bold text-slate-600 border border-slate-200">
 //                                     <Calendar className="w-3 h-3" />
 //                                     {formatDate(task.dueDate)}
@@ -3009,7 +3288,7 @@ export default AssignedTasks;
 //                             <div className="flex flex-col items-center gap-2 min-w-[150px]">
 //                               <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
 //                                 <div
-//                                   className="h-full transition-all duration-500 ease-out rounded-full bg-gradient-to-r from-indigo-500 to-indigo-600"
+//                                   className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
 //                                   style={{ width: `${task.progress}%` }}
 //                                 />
 //                               </div>
@@ -3017,7 +3296,7 @@ export default AssignedTasks;
 //                                 <span className="font-bold">
 //                                   {task.progress}%
 //                                 </span>
-//                                 <div className="relative inline-block text-left">
+//                                 <div className="inline-block relative text-left">
 //                                   <select
 //                                     value={task.status}
 //                                     onChange={(e) =>
@@ -3042,7 +3321,7 @@ export default AssignedTasks;
 //                           <td className="px-8 py-6 text-right">
 //                             <button
 //                               onClick={() => handleDeleteClick(task.id)}
-//                               className="p-2 transition-all rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+//                               className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
 //                               title="Delete"
 //                             >
 //                               <Trash2 className="w-4 h-4" />
@@ -3063,7 +3342,7 @@ export default AssignedTasks;
 //       {showAddTaskForm && (
 //         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-//             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <div>
 //                 <h3 className="text-xl font-bold text-slate-900">
 //                   Create Task
@@ -3074,7 +3353,7 @@ export default AssignedTasks;
 //               </div>
 //               <button
 //                 onClick={closeTaskModal}
-//                 className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900"
+//                 className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
 //               >
 //                 <X className="w-5 h-5" />
 //               </button>
@@ -3084,7 +3363,7 @@ export default AssignedTasks;
 //               className="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
 //             >
 //               {addTaskError && (
-//                 <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+//                 <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
 //                   <AlertCircle className="w-4 h-4" />
 //                   {addTaskError}
 //                 </div>
@@ -3199,7 +3478,7 @@ export default AssignedTasks;
 
 //               {/* Row 4: Sub-Tasks (full width, no nested) */}
 //               <div className="space-y-1.5">
-//                 <div className="flex items-center justify-between gap-2">
+//                 <div className="flex gap-2 justify-between items-center">
 //                   <label className="ml-1 text-xs font-semibold text-slate-700">
 //                     Sub-Tasks
 //                   </label>
@@ -3211,7 +3490,7 @@ export default AssignedTasks;
 //                         { id: Date.now().toString(), title: "", subTasks: [] },
 //                       ])
 //                     }
-//                     className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700"
+//                     className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
 //                   >
 //                     <Plus className="w-3.5 h-3.5" />
 //                     Add Sub-Task
@@ -3219,7 +3498,7 @@ export default AssignedTasks;
 //                 </div>
 //                 <div className="min-h-[100px] p-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50/50">
 //                   {newSubTasks.length === 0 ? (
-//                     <div className="flex flex-col items-center justify-center py-6 text-center text-slate-400">
+//                     <div className="flex flex-col justify-center items-center py-6 text-center text-slate-400">
 //                       <p className="text-sm">No sub-tasks yet</p>
 //                       <p className="mt-1 text-xs">
 //                         Click "Add Sub-Task" to start
@@ -3229,7 +3508,7 @@ export default AssignedTasks;
 //                     newSubTasks.map((subTask, idx) => (
 //                       <div
 //                         key={subTask.id}
-//                         className="flex items-center gap-2 p-3 bg-white border rounded-xl border-slate-200"
+//                         className="flex gap-2 items-center p-3 bg-white rounded-xl border border-slate-200"
 //                       >
 //                         <input
 //                           value={subTask.title}
@@ -3241,7 +3520,7 @@ export default AssignedTasks;
 //                             };
 //                             setNewSubTasks(updated);
 //                           }}
-//                           className="flex-1 px-4 py-2 text-sm transition-all border rounded-lg border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//                           className="flex-1 px-4 py-2 text-sm rounded-lg border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //                           placeholder="Sub-task title"
 //                         />
 //                         <button
@@ -3251,7 +3530,7 @@ export default AssignedTasks;
 //                             u.splice(idx, 1);
 //                             setNewSubTasks(u);
 //                           }}
-//                           className="p-2 transition-all rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+//                           className="p-2 rounded-lg transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
 //                         >
 //                           <Trash2 className="w-4 h-4" />
 //                         </button>
@@ -3276,7 +3555,7 @@ export default AssignedTasks;
 //                   />
 //                   <label
 //                     htmlFor="task-files"
-//                     className="flex items-center justify-center w-full gap-2 px-4 py-3 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+//                     className="flex gap-2 justify-center items-center px-4 py-3 w-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
 //                   >
 //                     <Paperclip className="w-4 h-4 transition-transform group-hover:rotate-12" />
 //                     {newFiles?.length ? (
@@ -3296,7 +3575,7 @@ export default AssignedTasks;
 //                   Assign To
 //                 </label>
 //                 <div className="space-y-2">
-//                   <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-slate-600">
+//                   <label className="flex gap-2 items-center text-xs font-medium cursor-pointer text-slate-600">
 //                     <input
 //                       type="checkbox"
 //                       checked={newAssignAll}
@@ -3314,7 +3593,7 @@ export default AssignedTasks;
 //                           placeholder="Search users..."
 //                           value={userSearchTerm}
 //                           onChange={(e) => setUserSearchTerm(e.target.value)}
-//                           className="w-full py-2 pr-4 text-sm transition-all border pl-9 rounded-xl bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//                           className="py-2 pr-4 pl-9 w-full text-sm rounded-xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //                         />
 //                       </div>
 //                       <div className="overflow-y-auto max-h-[100px] p-2 space-y-1 bg-white rounded-xl border border-slate-200">
@@ -3355,7 +3634,7 @@ export default AssignedTasks;
 //               </div>
 
 //               {/* Buttons */}
-//               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+//               <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
 //                 <button
 //                   type="button"
 //                   onClick={closeTaskModal}
@@ -3385,7 +3664,7 @@ export default AssignedTasks;
 //       {expandedTaskId && (
 //         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-2xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-//             <div className="sticky top-0 flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex sticky top-0 justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <p className="text-xs font-bold tracking-wider uppercase text-slate-500">
 //                 {
 //                   assignedTasks.find((t) => t.id === expandedTaskId)
@@ -3394,7 +3673,7 @@ export default AssignedTasks;
 //               </p>
 //               <button
 //                 onClick={() => setExpandedTaskId(null)}
-//                 className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+//                 className="p-2 rounded-xl transition-colors hover:bg-slate-200"
 //               >
 //                 <X className="w-5 h-5 text-slate-500" />
 //               </button>
@@ -3405,7 +3684,7 @@ export default AssignedTasks;
 //                 const task = assignedTasks.find((t) => t.id === expandedTaskId);
 //                 return (
 //                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-//                     <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+//                     <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
 //                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                         Project Name
 //                       </p>
@@ -3413,7 +3692,7 @@ export default AssignedTasks;
 //                         {task?.projectName || "N/A"}
 //                       </p>
 //                     </div>
-//                     <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+//                     <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
 //                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                         Due Date
 //                       </p>
@@ -3424,12 +3703,12 @@ export default AssignedTasks;
 //                         )}
 //                       </p>
 //                     </div>
-//                     <div className="p-3 border rounded-2xl bg-slate-50 border-slate-100">
+//                     <div className="p-3 rounded-2xl border bg-slate-50 border-slate-100">
 //                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                         Progress
 //                       </p>
-//                       <div className="flex flex-col items-start gap-2">
-//                         <div className="w-full h-2 overflow-hidden rounded-full bg-slate-200">
+//                       <div className="flex flex-col gap-2 items-start">
+//                         <div className="overflow-hidden w-full h-2 rounded-full bg-slate-200">
 //                           <div
 //                             className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600"
 //                             style={{ width: `${task?.progress || 0}%` }}
@@ -3449,7 +3728,7 @@ export default AssignedTasks;
 //                 const task = assignedTasks.find((t) => t.id === expandedTaskId);
 //                 return (
 //                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-//                     <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+//                     <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
 //                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                         Description
 //                       </p>
@@ -3457,7 +3736,7 @@ export default AssignedTasks;
 //                         {task?.description || "No description provided."}
 //                       </p>
 //                     </div>
-//                     <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+//                     <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
 //                       <p className="mb-2 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                         Assigned To
 //                       </p>
@@ -3467,7 +3746,7 @@ export default AssignedTasks;
 //                             key={u.id}
 //                             className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm"
 //                           >
-//                             <div className="flex items-center justify-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+//                             <div className="flex justify-center items-center w-6 h-6 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
 //                               {u.fullName.charAt(0)}
 //                             </div>
 //                             <span className="text-xs font-semibold text-slate-700">
@@ -3482,7 +3761,7 @@ export default AssignedTasks;
 //               })()}
 
 //               {/* Third Section: Sub-Tasks */}
-//               <div className="p-4 border rounded-2xl bg-slate-50 border-slate-100">
+//               <div className="p-4 rounded-2xl border bg-slate-50 border-slate-100">
 //                 <p className="mb-3 text-xs font-bold tracking-wider uppercase text-slate-500">
 //                   Sub-Tasks
 //                 </p>
@@ -3503,13 +3782,13 @@ export default AssignedTasks;
 //                         addSubTaskToTask(expandedTaskId);
 //                       }
 //                     }}
-//                     className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//                     className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //                     placeholder="Enter sub-task title"
 //                   />
 //                   <button
 //                     type="button"
 //                     onClick={() => addSubTaskToTask(expandedTaskId)}
-//                     className="flex items-center gap-1 px-4 py-2 text-sm font-bold text-white transition-all bg-indigo-600 rounded-xl hover:bg-indigo-700"
+//                     className="flex gap-1 items-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl transition-all hover:bg-indigo-700"
 //                   >
 //                     <Plus className="w-4 h-4" />
 //                     Add
@@ -3537,20 +3816,20 @@ export default AssignedTasks;
 //       {showActivityPopup && (
 //         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-//             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <h3 className="text-xl font-bold text-slate-900">
 //                 Activity History
 //               </h3>
 //               <button
 //                 onClick={() => setShowActivityPopup(false)}
-//                 className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+//                 className="p-2 rounded-xl transition-colors hover:bg-slate-200"
 //               >
 //                 <X className="w-5 h-5 text-slate-500" />
 //               </button>
 //             </div>
 //             <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-//               <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-//                 <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+//               <div className="flex gap-3 p-3 rounded-xl border bg-slate-50 border-slate-100">
+//                 <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
 //                   Y
 //                 </div>
 //                 <div className="flex-1">
@@ -3568,13 +3847,13 @@ export default AssignedTasks;
 //       {showSubTaskUpdatePopup && editingSubTask && expandedTaskId && (
 //         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-//             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <h3 className="text-xl font-bold text-slate-900">
 //                 Update Sub-Task
 //               </h3>
 //               <button
 //                 onClick={() => setShowSubTaskUpdatePopup(false)}
-//                 className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+//                 className="p-2 rounded-xl transition-colors hover:bg-slate-200"
 //               >
 //                 <X className="w-5 h-5 text-slate-500" />
 //               </button>
@@ -3621,7 +3900,7 @@ export default AssignedTasks;
 //                     />
 //                     <label
 //                       htmlFor="subtask-attachment"
-//                       className="flex flex-col items-center justify-center w-full gap-1 px-4 py-3 text-xs transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+//                       className="flex flex-col gap-1 justify-center items-center px-4 py-3 w-full text-xs rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
 //                     >
 //                       <Paperclip className="w-4 h-4" />
 //                       {subTaskUpdateFiles?.length
@@ -3634,7 +3913,7 @@ export default AssignedTasks;
 
 //               {/* Simplified progress bar */}
 //               <div className="space-y-1.5">
-//                 <div className="flex items-center justify-between">
+//                 <div className="flex justify-between items-center">
 //                   <label className="ml-1 text-xs font-semibold text-slate-700">
 //                     Progress
 //                   </label>
@@ -3723,20 +4002,20 @@ export default AssignedTasks;
 //       {showSubTaskActivityPopup && (
 //         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-//             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <h3 className="text-xl font-bold text-slate-900">
 //                 Sub-Task Activity History
 //               </h3>
 //               <button
 //                 onClick={() => setShowSubTaskActivityPopup(false)}
-//                 className="p-2 transition-colors rounded-xl hover:bg-slate-200"
+//                 className="p-2 rounded-xl transition-colors hover:bg-slate-200"
 //               >
 //                 <X className="w-5 h-5 text-slate-500" />
 //               </button>
 //             </div>
 //             <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-//               <div className="flex gap-3 p-3 border rounded-xl bg-slate-50 border-slate-100">
-//                 <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
+//               <div className="flex gap-3 p-3 rounded-xl border bg-slate-50 border-slate-100">
+//                 <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 text-xs font-bold text-indigo-700 bg-indigo-100 rounded-full">
 //                   Y
 //                 </div>
 //                 <div className="flex-1">
@@ -3754,7 +4033,7 @@ export default AssignedTasks;
 //       {showUpdateModal && (
 //         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
 //           <div className="w-full max-w-xl bg-white rounded-[32px] shadow-2xl border border-white/20 animate-in fade-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh] overflow-y-auto">
-//             <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
 //               <div>
 //                 <h3 className="text-xl font-bold text-slate-900">
 //                   Update Task
@@ -3765,14 +4044,14 @@ export default AssignedTasks;
 //               </div>
 //               <button
 //                 onClick={() => setShowUpdateModal(false)}
-//                 className="p-2 transition-all shadow-sm rounded-xl hover:bg-white text-slate-400 hover:text-slate-900"
+//                 className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-900"
 //               >
 //                 <X className="w-5 h-5" />
 //               </button>
 //             </div>
 //             <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
 //               {editTaskError && (
-//                 <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-xl border-rose-100">
+//                 <div className="flex gap-2 items-center p-3 text-xs font-medium text-rose-700 bg-rose-50 rounded-xl border border-rose-100">
 //                   <AlertCircle className="w-4 h-4" />
 //                   {editTaskError}
 //                 </div>
@@ -3822,7 +4101,7 @@ export default AssignedTasks;
 //               </div>
 //               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
 //                 <div className="col-span-3 space-y-1.5">
-//                   <div className="flex items-center justify-between gap-2">
+//                   <div className="flex gap-2 justify-between items-center">
 //                     <label className="ml-1 text-xs font-semibold text-slate-700">
 //                       Sub-Tasks
 //                     </label>
@@ -3838,7 +4117,7 @@ export default AssignedTasks;
 //                           },
 //                         ])
 //                       }
-//                       className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white transition-all bg-indigo-600 rounded-lg hover:bg-indigo-700"
+//                       className="flex gap-1 items-center px-3 py-1 text-xs font-bold text-white bg-indigo-600 rounded-lg transition-all hover:bg-indigo-700"
 //                     >
 //                       <Plus className="w-3.5 h-3.5" />
 //                       Add Sub-Task
@@ -3848,9 +4127,9 @@ export default AssignedTasks;
 //                     {editSubTasks.map((subTask, idx) => (
 //                       <div
 //                         key={subTask.id}
-//                         className="p-3 space-y-2 border rounded-xl border-slate-200 bg-slate-50"
+//                         className="p-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50"
 //                       >
-//                         <div className="flex items-center gap-2">
+//                         <div className="flex gap-2 items-center">
 //                           <input
 //                             value={subTask.title}
 //                             onChange={(e) => {
@@ -3861,7 +4140,7 @@ export default AssignedTasks;
 //                               };
 //                               setEditSubTasks(updated);
 //                             }}
-//                             className="flex-1 px-4 py-2 text-sm transition-all bg-white border rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+//                             className="flex-1 px-4 py-2 text-sm bg-white rounded-xl border transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
 //                             placeholder="Sub-task title"
 //                           />
 //                           <button
@@ -3871,7 +4150,7 @@ export default AssignedTasks;
 //                               u.splice(idx, 1);
 //                               setEditSubTasks(u);
 //                             }}
-//                             className="p-2 transition-all rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+//                             className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
 //                           >
 //                             <Trash2 className="w-4 h-4" />
 //                           </button>
@@ -3880,7 +4159,7 @@ export default AssignedTasks;
 //                           {(subTask.subTasks || []).map((child, cIdx) => (
 //                             <div
 //                               key={child.id}
-//                               className="flex items-center gap-2"
+//                               className="flex gap-2 items-center"
 //                             >
 //                               <div className="w-4 h-px bg-slate-300 shrink-0" />
 //                               <input
@@ -3940,7 +4219,7 @@ export default AssignedTasks;
 //                               };
 //                               setEditSubTasks(updated);
 //                             }}
-//                             className="flex items-center gap-1 ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700"
+//                             className="flex gap-1 items-center ml-5 text-xs font-semibold text-indigo-500 transition-colors hover:text-indigo-700"
 //                           >
 //                             <Plus className="w-3 h-3" />
 //                             Add nested sub-task
@@ -3964,7 +4243,7 @@ export default AssignedTasks;
 //                     />
 //                     <label
 //                       htmlFor="update-task-files"
-//                       className="flex flex-col items-center justify-center w-full h-full gap-2 px-4 py-6 text-sm transition-all border-2 border-dashed cursor-pointer rounded-xl bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
+//                       className="flex flex-col gap-2 justify-center items-center px-4 py-6 w-full h-full text-sm rounded-xl border-2 border-dashed transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-500 hover:border-indigo-500 hover:text-indigo-600 group"
 //                     >
 //                       <Paperclip className="w-6 h-6 transition-transform group-hover:rotate-12 text-slate-400 group-hover:text-indigo-500" />
 //                       {editFiles?.length ? (
@@ -3980,8 +4259,8 @@ export default AssignedTasks;
 //                   </div>
 //                 </div>
 //               </div>
-//               <div className="p-4 space-y-3 border rounded-2xl bg-slate-50 border-slate-100">
-//                 <label className="flex items-center gap-2 text-xs font-bold text-slate-900">
+//               <div className="p-4 space-y-3 rounded-2xl border bg-slate-50 border-slate-100">
+//                 <label className="flex gap-2 items-center text-xs font-bold text-slate-900">
 //                   <UsersIcon className="w-3.5 h-3.5 text-indigo-500" />
 //                   Assign To
 //                 </label>
@@ -3996,7 +4275,7 @@ export default AssignedTasks;
 //                       className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
 //                     />
 //                   </div>
-//                   <div className="p-2 space-y-1 overflow-y-auto bg-white border shadow-inner max-h-32 rounded-xl border-slate-200">
+//                   <div className="overflow-y-auto p-2 space-y-1 max-h-32 bg-white rounded-xl border shadow-inner border-slate-200">
 //                     {users
 //                       .filter((u) =>
 //                         u.fullName
@@ -4037,7 +4316,7 @@ export default AssignedTasks;
 //                   </div>
 //                 </div>
 //               </div>
-//               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+//               <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
 //                 <button
 //                   type="button"
 //                   onClick={() => setShowUpdateModal(false)}
