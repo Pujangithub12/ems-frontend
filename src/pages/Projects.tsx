@@ -14,7 +14,8 @@ import {
   Users as UsersIcon,
   Filter,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 
 // --- Types ---
@@ -69,6 +70,9 @@ const ProjectsPage: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
+    null,
+  );
 
   // Create Form States
   const [name, setName] = useState("");
@@ -122,6 +126,25 @@ const ProjectsPage: React.FC = () => {
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const deleteProject = async (projectId: number) => {
+    if (!window.confirm("Are you sure you want to delete this project?")) {
+      return;
+    }
+    setDeletingProjectId(projectId);
+    try {
+      await api.delete(`/api/projects/${projectId}`);
+      await loadProjects();
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          err.message ||
+          "Unable to delete project.",
+      );
+    } finally {
+      setDeletingProjectId(null);
     }
   };
 
@@ -236,19 +259,19 @@ const ProjectsPage: React.FC = () => {
                 </div>
 
                 <div className="pt-6 space-y-4 border-t border-slate-100">
-                   {/* Progress */}
-                   <div className="space-y-2">
-                      <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        <span>Progress</span>
-                        <span>{project.progress || 0}%</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-indigo-600 rounded-full transition-all duration-500" 
-                          style={{ width: `${project.progress || 0}%` }} 
-                        />
-                      </div>
-                   </div>
+                  {/* Progress */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      <span>Progress</span>
+                      <span>{project.progress || 0}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+                        style={{ width: `${project.progress || 0}%` }}
+                      />
+                    </div>
+                  </div>
 
                   <div className="flex items-center justify-between text-xs font-medium">
                     <div className="flex items-center gap-2 text-slate-400">
@@ -261,17 +284,37 @@ const ProjectsPage: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 text-slate-400">
                       <UsersIcon className="w-4 h-4" />
-                      <span className="font-bold">{project.assignees?.length || 0} Members</span>
+                      <span className="font-bold">
+                        {project.assignees?.length || 0} Members
+                      </span>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => navigate(`/project/${project.id}/details`)}
-                    className="flex items-center justify-center w-full gap-2 py-3.5 text-sm font-bold transition-all bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-700 rounded-2xl group/btn border border-slate-100"
-                  >
-                    View Details
-                    <ExternalLink className="w-4 h-4 transition-all -translate-x-2 opacity-0 group-hover/btn:opacity-100 group-hover/btn:translate-x-0" />
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/project/${project.id}/details`)}
+                      className="flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-bold transition-all bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-700 rounded-2xl group/btn border border-slate-100"
+                    >
+                      View Details
+                      <ExternalLink className="w-4 h-4 transition-all -translate-x-2 opacity-0 group-hover/btn:opacity-100 group-hover/btn:translate-x-0" />
+                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteProject(project.id);
+                        }}
+                        disabled={deletingProjectId === project.id}
+                        className="p-3.5 text-sm font-bold transition-all bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 rounded-2xl border border-rose-100 disabled:opacity-50"
+                      >
+                        {deletingProjectId === project.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             ))}
@@ -362,7 +405,7 @@ const ProjectsPage: React.FC = () => {
                       Status
                     </label>
                     <div className="relative">
-                       <select
+                      <select
                         value={status}
                         onChange={(e) => setStatus(e.target.value as any)}
                         className="w-full px-5 py-4 font-medium border appearance-none cursor-pointer bg-slate-50 border-slate-200 rounded-2xl focus:outline-none"
@@ -399,7 +442,11 @@ const ProjectsPage: React.FC = () => {
                     disabled={submitting}
                     className="flex items-center gap-2 px-10 py-4 text-sm font-bold text-white transition-all bg-indigo-600 shadow-lg rounded-2xl hover:bg-indigo-700 shadow-indigo-200 disabled:opacity-70 active:scale-95"
                   >
-                     {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Launch Project"}
+                    {submitting ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      "Launch Project"
+                    )}
                   </button>
                 </div>
               </form>
