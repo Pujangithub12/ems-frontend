@@ -10,16 +10,16 @@ import ProjectPage from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
 import MyTasks from "./pages/MyTasks";
 import CalendarPage from "./pages/Calendar";
-import DateConverter from "./pages/DateConverter";
 import LeaveRequests from "./pages/LeaveRequests";
 import Activities from "./pages/Activities";
 import DashboardLayout from "./pages/DashboardLayout";
 import { AuthProvider } from "./context/AuthProvider";
+import TasksPage from "./pages/Tasks";
 
 function App() {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <Routes>
           <Route path="/" element={<Navigate replace to="/dashboard" />} />
           <Route path="/login/user" element={<UserLogin />} />
@@ -37,7 +37,7 @@ function App() {
             path="/tasks"
             element={
               <DashboardLayout>
-                <AssignedTasks />
+                <TasksPage />
               </DashboardLayout>
             }
           />
@@ -66,10 +66,10 @@ function App() {
             }
           />
           <Route
-            path="/mytask"
+            path="/task"
             element={
               <DashboardLayout>
-                <MyTasks />
+                <TasksPage />
               </DashboardLayout>
             }
           />
@@ -102,14 +102,6 @@ function App() {
             element={
               <DashboardLayout>
                 <Activities />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/dateconverter"
-            element={
-              <DashboardLayout>
-                <DateConverter />
               </DashboardLayout>
             }
           />

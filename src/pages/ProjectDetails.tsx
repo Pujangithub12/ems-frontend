@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   LayoutDashboard,
@@ -13,11 +12,10 @@ import {
   Loader2,
   AlertCircle,
   Plus,
+  Calendar,
 } from "lucide-react";
 import KanbanBoard from "./KanbanBoard";
 import FileExplorer from "./FileExplorer";
-
-// --- Types ---
 
 type ProjectTask = {
   id: number;
@@ -59,12 +57,44 @@ const tabs = [
   { id: "activity", label: "Activity", icon: Activity },
 ];
 
+const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = "",
+}) => (
+  <div
+    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
+    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+  >
+    {children}
+  </div>
+);
+
+const StatusPill: React.FC<{ status: string }> = ({ status }) => {
+  const styles: Record<string, { bg: string; fg: string; label: string }> = {
+    pending: { bg: "#FEF3C7", fg: "#B45309", label: "Pending" },
+    in_progress: { bg: "#DBEAFE", fg: "#1E3A8A", label: "Active" },
+    on_hold: { bg: "#FEE2E2", fg: "#B91C1C", label: "On Hold" },
+    completed: { bg: "#DCFCE7", fg: "#15803D", label: "Completed" },
+  };
+  const s = styles[status] || { bg: "#EEF1F5", fg: "#475569", label: status };
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
+      style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        background: s.bg,
+        color: s.fg,
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.fg }} />
+      {s.label}
+    </span>
+  );
+};
+
 const ProjectDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,22 +105,24 @@ const ProjectDetails: React.FC = () => {
     setLoading(true);
     try {
       const response = await api.get<any>(`/api/projects/${id}`);
-      // The backend might not return progress/tasksCount/membersCount directly
-      // we might need to calculate them if they are missing
       const data = response.data;
-      
-      // Basic calculations if needed
+
       const allTasks: ProjectTask[] = [];
       const flattenTasks = (headings: any[]) => {
-        headings.forEach(h => {
+        headings.forEach((h) => {
           if (h.tasks) allTasks.push(...h.tasks);
           if (h.subHeadings) flattenTasks(h.subHeadings);
         });
       };
       if (data.headings) flattenTasks(data.headings);
-      
-      const completedTasks = allTasks.filter(t => t.status === "completed").length;
-      const progress = allTasks.length > 0 ? Math.round((completedTasks / allTasks.length) * 100) : 0;
+
+      const completedTasks = allTasks.filter(
+        (t) => t.status === "completed",
+      ).length;
+      const progress =
+        allTasks.length > 0
+          ? Math.round((completedTasks / allTasks.length) * 100)
+          : 0;
 
       setProject({
         ...data,
@@ -99,7 +131,11 @@ const ProjectDetails: React.FC = () => {
         membersCount: data.membersCount ?? (data.assignees?.length || 0),
       });
     } catch (err: any) {
-      setError(err?.response?.data?.message || err.message || "Unable to load project.");
+      setError(
+        err?.response?.data?.message ||
+          err.message ||
+          "Unable to load project.",
+      );
     } finally {
       setLoading(false);
     }
@@ -111,24 +147,33 @@ const ProjectDetails: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-        <p className="font-medium text-slate-500">Loading project details...</p>
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+        <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+        <div
+          className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+          style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          Loading project
+        </div>
       </div>
     );
   }
 
   if (error || !project) {
     return (
-      <div className="p-8 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 mb-4 rounded-full bg-rose-50">
-          <AlertCircle className="w-8 h-8 text-rose-500" />
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-center">
+        <div className="flex items-center justify-center w-12 h-12 mb-1 bg-red-100 rounded">
+          <AlertCircle className="w-6 h-6 text-red-700" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Project not found</h2>
-        <p className="mb-6 text-slate-500">{error || "The project you are looking for does not exist."}</p>
+        <h2 className="font-semibold text-[15px] text-slate-900">
+          Project not found
+        </h2>
+        <p className="text-slate-500 text-[12px] max-w-xs mb-4">
+          {error || "The project you are looking for does not exist."}
+        </p>
         <button
           onClick={() => navigate("/project")}
-          className="px-6 py-2 font-bold text-white transition-all bg-indigo-600 rounded-xl hover:bg-indigo-700"
+          className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
         >
           Back to Projects
         </button>
@@ -144,57 +189,98 @@ const ProjectDetails: React.FC = () => {
         return <KanbanBoard project={project} onUpdate={loadProject} />;
       case "files":
         return (
-          <div className="p-8 text-center bg-white border border-slate-200 rounded-3xl border-dashed">
-             <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <FolderOpen className="w-8 h-8 text-slate-300" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-1">Project Files</h3>
-              <p className="text-slate-500 max-w-xs mx-auto mb-6">Access all documentation and resources uploaded for this project.</p>
-              <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all mx-auto">
-                <Plus size={18} />
-                Upload File
-              </button>
+          <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded border-slate-200">
+            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+              <FolderOpen className="w-6 h-6 text-slate-400" />
+            </div>
+            <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
+              Project Files
+            </h3>
+            <p className="text-slate-500 text-[12px] max-w-xs mx-auto mb-4">
+              Access all documentation and resources uploaded for this project.
+            </p>
+            <button className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors">
+              <Plus size={14} /> Upload File
+            </button>
           </div>
         );
       case "team":
         return (
-          <div className="p-6 bg-white border border-slate-200 rounded-3xl">
-            <h3 className="mb-6 text-lg font-bold text-slate-900">Team Members</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {project.assignees?.map((member, i) => (
-                <div key={member.id} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center justify-center w-12 h-12 font-bold text-indigo-700 bg-indigo-100 rounded-2xl">
-                    {member.fullName.split(" ").map((n) => n[0]).join("")}
+          <div>
+            <Eyebrow className="mb-4">Assigned Members</Eyebrow>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {project.assignees?.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center gap-3 p-4 transition-colors border rounded border-slate-200 hover:bg-slate-50"
+                >
+                  <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
+                    {member.fullName
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .slice(0, 2)}
                   </div>
-                  <div>
-                    <p className="font-bold text-slate-900">{member.fullName}</p>
-                    <p className="text-xs font-medium text-slate-500">Project Member</p>
+                  <div className="min-w-0">
+                    <p className="font-medium text-[13px] text-slate-900 truncate">
+                      {member.fullName}
+                    </p>
+                    <p className="text-[11px] text-slate-500">Project Member</p>
                   </div>
                 </div>
               ))}
               {(!project.assignees || project.assignees.length === 0) && (
-                <p className="text-slate-500 italic">No members assigned to this project.</p>
+                <p className="text-slate-500 text-[12px] italic col-span-full">
+                  No members assigned to this project.
+                </p>
               )}
             </div>
           </div>
         );
       case "activity":
         return (
-          <div className="p-6 bg-white border border-slate-200 rounded-3xl">
-            <h3 className="mb-6 text-lg font-bold text-slate-900">Recent Activity</h3>
-            <div className="space-y-6">
+          <div>
+            <Eyebrow className="mb-4">Recent Activity</Eyebrow>
+            <div className="space-y-0">
               {[
-                { action: "Updated status", target: "Login Module", time: "3 hours ago", user: "John Doe" },
-                { action: "Added a comment", target: "Dashboard UI", time: "5 hours ago", user: "Jane Smith" },
-                { action: "Created project", target: project.name, time: "2 days ago", user: "Admin" },
+                {
+                  action: "Updated status",
+                  target: "Login Module",
+                  time: "3 hours ago",
+                  user: "John Doe",
+                },
+                {
+                  action: "Added a comment",
+                  target: "Dashboard UI",
+                  time: "5 hours ago",
+                  user: "Jane Smith",
+                },
+                {
+                  action: "Created project",
+                  target: project.name,
+                  time: "2 days ago",
+                  user: "Admin",
+                },
               ].map((act, i) => (
-                <div key={i} className="flex items-start gap-4">
-                  <div className="w-2 h-2 mt-2 bg-indigo-500 rounded-full shrink-0" />
-                  <div>
-                    <p className="text-sm text-slate-900">
-                      <span className="font-bold">{act.user}</span> {act.action} <span className="font-bold">{act.target}</span>
+                <div
+                  key={i}
+                  className="flex items-start gap-4 py-3 border-b border-slate-200 last:border-0"
+                >
+                  <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Activity className="w-3 h-3 text-slate-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] text-slate-900">
+                      <span className="font-medium">{act.user}</span>{" "}
+                      <span className="text-slate-500">{act.action}</span>{" "}
+                      <span className="font-medium">{act.target}</span>
                     </p>
-                    <p className="text-xs font-medium text-slate-400 mt-0.5">{act.time}</p>
+                    <p
+                      className="text-[11px] text-slate-400 mt-0.5"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {act.time}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -207,93 +293,96 @@ const ProjectDetails: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Navigation & Title */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/project")}
-            className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all text-slate-500"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-               <h1 className="text-2xl font-bold text-slate-900">{project.name}</h1>
-               <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border bg-indigo-50 text-indigo-700 border-indigo-100`}>
-                {project.status || "Active"}
-              </span>
-            </div>
-            <p className="text-sm font-medium text-slate-500">Manage tasks, files and team progress.</p>
+    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => navigate("/project")}
+          className="p-2 transition-colors border rounded border-slate-200 hover:bg-slate-50 text-slate-500"
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <Eyebrow>Project Details</Eyebrow>
+          <div className="flex items-center gap-3 mt-1">
+            <h1 className="font-semibold text-[22px] tracking-tight text-slate-900 truncate">
+              {project.name}
+            </h1>
+            <StatusPill status={project.status} />
           </div>
         </div>
       </div>
 
-      {/* Progress Card */}
-      <div className="p-8 bg-indigo-600 rounded-[32px] text-white shadow-xl shadow-indigo-100 flex flex-col md:flex-row items-center gap-8">
-        <div className="flex-1 space-y-4 w-full">
-           <div className="flex items-center justify-between">
-              <span className="text-sm font-bold uppercase tracking-widest opacity-80">Project Progress</span>
-              <span className="text-2xl font-bold">{project.progress}%</span>
-           </div>
-           <div className="h-3 bg-white/20 rounded-full overflow-hidden p-[2px]">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${project.progress}%` }}
-                className="h-full bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+      {/* Progress & Metrics Card */}
+      <div className="p-6 mb-6 bg-white border rounded-md border-slate-200">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <Eyebrow>Project Progress</Eyebrow>
+            <div className="flex items-baseline gap-2 mt-2 mb-3">
+              <span className="font-semibold text-[30px] tracking-tight text-blue-900">
+                {project.progress}%
+              </span>
+              <span className="text-[11px] text-slate-400">complete</span>
+            </div>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full transition-all duration-500 bg-blue-900 rounded-full"
+                style={{ width: `${project.progress}%` }}
               />
-           </div>
-           <div className="flex justify-between text-xs font-medium opacity-60">
-              <span>0% Initialized</span>
-              <span>100% Completed</span>
-           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4 shrink-0 w-full md:w-auto">
-           <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10">
-              <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Total Tasks</p>
-              <p className="text-xl font-bold">{project.tasksCount}</p>
-           </div>
-           <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10">
-              <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Team Members</p>
-              <p className="text-xl font-bold">{project.membersCount}</p>
-           </div>
+            </div>
+            <p className="text-slate-500 text-[12px] mt-3 leading-relaxed line-clamp-2">
+              {project.description || "No description provided."}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 border rounded border-slate-200">
+              <Eyebrow>Total Tasks</Eyebrow>
+              <div className="font-semibold text-[20px] tracking-tight text-slate-900 mt-1">
+                {project.tasksCount}
+              </div>
+            </div>
+            <div className="p-3 border rounded border-slate-200">
+              <Eyebrow>Team Members</Eyebrow>
+              <div className="font-semibold text-[20px] tracking-tight text-slate-900 mt-1">
+                {project.membersCount}
+              </div>
+            </div>
+            <div className="col-span-2 p-3 border rounded border-slate-200">
+              <Eyebrow>Deadline</Eyebrow>
+              <div className="font-medium text-[13px] text-slate-900 mt-1 flex items-center gap-1.5">
+                <Calendar className="w-3 h-3 text-slate-400" />
+                {project.dueDate
+                  ? new Date(project.dueDate).toLocaleDateString()
+                  : "Not set"}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Tabs & Content */}
-      <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex overflow-x-auto border-b border-slate-100 px-4 bg-slate-50/50">
+      <div className="overflow-hidden bg-white border rounded-md border-slate-200">
+        <div className="flex gap-1 px-2 overflow-x-auto border-b border-slate-200">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-6 py-5 text-sm font-bold border-b-2 transition-all whitespace-nowrap
-                  ${activeTab === tab.id
-                    ? "border-indigo-600 text-indigo-600 bg-white shadow-[0_-4px_0_inset_#4f46e5]"
-                    : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100/50"
+                className={`flex items-center gap-2 px-4 py-3 text-[13px] font-medium border-b-2 whitespace-nowrap transition-colors
+                  ${
+                    activeTab === tab.id
+                      ? "border-slate-900 text-slate-900"
+                      : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}
               >
-                <Icon size={18} />
+                <Icon size={14} className="opacity-70" />
                 {tab.label}
               </button>
             );
           })}
         </div>
-        <div className="p-8 min-h-[400px]">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderTabContent()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+        <div className="p-6 min-h-[400px]">{renderTabContent()}</div>
       </div>
     </div>
   );

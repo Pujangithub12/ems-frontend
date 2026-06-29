@@ -8,15 +8,7 @@ import {
   Trash2,
   Mail,
   Phone,
-  Briefcase,
-  Calendar,
-  Shield,
-  MapPin,
-  Lock,
-  X,
   Loader2,
-  Filter,
-  User as UserIcon,
   AlertCircle,
 } from "lucide-react";
 import {
@@ -32,10 +24,11 @@ import {
 } from "@dnd-kit/core";
 import { TreeItem, DraggableUser } from "../components/tree";
 import { User, TreeNode } from "../types";
+import UserFormModal from "../components/UserFormModal";
 
 const initialTree: TreeNode = {
   id: "root",
-  label: "kuber",
+  label: "Organization",
   children: [],
 };
 
@@ -46,6 +39,26 @@ const formatDate = (dateString: string) =>
     day: "numeric",
   });
 
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = "",
+}) => (
+  <div
+    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
+    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+  >
+    {children}
+  </div>
+);
+
 const Users: React.FC = () => {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -54,6 +67,8 @@ const Users: React.FC = () => {
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "tree">("list");
+
   const [userForm, setUserForm] = useState({
     fullName: "",
     email: "",
@@ -66,21 +81,19 @@ const Users: React.FC = () => {
   });
   const [userFormError, setUserFormError] = useState<string | null>(null);
   const [userFormSubmitting, setUserFormSubmitting] = useState(false);
+
   const [tree, setTree] = useState<TreeNode>(initialTree);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedUser, setDraggedUser] = useState<User | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor)
+    useSensor(KeyboardSensor),
   );
 
   const generateId = () => `node-${Date.now()}-${Math.random()}`;
 
-  const findNode = (
-    node: TreeNode,
-    nodeId: string
-  ): TreeNode | null => {
+  const findNode = (node: TreeNode, nodeId: string): TreeNode | null => {
     if (node.id === nodeId) return node;
     for (const child of node.children) {
       const found = findNode(child, nodeId);
@@ -92,7 +105,7 @@ const Users: React.FC = () => {
   const addChildToNode = (
     node: TreeNode,
     parentId: string,
-    newNode: TreeNode
+    newNode: TreeNode,
   ): TreeNode => {
     if (node.id === parentId) {
       return { ...node, children: [...node.children, newNode] };
@@ -100,15 +113,12 @@ const Users: React.FC = () => {
     return {
       ...node,
       children: node.children.map((child) =>
-        addChildToNode(child, parentId, newNode)
+        addChildToNode(child, parentId, newNode),
       ),
     };
   };
 
-  const removeNodeFromTree = (
-    node: TreeNode,
-    nodeId: string
-  ): TreeNode => {
+  const removeNodeFromTree = (node: TreeNode, nodeId: string): TreeNode => {
     return {
       ...node,
       children: node.children
@@ -125,7 +135,7 @@ const Users: React.FC = () => {
       setUsers(response.data);
     } catch (err: any) {
       setUsersError(
-        err?.response?.data?.message || err.message || "Unable to load users."
+        err?.response?.data?.message || err.message || "Unable to load users.",
       );
     } finally {
       setUsersLoading(false);
@@ -153,7 +163,7 @@ const Users: React.FC = () => {
 
   const handleUserFieldChange = (
     field: keyof typeof userForm,
-    value: string
+    value: string,
   ) => {
     setUserForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -191,9 +201,7 @@ const Users: React.FC = () => {
 
     try {
       if (editingUser) {
-        if (!payload.password) {
-          delete payload.password;
-        }
+        if (!payload.password) delete payload.password;
         await api.put(`/api/users/${editingUser.id}`, payload);
       } else {
         await api.post("/api/users", payload);
@@ -203,7 +211,7 @@ const Users: React.FC = () => {
       resetUserForm();
     } catch (err: any) {
       setUserFormError(
-        err?.response?.data?.message || err.message || "Unable to save user."
+        err?.response?.data?.message || err.message || "Unable to save user.",
       );
     } finally {
       setUserFormSubmitting(false);
@@ -211,15 +219,13 @@ const Users: React.FC = () => {
   };
 
   const handleDeleteUser = async (id: number) => {
-    if (!window.confirm("Delete this user?")) {
-      return;
-    }
+    if (!window.confirm("Delete this user?")) return;
     try {
       await api.delete(`/api/users/${id}`);
       setUsers((prev) => prev.filter((user) => user.id !== id));
     } catch (err: any) {
       setUsersError(
-        err?.response?.data?.message || err.message || "Unable to delete user."
+        err?.response?.data?.message || err.message || "Unable to delete user.",
       );
     }
   };
@@ -227,9 +233,7 @@ const Users: React.FC = () => {
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
     const user = users.find((u) => `user-${u.id}` === event.active.id);
-    if (user) {
-      setDraggedUser(user);
-    }
+    if (user) setDraggedUser(user);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -255,446 +259,308 @@ const Users: React.FC = () => {
     (user) =>
       user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.jobPosition.toLowerCase().includes(searchTerm.toLowerCase())
+      user.jobPosition.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  return (
-    <div className="pb-12 space-y-6">
-      {/* Header Actions */}
-      <div className="flex flex-col gap-4 justify-between md:flex-row md:items-center">
-        <div className="relative flex-1 max-w-md group">
-          <div className="flex absolute inset-y-0 left-0 items-center pl-4 pointer-events-none">
-            <Search className="w-5 h-5 transition-colors text-slate-400 group-focus-within:text-indigo-500" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search users by name, email or position..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block py-3 pr-4 pl-11 w-full text-sm bg-white rounded-2xl border shadow-sm transition-all border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          />
-        </div>
+  const isAdminOrSuperAdmin =
+    currentUser?.role === "admin" || currentUser?.role === "super_admin";
 
-        <div className="flex gap-3 items-center">
-          <button className="flex gap-2 items-center px-4 py-3 text-sm font-semibold bg-white rounded-2xl border shadow-sm transition-all border-slate-200 text-slate-600 hover:bg-slate-50">
-            <Filter className="w-4 h-4" />
-            Filters
-          </button>
-          {currentUser?.role === "admin" && (
+  const roleStyles: Record<string, { bg: string; fg: string }> = {
+    admin: { bg: "#EDE9FE", fg: "#6D28D9" },
+    super_admin: { bg: "#FEE2E2", fg: "#B91C1C" },
+    user: { bg: "#DBEAFE", fg: "#1E3A8A" },
+  };
+
+  return (
+    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
+      {/* Header */}
+      <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
+        <div>
+          <Eyebrow>Team Management</Eyebrow>
+          <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
+            People
+          </h2>
+          <p className="text-slate-500 text-[14px] mt-1">
+            Manage your organization's members and hierarchy.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* View Toggle */}
+          <div className="flex items-center bg-[#EEF1F5] rounded p-0.5 border border-slate-200">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`px-3 py-1 rounded text-[12px] font-medium transition-colors ${viewMode === "list" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode("tree")}
+              className={`px-3 py-1 rounded text-[12px] font-medium transition-colors ${viewMode === "tree" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Tree
+            </button>
+          </div>
+
+          {isAdminOrSuperAdmin && (
             <button
               onClick={() => {
                 if (showUserForm) resetUserForm();
                 setShowUserForm(!showUserForm);
               }}
-              className="flex gap-2 items-center px-5 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200"
+              className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
             >
               <UserPlus className="w-4 h-4" />
-              {editingUser ? "Edit User" : "Add New User"}
+              Add User
             </button>
           )}
         </div>
       </div>
 
-      {/* User Form Modal */}
-      {showUserForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-4xl overflow-hidden bg-white rounded-3xl border shadow-2xl duration-200 border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  {editingUser
-                    ? "Update User Information"
-                    : "Create New User Account"}
-                </h3>
-                <p className="text-sm text-slate-500">
-                  Fill in the details below to{" "}
-                  {editingUser ? "update" : "create"} the employee profile.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowUserForm(false);
-                  resetUserForm();
-                }}
-                className="p-2 rounded-xl shadow-sm transition-all hover:bg-white text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitUser} className="p-6 space-y-8 lg:p-8">
-              {userFormError && (
-                <div className="flex gap-3 items-center p-4 text-sm font-medium text-rose-700 bg-rose-50 rounded-2xl border border-rose-100">
-                  <AlertCircle className="w-5 h-5" />
-                  {userFormError}
-                </div>
-              )}
-
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <UserIcon className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={userForm.fullName}
-                      onChange={(e) =>
-                        handleUserFieldChange("fullName", e.target.value)
-                      }
-                      required
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      placeholder="John Doe"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="email"
-                      value={userForm.email}
-                      onChange={(e) =>
-                        handleUserFieldChange("email", e.target.value)
-                      }
-                      required
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      placeholder="john@example.com"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    Phone Number
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={userForm.phoneNumber}
-                      onChange={(e) =>
-                        handleUserFieldChange("phoneNumber", e.target.value)
-                      }
-                      required
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      placeholder="Enter phone number"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    Job Position
-                  </label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={userForm.jobPosition}
-                      onChange={(e) =>
-                        handleUserFieldChange("jobPosition", e.target.value)
-                      }
-                      required
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      placeholder="Senior Developer"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    Join Date
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="date"
-                      value={userForm.joinDate}
-                      onChange={(e) =>
-                        handleUserFieldChange("joinDate", e.target.value)
-                      }
-                      required
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-sm font-semibold text-slate-700">
-                    User Role
-                  </label>
-                  <div className="relative">
-                    <Shield className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                    <select
-                      value={userForm.role}
-                      onChange={(e) =>
-                        handleUserFieldChange("role", e.target.value)
-                      }
-                      className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all appearance-none bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    >
-                      <option value="user">Standard User</option>
-                      <option value="admin">Administrator</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="ml-1 text-sm font-semibold text-slate-700">
-                  Residential Address
-                </label>
-                <div className="relative">
-                  <MapPin className="absolute top-4 left-4 w-4 h-4 text-slate-400" />
-                  <textarea
-                    value={userForm.address}
-                    onChange={(e) =>
-                      handleUserFieldChange("address", e.target.value)
-                    }
-                    required
-                    rows={2}
-                    className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    placeholder="123 Street Name, City, Country"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2 max-w-md">
-                <label className="ml-1 text-sm font-semibold text-slate-700">
-                  Account Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 w-4 h-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="password"
-                    value={userForm.password}
-                    onChange={(e) =>
-                      handleUserFieldChange("password", e.target.value)
-                    }
-                    className="py-3 pr-4 pl-11 w-full text-sm rounded-2xl border transition-all bg-slate-50 border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    placeholder={
-                      editingUser
-                        ? "Leave empty to keep current"
-                        : "Set a secure password"
-                    }
-                    {...(!editingUser ? { required: true } : {})}
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUserForm(false);
-                    resetUserForm();
-                  }}
-                  className="px-6 py-3 text-sm font-bold bg-white rounded-2xl border transition-all border-slate-200 text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={userFormSubmitting}
-                  className="flex gap-2 items-center px-8 py-3 text-sm font-bold text-white bg-indigo-600 rounded-2xl shadow-lg transition-all hover:bg-indigo-700 shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {userFormSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : null}
-                  {editingUser ? "Update Profile" : "Create Account"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Users Table */}
-      <div className="overflow-hidden bg-white rounded-3xl border shadow-sm border-slate-200">
-        {usersLoading ? (
-          <div className="flex flex-col justify-center items-center py-20">
-            <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-            <p className="mt-4 font-medium text-slate-500">
-              Loading user database...
-            </p>
-          </div>
-        ) : usersError ? (
-          <div className="flex gap-4 items-center p-6 m-8 text-rose-700 bg-rose-50 rounded-2xl border border-rose-100">
-            <AlertCircle className="w-6 h-6" />
-            <p className="font-medium">{usersError}</p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="flex flex-col justify-center items-center px-4 py-20 text-center">
-            <div className="flex justify-center items-center mb-6 w-20 h-20 rounded-full bg-slate-50">
-              <Search className="w-10 h-10 text-slate-300" />
-            </div>
-            <h3 className="mb-2 text-lg font-bold text-slate-900">
-              No users found
-            </h3>
-            <p className="max-w-xs text-slate-500">
-              We couldn't find any users matching your search criteria.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b bg-slate-50/50 border-slate-100">
-                  <th className="px-6 py-4 text-xs font-bold tracking-widest uppercase text-slate-500">
-                    Employee
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold tracking-widest uppercase text-slate-500">
-                    Position
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold tracking-widest uppercase text-slate-500">
-                    Contact
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold tracking-widest uppercase text-slate-500">
-                    Role
-                  </th>
-                  {currentUser?.role === "admin" && (
-                    <th className="px-6 py-4 text-xs font-bold tracking-widest text-right uppercase text-slate-500">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((userItem) => (
-                  <tr
-                    key={userItem.id}
-                    className="transition-colors group hover:bg-slate-50/50"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex gap-3 items-center">
-                        <div className="flex justify-center items-center w-10 h-10 font-bold text-indigo-700 bg-indigo-100 rounded-full border-2 border-white shadow-sm">
-                          {userItem.fullName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">
-                            {userItem.fullName}
-                          </p>
-                          <p className="text-xs font-medium text-slate-500">
-                            Joined {formatDate(userItem.joinDate)}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2 items-center">
-                        <span className="px-3 py-1 text-xs font-bold rounded-full border bg-slate-100 text-slate-600 border-slate-200">
-                          {userItem.jobPosition}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="flex gap-2 items-center text-xs text-slate-600">
-                          <Mail className="w-3 h-3 text-slate-400" />
-                          {userItem.email}
-                        </div>
-                        <div className="flex gap-2 items-center text-xs text-slate-600">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          {userItem.phoneNumber}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border ${
-                          userItem.role === "admin"
-                            ? "bg-purple-50 text-purple-700 border-purple-100"
-                            : "bg-blue-50 text-blue-700 border-blue-100"
-                        }`}
-                      >
-                        {userItem.role}
-                      </span>
-                    </td>
-                    {currentUser?.role === "admin" && (
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex gap-2 justify-end items-center transition-opacity">
-                          <button
-                            onClick={() => handleStartEditUser(userItem)}
-                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                            title="Edit User"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(userItem.id)}
-                            className="p-2 rounded-xl transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                            title="Delete User"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* Search */}
+      <div className="relative max-w-md mb-6">
+        <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Search by name, email or position..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+        />
       </div>
 
-      {/* Hierarchy Tree Builder */}
-      <div className="mt-8">
-        <h2 className="mb-6 text-2xl font-bold text-slate-900">Hierarchy Tree Builder</h2>
+      {/* User Form Modal */}
+      <UserFormModal
+        isOpen={showUserForm}
+        editingUser={editingUser}
+        userForm={userForm}
+        userFormError={userFormError}
+        userFormSubmitting={userFormSubmitting}
+        currentUserRole={currentUser?.role}
+        onClose={() => {
+          setShowUserForm(false);
+          resetUserForm();
+        }}
+        onSubmit={handleSubmitUser}
+        onFieldChange={handleUserFieldChange}
+      />
+
+      {/* Content based on View Mode */}
+      {viewMode === "list" ? (
+        <div className="overflow-hidden bg-white border rounded-md border-slate-200">
+          {usersLoading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+              <div
+                className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                Loading users
+              </div>
+            </div>
+          ) : usersError ? (
+            <div className="m-6 p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
+              <AlertCircle className="flex-shrink-0 w-4 h-4" />
+              <span>{usersError}</span>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+                <Search className="w-6 h-6 text-slate-400" />
+              </div>
+              <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
+                No users found
+              </h3>
+              <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
+                We couldn't find any users matching your search criteria.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead
+                  className="bg-[#EEF1F5]/50 text-left text-slate-400"
+                  style={{
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  <tr>
+                    <th className="px-6 py-3 font-medium">Employee</th>
+                    <th className="px-6 py-3 font-medium">Position</th>
+                    <th className="px-6 py-3 font-medium">Contact</th>
+                    <th className="px-6 py-3 font-medium">Role</th>
+                    {isAdminOrSuperAdmin && (
+                      <th className="px-6 py-3 font-medium text-right">
+                        Actions
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((userItem) => {
+                    const rStyle = roleStyles[userItem.role] || {
+                      bg: "#EEF1F5",
+                      fg: "#475569",
+                    };
+                    return (
+                      <tr
+                        key={userItem.id}
+                        className="transition-colors border-b border-slate-200 hover:bg-slate-50"
+                      >
+                        <td className="px-6 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-blue-900 flex items-center justify-center text-white text-[10px] font-semibold flex-shrink-0">
+                              {getInitials(userItem.fullName)}
+                            </div>
+                            <div>
+                              <div className="font-medium text-[13px] text-slate-900">
+                                {userItem.fullName}
+                              </div>
+                              <div
+                                className="text-slate-500"
+                                style={{
+                                  fontSize: 11,
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}
+                              >
+                                {userItem.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td
+                          className="px-6 py-3 text-slate-600"
+                          style={{ fontSize: 13 }}
+                        >
+                          {userItem.jobPosition}
+                        </td>
+                        <td className="px-6 py-3">
+                          <div className="space-y-1">
+                            <div
+                              className="flex items-center gap-2 text-slate-600"
+                              style={{ fontSize: 12 }}
+                            >
+                              <Mail className="w-3 h-3 text-slate-400" />{" "}
+                              {userItem.email}
+                            </div>
+                            <div
+                              className="flex items-center gap-2 text-slate-600"
+                              style={{ fontSize: 12 }}
+                            >
+                              <Phone className="w-3 h-3 text-slate-400" />{" "}
+                              {userItem.phoneNumber}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
+                            style={{
+                              fontFamily: "'JetBrains Mono', monospace",
+                              background: rStyle.bg,
+                              color: rStyle.fg,
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full"
+                              style={{ background: rStyle.fg }}
+                            />
+                            {userItem.role}
+                          </span>
+                        </td>
+                        {isAdminOrSuperAdmin && (
+                          <td className="px-6 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => handleStartEditUser(userItem)}
+                                className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded transition-colors"
+                                title="Edit User"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(userItem.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                title="Delete User"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid gap-6 md:grid-cols-3">
-            {/* Tree Container (Left) */}
-            <div className="md:col-span-2">
-              <div className="overflow-hidden bg-white rounded-3xl border shadow-sm border-slate-200">
-                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="text-lg font-bold text-slate-900">Organization Hierarchy</h3>
-                  <p className="text-sm text-slate-500">Drag users from the right to build your tree</p>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Tree Container */}
+            <div className="flex flex-col overflow-hidden bg-white border rounded-md lg:col-span-2 border-slate-200">
+              <div className="p-4 border-b border-slate-200 bg-[#EEF1F5]/30">
+                <Eyebrow>Organization Hierarchy</Eyebrow>
+                <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
+                  Drag users to build your tree
                 </div>
-                <div className="p-8 overflow-x-auto">
-                  <TreeItem node={tree} onDeleteNode={handleDeleteNode} />
-                </div>
+              </div>
+              <div
+                className="flex-1 overflow-auto p-8 min-h-[500px]"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(circle, #E2E8F0 1px, transparent 1px)",
+                  backgroundSize: "24px 24px",
+                }}
+              >
+                <TreeItem node={tree} onDeleteNode={handleDeleteNode} />
               </div>
             </div>
 
-            {/* Users List (Right) */}
-            <div>
-              <div className="overflow-hidden bg-white rounded-3xl border shadow-sm border-slate-200">
-                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="text-lg font-bold text-slate-900">Available Users</h3>
-                  <p className="text-sm text-slate-500">Drag and drop to add to tree</p>
+            {/* Available Users */}
+            <div className="flex flex-col overflow-hidden bg-white border rounded-md border-slate-200">
+              <div className="p-4 border-b border-slate-200 bg-[#EEF1F5]/30">
+                <Eyebrow>Available Users</Eyebrow>
+                <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
+                  Drag to add to tree
                 </div>
-                <div className="p-4 max-h-96 overflow-y-auto space-y-2">
-                  {users.map((user) => (
-                    <DraggableUser key={`user-${user.id}`} user={user} />
-                  ))}
-                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 max-h-[600px]">
+                {users.map((user) => (
+                  <DraggableUser key={`user-${user.id}`} user={user} />
+                ))}
               </div>
             </div>
           </div>
 
           <DragOverlay>
             {activeId && draggedUser ? (
-              <div className="flex gap-3 items-center p-3 bg-white rounded-xl border border-indigo-200 shadow-xl cursor-grabbing">
-                <div className="flex justify-center items-center w-8 h-8 font-bold text-indigo-700 bg-indigo-100 rounded-full border-2 border-white shadow-sm">
-                  {draggedUser.fullName.charAt(0)}
+              <div className="flex items-center gap-3 p-3 bg-white border rounded-md shadow-lg border-slate-200">
+                <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
+                  {getInitials(draggedUser.fullName)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-700">
+                  <p className="text-[13px] font-medium text-slate-900 truncate">
                     {draggedUser.fullName}
+                  </p>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {draggedUser.jobPosition}
                   </p>
                 </div>
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
-      </div>
+      )}
     </div>
   );
 };

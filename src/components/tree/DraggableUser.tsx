@@ -15,7 +15,7 @@ export const DraggableUser: React.FC<DraggableUserProps> = ({ user }) => {
 
   const style = {
     transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.3 : 1,
+    opacity: isDragging ? 0.4 : 1,
   };
 
   return (
@@ -24,16 +24,16 @@ export const DraggableUser: React.FC<DraggableUserProps> = ({ user }) => {
       style={style}
       {...attributes}
       {...listeners}
-      className="flex gap-3 items-center p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-grab active:cursor-grabbing hover:bg-slate-100 transition-colors"
+      className="flex gap-2.5 items-center p-2.5 bg-white rounded-md border border-slate-200 cursor-grab active:cursor-grabbing hover:bg-slate-50 hover:border-slate-300 transition-colors"
     >
-      <div className="flex justify-center items-center w-8 h-8 font-bold text-indigo-700 bg-indigo-100 rounded-full border-2 border-white shadow-sm">
-        {user.fullName.charAt(0)}
+      <div className="flex justify-center items-center w-7 h-7 text-[10px] font-semibold text-white bg-blue-900 rounded-full flex-shrink-0">
+        {user.fullName.charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-700 truncate">
+        <p className="text-[13px] font-medium text-slate-900 truncate">
           {user.fullName}
         </p>
-        <p className="text-xs font-medium text-slate-500 truncate">
+        <p className="text-[11px] text-slate-500 truncate">
           {user.jobPosition}
         </p>
       </div>
