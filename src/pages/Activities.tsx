@@ -82,7 +82,7 @@ const Activities: React.FC = () => {
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
-  const pollIntervalRef = useRef<number | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadActivities = async (showLoading = true) => {
     if (showLoading) {
