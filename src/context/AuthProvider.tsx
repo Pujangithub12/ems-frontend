@@ -7,21 +7,32 @@ import React, {
 } from "react";
 import api from "../api/axios";
 
-type User = {
+export type User = {
   id: string;
   fullName?: string;
   email?: string;
   role?: string;
 } | null;
 
+export type Workspace = {
+  id: number;
+  name: string;
+  description?: string;
+  createdAt: string;
+};
+
 type AuthContextType = {
   user: User;
+  workspace: Workspace | null;
+  workspaces: Workspace[];
   login: (credentials: {
     email: string;
     password: string;
     role?: string;
   }) => Promise<void>;
   logout: () => void;
+  switchWorkspace: (workspaceId: number) => Promise<void>;
+  createWorkspace: (name: string, description?: string) => Promise<void>;
   loading: boolean;
 };
 
@@ -31,6 +42,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<User>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
 
   // FIX 2: Track whether login() has already run so the background checkAuth
@@ -41,6 +54,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   //   3. checkAuth() finishes → GET /api/me returns 401 (cookie race) → setUser(null)  ← kicks user out
   const didLoginRef = useRef(false);
 
+  const fetchWorkspacesAndCurrent = async () => {
+    try {
+      const [workspacesRes, currentRes] = await Promise.all([
+        api.get("/api/workspaces"),
+        api.get("/api/workspaces/current"),
+      ]);
+      // Filter out any null/undefined workspaces from the response
+      const validWorkspaces = workspacesRes.data.workspaces.filter(
+        (w: any): w is Workspace => w !== null && w !== undefined,
+      );
+      setWorkspaces(validWorkspaces);
+      setWorkspace(currentRes.data.workspace);
+    } catch (err) {
+      console.error("Failed to fetch workspaces", err);
+    }
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -48,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Only update state if login() hasn't already handled it
         if (!didLoginRef.current) {
           setUser(res.data.user);
+          await fetchWorkspacesAndCurrent();
         }
       } catch {
         if (!didLoginRef.current) {
@@ -70,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const res = await api.post("/api/login", credentials);
     const { user: u } = res.data;
     setUser(u || null);
+    await fetchWorkspacesAndCurrent();
     // Ensure loading is false so DashboardLayout doesn't show the spinner
     setLoading(false);
   };
@@ -78,14 +110,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     didLoginRef.current = false;
     try {
       await api.post("/api/logout");
-    } catch (e) {
-      console.error("Logout failed", e);
+    } catch (err) {
+      console.error("Logout failed", err);
     }
     setUser(null);
+    setWorkspace(null);
+    setWorkspaces([]);
+  };
+
+  const switchWorkspace = async (workspaceId: number) => {
+    try {
+      // 1. First update state INSTANTLY with the local workspace
+      const targetWorkspace = workspaces.find((w) => w.id === workspaceId);
+      if (targetWorkspace) {
+        setWorkspace(targetWorkspace);
+      }
+
+      // 2. Then call API to sync with server
+      const res = await api.post("/api/workspaces/switch", { workspaceId });
+
+      // 3. Finally sync with server response
+      setWorkspace(res.data.workspace);
+    } catch (err) {
+      console.error("Failed to switch workspace", err);
+    }
+  };
+
+  const createWorkspace = async (name: string, description?: string) => {
+    try {
+      const res = await api.post("/api/workspaces", { name, description });
+      const newWorkspace = res.data.workspace;
+      setWorkspaces([...workspaces, newWorkspace]);
+      await switchWorkspace(newWorkspace.id);
+    } catch (err) {
+      console.error("Failed to create workspace", err);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        workspace,
+        workspaces,
+        login,
+        logout,
+        switchWorkspace,
+        createWorkspace,
+        loading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

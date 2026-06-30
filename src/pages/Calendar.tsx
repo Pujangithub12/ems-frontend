@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from "react";
 import Calendar, { CalendarProps } from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import { 
-  Calendar as CalendarIcon, 
-  Clock, 
-  ChevronRight, 
-  ChevronLeft, 
-  Bell, 
-  Plus, 
-  Trash2, 
-  Loader2, 
-  X, 
-  CheckCircle2, 
-  AlertCircle 
+import {
+  ChevronRight,
+  ChevronLeft,
+  Plus,
+  Trash2,
+  Loader2,
+  X,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
@@ -24,6 +20,18 @@ type CalendarEvent = {
   type: string;
 };
 
+const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = "",
+}) => (
+  <div
+    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
+    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+  >
+    {children}
+  </div>
+);
+
 const CalendarPage: React.FC = () => {
   const { user } = useAuth();
   const [value, setValue] = useState<Date>(new Date());
@@ -31,7 +39,6 @@ const CalendarPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Admin form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -84,7 +91,6 @@ const CalendarPage: React.FC = () => {
 
   const handleDeleteEvent = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this event?")) return;
-
     try {
       await api.delete(`/api/events/${id}`);
       fetchEvents();
@@ -95,20 +101,20 @@ const CalendarPage: React.FC = () => {
 
   const getEventsForDate = (date: Date) => {
     return events.filter(
-      (event) => new Date(event.date).toDateString() === date.toDateString()
+      (event) => new Date(event.date).toDateString() === date.toDateString(),
     );
   };
 
   const selectedDateEvents = getEventsForDate(value);
 
-  // Tile content for calendar to show a dot if there's an event
+  // 1. Tile content to show a dot if there's an event
   const tileContent = ({ date, view }: { date: Date; view: string }) => {
     if (view === "month") {
       const dayEvents = getEventsForDate(date);
       if (dayEvents.length > 0) {
         return (
           <div className="flex justify-center mt-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+            <div className="w-1 h-1 bg-blue-900 rounded-full" />
           </div>
         );
       }
@@ -116,71 +122,89 @@ const CalendarPage: React.FC = () => {
     return null;
   };
 
+  // 2. Tile class name to make Saturdays and Holidays red
+  const tileClassName = ({ date, view }: { date: Date; view: string }) => {
+    if (view === "month") {
+      const isSaturday = date.getDay() === 6; // 6 = Saturday
+      const hasEvent = getEventsForDate(date).length > 0;
+
+      if (isSaturday || hasEvent) {
+        return "holiday-tile";
+      }
+    }
+    return null;
+  };
+
   return (
-    <div className="pb-12 space-y-8">
+    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div className="flex gap-3 items-center">
-          <div className="p-3 text-indigo-600 bg-white rounded-2xl border shadow-sm border-slate-200">
-            <CalendarIcon className="w-6 h-6" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Company Calendar</h2>
-            <p className="text-sm font-medium text-slate-500">Keep track of important dates and deadlines.</p>
-          </div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <Eyebrow>Schedule & Deadlines</Eyebrow>
+          <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
+            Company Calendar
+          </h2>
         </div>
         {isAdmin && (
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="flex gap-2 items-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl shadow-sm transition-all hover:bg-indigo-700 shadow-indigo-200"
+            className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
           >
-            {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showAddForm ? (
+              <X className="w-3.5 h-3.5" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
             {showAddForm ? "Cancel" : "Add Event"}
           </button>
         )}
       </div>
 
+      {/* Add Form */}
       {showAddForm && isAdmin && (
-        <div className="p-6 bg-white rounded-2xl border shadow-sm border-slate-200 animate-in fade-in slide-in-from-top-4">
-          <form onSubmit={handleAddEvent} className="flex flex-col gap-4 items-end md:flex-row">
-            <div className="flex-1 space-y-2 w-full">
-              <label className="ml-1 text-xs font-bold tracking-widest uppercase text-slate-500">Event Title for {value.toLocaleDateString()}</label>
+        <div className="p-5 mb-6 bg-white border rounded-md border-slate-200">
+          <form
+            onSubmit={handleAddEvent}
+            className="flex flex-col gap-4 md:flex-row md:items-end"
+          >
+            <div className="flex-1">
+              <Eyebrow className="mb-1.5">
+                Event Title for {value.toLocaleDateString()}
+              </Eyebrow>
               <input
                 required
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="e.g., Democracy Day, Office Holiday"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all text-sm"
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
               />
             </div>
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-sm flex items-center gap-2 text-sm shrink-0"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{" "}
               Save Event
             </button>
           </form>
         </div>
       )}
 
-      <div className="grid gap-8 items-start lg:grid-cols-12">
-        {/* Calendar Card */}
-        <div className="lg:col-span-8 bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden p-6 lg:p-8">
-          <div className="calendar-container custom-calendar">
-            <Calendar 
-              onChange={handleChange} 
-              value={value}
-              tileContent={tileContent}
-              className="w-full font-sans border-none"
-              nextLabel={<ChevronRight className="w-5 h-5" />}
-              prevLabel={<ChevronLeft className="w-5 h-5" />}
-              next2Label={null}
-              prev2Label={null}
-            />
-          </div>
-
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+        {/* Calendar Grid */}
+        <div className="p-6 bg-white border rounded-md lg:col-span-8 border-slate-200">
+          <Calendar
+            onChange={handleChange}
+            value={value}
+            tileContent={tileContent}
+            tileClassName={tileClassName} // Added to apply custom classes to specific days
+            className="w-full custom-calendar"
+            nextLabel={<ChevronRight className="w-4 h-4" />}
+            prevLabel={<ChevronLeft className="w-4 h-4" />}
+            next2Label={null}
+            prev2Label={null}
+          />
           <style>{`
             .custom-calendar.react-calendar {
               width: 100%;
@@ -189,133 +213,222 @@ const CalendarPage: React.FC = () => {
               font-family: inherit;
             }
             .custom-calendar .react-calendar__navigation {
-              margin-bottom: 2rem;
+              margin-bottom: 1.5rem;
               display: flex;
               align-items: center;
-              gap: 1rem;
             }
-            .custom-calendar .react-calendar__navigation button {
-              min-width: 44px;
-              height: 44px;
-              background: #f8fafc;
-              border-radius: 12px;
-              color: #1e293b;
-              font-weight: 700;
-              transition: all 0.2s;
+            .custom-calendar .react-calendar__navigation__label {
+              font-weight: 600;
+              font-size: 15px;
+              color: #0f172a;
+              flex-grow: 1;
+              text-align: left;
+              padding-left: 8px;
             }
-            .custom-calendar .react-calendar__navigation button:enabled:hover,
-            .custom-calendar .react-calendar__navigation button:enabled:focus {
-              background-color: #e2e8f0;
+            .custom-calendar .react-calendar__navigation__arrow {
+              min-width: 32px;
+              height: 32px;
+              background: transparent;
+              border-radius: 4px;
+              color: #475569;
+              transition: all 0.15s;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .custom-calendar .react-calendar__navigation__arrow:enabled:hover {
+              background-color: #f1f5f9;
             }
             .custom-calendar .react-calendar__month-view__weekdays {
-              font-weight: 700;
+              font-family: 'JetBrains Mono', monospace;
+              font-weight: 500;
               text-transform: uppercase;
-              font-size: 0.75rem;
+              font-size: 10px;
+              letter-spacing: 0.05em;
               color: #94a3b8;
-              margin-bottom: 1rem;
+              margin-bottom: 0.5rem;
+              text-align: center;
+            }
+            .custom-calendar .react-calendar__month-view__weekdays__weekday {
+              padding: 0.5rem 0;
+            }
+            .custom-calendar .react-calendar__month-view__weekdays__weekday abbr {
+              text-decoration: none;
             }
             .custom-calendar .react-calendar__tile {
-              padding: 1.25rem 0.5rem;
-              border-radius: 16px;
-              font-weight: 600;
-              color: #475569;
-              transition: all 0.2s;
-              position: relative;
+              padding: 0.75rem 0.5rem;
+              border-radius: 4px;
+              font-weight: 500;
+              font-size: 13px;
+              color: #334155;
+              transition: all 0.15s;
+              text-align: center;
+              max-height: 60px;
             }
-            .custom-calendar .react-calendar__tile:enabled:hover,
-            .custom-calendar .react-calendar__tile:enabled:focus {
-              background-color: #f1f5f9;
-              color: #4f46e5;
+            .custom-calendar .react-calendar__tile:enabled:hover {
+              background-color: #f8fafc;
+              color: #0f172a;
             }
             .custom-calendar .react-calendar__tile--now {
-              background: #eef2ff !important;
-              color: #4f46e5 !important;
+              background: #eff6ff !important;
+              color: #1e3a8a !important;
+              font-weight: 600;
             }
             .custom-calendar .react-calendar__tile--active {
-              background: #4f46e5 !important;
+              background: #1e3a8a !important;
               color: white !important;
-              box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
             }
             .custom-calendar .react-calendar__month-view__days__day--neighboringMonth {
-              opacity: 0.3;
+              color: #cbd5e1;
+            }
+            .custom-calendar .react-calendar__month-view__days__day--weekend {
+              color: #334155;
+            }
+
+            /* --- NEW CSS FOR HOLIDAYS & SATURDAYS --- */
+            .custom-calendar .holiday-tile {
+              color: #b91c1c !important; /* Red-700 from ERP palette */
+              font-weight: 600 !important;
+            }
+            /* Keep selected/active day white even if it's a holiday */
+            .custom-calendar .holiday-tile.react-calendar__tile--active {
+              color: #ffffff !important;
+            }
+            /* Style for "Today" if it happens to be a holiday/Saturday */
+            .custom-calendar .holiday-tile.react-calendar__tile--now {
+              color: #b91c1c !important;
+              background: #fef2f2 !important; /* Light red background */
+            }
+            /* Dim the red color for days belonging to previous/next months */
+            .custom-calendar .holiday-tile.react-calendar__month-view__days__day--neighboringMonth {
+              color: #fca5a5 !important; /* Lighter red */
+              opacity: 0.7;
             }
           `}</style>
         </div>
 
-        {/* Sidebar Info */}
-        <div className="space-y-4 lg:col-span-4">
-          <div className="p-6 text-white bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-200">
-            <div className="flex gap-3 items-center mb-4">
-              <div className="p-2 rounded-xl backdrop-blur-sm bg-white/20">
-                <Clock className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-bold tracking-widest uppercase opacity-80">Timeline</span>
-            </div>
-            
-            <h3 className="text-xl font-bold leading-tight">
-              {value.toLocaleDateString(undefined, { day: "numeric", month: "long" })}
+        {/* Sidebar */}
+        <div className="space-y-6 lg:col-span-4">
+          {/* Selected Date */}
+          <div className="p-5 bg-white border rounded-md border-slate-200">
+            <Eyebrow>Selected Date</Eyebrow>
+            <h3 className="font-semibold mt-2 text-[22px] tracking-tight text-slate-900">
+              {value.toLocaleDateString(undefined, {
+                day: "numeric",
+                month: "long",
+              })}
             </h3>
-            <p className="text-sm opacity-80 font-medium mt-0.5">
-              {value.toLocaleDateString(undefined, { weekday: "long", year: "numeric" })}
+            <p className="text-slate-500 text-[13px] mt-0.5">
+              {value.toLocaleDateString(undefined, {
+                weekday: "long",
+                year: "numeric",
+              })}
             </p>
 
-            <div className="pt-4 mt-6 space-y-2 border-t border-white/10">
-              <div className="flex gap-2 items-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                <p className="text-xs font-medium">Standard Hours</p>
+            <div className="pt-4 mt-4 border-t border-slate-200">
+              <div className="flex items-center gap-2 text-slate-600 text-[12px]">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-900" />
+                Standard Hours: 10:00 AM - 05:00 PM
               </div>
-              <p className="text-[10px] opacity-60 ml-3.5 italic">10:00 AM - 05:00 PM</p>
             </div>
           </div>
 
-          <div className="p-6 bg-white rounded-3xl border shadow-sm border-slate-200">
-            <h4 className="flex gap-2 items-center mb-6 text-sm font-bold tracking-widest uppercase text-slate-900">
-              <Bell className="w-4 h-4 text-indigo-500" />
-              Events today
-            </h4>
-            
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+          {/* Events Today */}
+          <div className="overflow-hidden bg-white border rounded-md border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-200">
+              <Eyebrow>Events for this day</Eyebrow>
+              <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
+                {selectedDateEvents.length} scheduled
               </div>
-            ) : selectedDateEvents.length > 0 ? (
-              <div className="space-y-4">
-                {selectedDateEvents.map((event) => (
-                  <div key={event.id} className="flex justify-between items-center p-4 rounded-2xl border bg-slate-50 border-slate-100 group">
-                    <div className="flex gap-3 items-center">
-                      <div className="w-2 h-2 bg-indigo-500 rounded-full" />
-                      <span className="text-sm font-bold text-slate-700">{event.title}</span>
-                    </div>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDeleteEvent(event.id)}
-                        className="p-2 rounded-lg opacity-0 transition-all text-slate-400 hover:text-rose-600 hover:bg-rose-50 group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col justify-center items-center py-8 text-center">
-                <div className="flex justify-center items-center mb-4 w-12 h-12 rounded-full bg-slate-50">
-                  <CalendarIcon className="w-6 h-6 text-slate-300" />
-                </div>
-                <p className="text-sm font-medium text-slate-500">No events scheduled.</p>
-              </div>
-            )}
+            </div>
 
-            <div className="pt-6 mt-8 border-t border-slate-100">
-              <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Next Upcoming Events</h5>
+            <div className="p-5">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-8">
+                  <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+                  <div
+                    className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    Loading
+                  </div>
+                </div>
+              ) : selectedDateEvents.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedDateEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between p-3 transition-colors border rounded border-slate-200 hover:bg-slate-50 group"
+                    >
+                      <div className="flex items-center min-w-0 gap-3">
+                        <div className="flex-shrink-0 w-1 h-8 bg-blue-900 rounded-full" />
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium text-slate-900 truncate">
+                            {event.title}
+                          </div>
+                          <div className="text-[11px] text-slate-500 capitalize">
+                            {event.type}
+                          </div>
+                        </div>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDeleteEvent(event.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="flex items-center justify-center w-10 h-10 mb-2 rounded bg-slate-100">
+                    <CalendarIcon className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <p className="text-slate-500 text-[12px]">
+                    No events scheduled.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Upcoming */}
+          <div className="overflow-hidden bg-white border rounded-md border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-200">
+              <Eyebrow>Upcoming</Eyebrow>
+            </div>
+            <div className="p-5">
               <div className="space-y-3">
                 {events
-                  .filter(e => new Date(e.date) >= new Date(new Date().setHours(0,0,0,0)))
-                  .slice(0, 3)
-                  .map(e => (
-                    <div key={e.id} className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-slate-600">{e.title}</span>
-                      <span className="font-bold text-slate-400">{new Date(e.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  .filter(
+                    (e) =>
+                      new Date(e.date) >=
+                      new Date(new Date().setHours(0, 0, 0, 0)),
+                  )
+                  .slice(0, 4)
+                  .map((e) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between text-[13px]"
+                    >
+                      <span className="pr-2 font-medium truncate text-slate-700">
+                        {e.title}
+                      </span>
+                      <span
+                        className="text-slate-400 whitespace-nowrap"
+                        style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 11,
+                        }}
+                      >
+                        {new Date(e.date).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
                     </div>
                   ))}
               </div>

@@ -8,23 +8,51 @@ import {
   Megaphone,
   Users as UsersIcon,
   Calendar,
-  RefreshCw,
   LogOut,
   User as UserIcon,
   Menu,
   X,
   History,
+  Bell,
+  ChevronDown,
+  Settings,
+  HelpCircle,
 } from "lucide-react";
+
+// Import the new Workspace Switcher component
+import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
 };
 
+const initials = (name: string) =>
+  name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = "",
+}) => (
+  <div
+    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
+    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+  >
+    {children}
+  </div>
+);
+
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading, workspace } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!loading && !user) {
@@ -32,12 +60,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     }
   }, [loading, user, navigate]);
 
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(e.target as Node)
+      ) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-slate-50">
-        <div className="flex flex-col gap-4 items-center">
-          <div className="w-12 h-12 rounded-full border-4 border-indigo-600 animate-spin border-t-transparent"></div>
-          <p className="font-medium text-slate-500">Verifying session...</p>
+      <div className="fixed inset-0 flex items-center justify-center flex-col gap-4 bg-[#F6F7F9]">
+        <div className="w-8 h-8 border-2 rounded-full border-slate-200 border-t-blue-900 animate-spin" />
+        <div
+          className="text-[12px] text-slate-400 tracking-[0.1em] uppercase"
+          style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          Loading workspace
         </div>
       </div>
     );
@@ -45,6 +89,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   if (!user) return null;
 
+  // FIXED: Combined into a single "Tasks" route and removed "/mytask"
   const navItems = [
     {
       path: "/dashboard",
@@ -55,11 +100,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     { path: "/project", label: "Projects", icon: Briefcase, id: "project" },
     {
       path: "/tasks",
-      label: "Assigned tasks",
+      label: "Tasks",
       icon: CheckSquare,
-      id: "assigned",
+      id: "tasks",
     },
-    { path: "/mytask", label: "My Tasks", icon: CheckSquare, id: "mytask" },
     {
       path: "/announcements",
       label: "Announcements",
@@ -74,189 +118,284 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       icon: Calendar,
       id: "leaverequests",
     },
+  ];
+
+  const reports = [
     {
       path: "/activities",
       label: "Activity History",
       icon: History,
       id: "activities",
     },
-    {
-      path: "/dateconverter",
-      label: "Date Converter",
-      icon: RefreshCw,
-      id: "dateconverter",
-    },
   ];
 
   const activeSection =
-    navItems.find((item) => item.path === location.pathname)?.id || "overview";
+    navItems.find((item) => item.path === location.pathname)?.id ||
+    reports.find((item) => item.path === location.pathname)?.id ||
+    "overview";
   const currentTitle =
     navItems.find((item) => item.path === location.pathname)?.label ||
+    reports.find((item) => item.path === location.pathname)?.label ||
     "Dashboard";
 
   const handleLogout = () => {
-    const target = user?.role === "admin" ? "/login/admin" : "/login/user";
+    const target =
+      user?.role === "admin" || user?.role === "super_admin"
+        ? "/login/admin"
+        : "/login/user";
     logout();
     navigate(target, { replace: true });
   };
 
-  return (
-    <div className="flex min-h-screen bg-slate-50">
-      {/* Sidebar for Desktop */}
-      <aside className="hidden fixed flex-col w-64 h-full bg-white border-r transition-all duration-300 lg:flex border-slate-200">
-        <div className="p-6">
-          <div className="flex gap-3 items-center mb-8">
-            <div className="flex justify-center items-center w-10 h-10 bg-indigo-600 rounded-xl">
-              <span className="text-xl font-bold text-white">E</span>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                EMS
-              </h2>
-              <p className="text-xs font-medium tracking-wider uppercase text-slate-500">
-                Management
-              </p>
-            </div>
-          </div>
+  const NavButton: React.FC<{
+    active: boolean;
+    to: string;
+    icon: React.ElementType;
+    label: string;
+    onClick?: () => void;
+  }> = ({ active, to, icon: Icon, label, onClick }) => (
+    <Link
+      to={to}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 pl-2.5 pr-2.5 py-2 rounded text-left text-[13px] transition-colors ${
+        active
+          ? "bg-white text-slate-900 font-medium"
+          : "text-slate-600 hover:bg-white"
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5 opacity-70" />
+      <span>{label}</span>
+    </Link>
+  );
 
-          <nav className="space-y-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.id}
-                to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  location.pathname === item.path
-                    ? "bg-indigo-50 text-indigo-700 shadow-sm"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                <item.icon
-                  className={`w-5 h-5 ${location.pathname === item.path ? "text-indigo-600" : "text-slate-400"}`}
-                />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+  const Avatar: React.FC<{ name: string; size?: number; dark?: boolean }> = ({
+    name,
+    size = 32,
+    dark = false,
+  }) => (
+    <div
+      className={`rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 ${
+        dark ? "bg-blue-900" : "bg-slate-500"
+      }`}
+      style={{ width: size, height: size, fontSize: size * 0.36 }}
+    >
+      {initials(name)}
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-screen bg-[#F6F7F9]">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex w-56 bg-[#EEF1F5] border-r border-slate-200 flex-col h-screen sticky top-0 flex-shrink-0">
+        {/* Brand / Workspace Switcher */}
+        <div className="p-3">
+          <WorkspaceSwitcher />
         </div>
 
-        <div className="p-6 mt-auto border-t border-slate-100 bg-slate-50/50">
-          <div className="flex gap-3 items-center mb-4">
-            <div className="flex justify-center items-center w-10 h-10 text-indigo-700 bg-indigo-100 rounded-full border-2 border-white shadow-sm">
-              <UserIcon className="w-5 h-5" />
+        {/* Nav */}
+        <nav className="flex-1 px-3 overflow-y-auto">
+          <Eyebrow>Operations</Eyebrow>
+          <div className="h-1.5" />
+          {navItems.map((it) => (
+            <NavButton
+              key={it.id}
+              active={location.pathname === it.path}
+              to={it.path}
+              icon={it.icon}
+              label={it.label}
+            />
+          ))}
+          <div className="h-3" />
+          <Eyebrow>Reports</Eyebrow>
+          <div className="h-1.5" />
+          {reports.map((it) => (
+            <NavButton
+              key={it.id}
+              active={location.pathname === it.path}
+              to={it.path}
+              icon={it.icon}
+              label={it.label}
+            />
+          ))}
+        </nav>
+
+        {/* User footer */}
+        <div className="flex items-center gap-3 p-4 border-t border-slate-200">
+          <Avatar name={user?.fullName || "Guest"} size={32} dark />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate text-[13px] text-slate-900">
+              {user?.fullName || "Guest"}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-semibold truncate text-slate-900">
-                {user?.fullName || "Guest"}
-              </p>
-              <p className="text-xs capitalize text-slate-500">
-                {user?.role || "No role"}
-              </p>
+            <div className="text-[11px] text-slate-500 truncate capitalize">
+              {user?.role || "No role"}
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-100 hover:text-rose-700 transition-all duration-200 shadow-sm group"
-          >
-            <LogOut className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
-            Sign out
-          </button>
         </div>
       </aside>
 
-      {/* Mobile Header */}
-      <div className="flex fixed top-0 right-0 left-0 z-50 justify-between items-center px-4 py-3 bg-white border-b lg:hidden border-slate-200">
-        <div className="flex gap-3 items-center">
-          <div className="flex justify-center items-center w-8 h-8 bg-indigo-600 rounded-lg">
-            <span className="text-lg font-bold text-white">E</span>
-          </div>
-          <h2 className="text-lg font-bold text-slate-900">EMS</h2>
-        </div>
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 rounded-lg text-slate-600 hover:bg-slate-50"
-        >
-          {isMobileMenuOpen ? (
-            <X className="w-6 h-6" />
-          ) : (
-            <Menu className="w-6 h-6" />
-          )}
-        </button>
-      </div>
-
-      {/* Mobile Menu Overlay */}
+      {/* Mobile sidebar */}
       {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 backdrop-blur-sm lg:hidden bg-slate-900/50"
-          onClick={() => setIsMobileMenuOpen(false)}
-        >
-          <aside
-            className="flex flex-col w-72 h-full bg-white"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 pt-20">
-              <nav className="space-y-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    to={item.path}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      location.pathname === item.path
-                        ? "bg-indigo-50 text-indigo-700 shadow-sm"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <item.icon
-                      className={`w-5 h-5 ${location.pathname === item.path ? "text-indigo-600" : "text-slate-400"}`}
-                    />
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-            <div className="p-6 mt-auto border-t border-slate-100 bg-slate-50/50">
-              <div className="flex gap-3 items-center mb-4">
-                <div className="flex justify-center items-center w-10 h-10 text-indigo-700 bg-indigo-100 rounded-full">
-                  <UserIcon className="w-5 h-5" />
+        <>
+          <div
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
+          />
+          <aside className="fixed inset-y-0 left-0 w-60 bg-[#EEF1F5] border-r border-slate-200 flex flex-col z-50 lg:hidden shadow-xl">
+            <div className="flex items-center justify-between p-3 border-b border-slate-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px]">
+                  EM
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {user?.fullName || "Guest"}
-                  </p>
-                  <p className="text-xs capitalize text-slate-500">
-                    {user?.role || "No role"}
-                  </p>
-                </div>
+                <span className="font-bold text-[14px] text-slate-900">
+                  EMS
+                </span>
               </div>
               <button
-                onClick={handleLogout}
-                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-rose-600"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 text-slate-500 hover:bg-slate-200/60 rounded"
               >
-                <LogOut className="w-4 h-4" />
-                Sign out
+                <X className="w-4 h-4" />
               </button>
             </div>
+            <nav className="flex-1 px-3 py-3 overflow-y-auto">
+              <Eyebrow>Operations</Eyebrow>
+              <div className="h-1.5" />
+              {navItems.map((it) => (
+                <NavButton
+                  key={it.id}
+                  active={location.pathname === it.path}
+                  to={it.path}
+                  icon={it.icon}
+                  label={it.label}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
+              ))}
+              <div className="h-3" />
+              <Eyebrow>Reports</Eyebrow>
+              <div className="h-1.5" />
+              {reports.map((it) => (
+                <NavButton
+                  key={it.id}
+                  active={location.pathname === it.path}
+                  to={it.path}
+                  icon={it.icon}
+                  label={it.label}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
+              ))}
+            </nav>
+            <div className="flex items-center gap-3 p-4 border-t border-slate-200">
+              <Avatar name={user?.fullName || "Guest"} size={32} dark />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate text-[13px] text-slate-900">
+                  {user?.fullName || "Guest"}
+                </div>
+                <div className="text-[11px] text-slate-500 truncate capitalize">
+                  {user?.role || "No role"}
+                </div>
+              </div>
+            </div>
           </aside>
-        </div>
+        </>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 min-h-screen lg:ml-64">
-        <div className="p-4 pt-20 mx-auto max-w-7xl lg:p-8 lg:pt-8">
-          <header className="mb-8">
-            <div className="flex gap-2 items-center mb-1 text-sm text-slate-500">
-              <span>Pages</span>
-              <span>/</span>
-              <span className="font-medium capitalize text-slate-900">
-                {activeSection}
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold lg:text-3xl text-slate-900">
+      {/* Main content */}
+      <main className="flex flex-col flex-1 min-w-0">
+        {/* Top bar */}
+        <div className="flex items-center flex-shrink-0 h-16 gap-4 px-6 bg-white border-b border-slate-200">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="lg:hidden p-1.5 rounded text-slate-600 hover:bg-slate-100"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <div className="min-w-0">
+            <h1 className="font-semibold leading-tight truncate text-[17px] text-slate-900">
               {currentTitle}
             </h1>
-          </header>
+            <div className="text-[11px] text-slate-500 hidden sm:block truncate">
+              {activeSection === "overview"
+                ? "EMS Workspace · Management"
+                : currentTitle}
+            </div>
+          </div>
 
-          <div className="duration-500 animate-in fade-in slide-in-from-bottom-4">
+          {/* Space */}
+          <div className="relative hidden ml-auto md:block"></div>
+
+          {/* Notifications */}
+          <button className="relative p-2 rounded hover:bg-slate-100 text-slate-600">
+            <Bell className="w-4 h-4" />
+            <span className="absolute w-[7px] h-[7px] rounded-full bg-red-700 top-[7px] right-[7px] border-[1.5px] border-white" />
+          </button>
+
+          {/* User menu */}
+          <div className="relative" ref={userMenuRef}>
+            <button
+              onClick={() => setUserMenuOpen((o) => !o)}
+              className="flex items-center gap-2 rounded p-1.5 pr-2 hover:bg-slate-100"
+            >
+              <Avatar name={user?.fullName || "Guest"} size={28} dark />
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-[calc(100% + 6px)] bg-white rounded border border-slate-200 w-64 z-50 shadow-lg">
+                <div className="px-4 py-3 flex items-center gap-2.5 border-b border-slate-200">
+                  <Avatar name={user?.fullName || "Guest"} size={36} dark />
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate text-[13px] text-slate-900">
+                      {user?.fullName}
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate capitalize">
+                      {user?.role}
+                    </div>
+                    <div
+                      className="text-[10px] text-slate-500 truncate"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {user?.email}
+                    </div>
+                  </div>
+                </div>
+                <div className="py-1">
+                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
+                    <UserIcon className="w-3.5 h-3.5 opacity-70" />
+                    My profile
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
+                    <Bell className="w-3.5 h-3.5 opacity-70" />
+                    Notification settings
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
+                    <Settings className="w-3.5 h-3.5 opacity-70" />
+                    Settings
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
+                    <HelpCircle className="w-3.5 h-3.5 opacity-70" />
+                    Help & support
+                  </button>
+                </div>
+                <div className="py-1 border-t border-slate-200">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-red-700 hover:bg-red-50"
+                  >
+                    <LogOut className="w-3.5 h-3.5 opacity-70" />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Page content */}
+        <div className="flex-1 overflow-auto">
+          <div
+            key={workspace?.id || "default"}
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2"
+          >
             {children}
           </div>
         </div>
