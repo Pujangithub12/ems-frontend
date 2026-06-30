@@ -47,7 +47,7 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading, workspace } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -392,7 +392,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
         {/* Page content */}
         <div className="flex-1 overflow-auto">
-          <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+          <div
+            key={workspace?.id || "default"}
+            className="duration-300 animate-in fade-in slide-in-from-bottom-2"
+          >
             {children}
           </div>
         </div>

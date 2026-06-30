@@ -61,7 +61,7 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
     null,
   );
@@ -88,7 +88,7 @@ const Dashboard: React.FC = () => {
     };
 
     loadDashboard();
-  }, [user]);
+  }, [user, workspace?.id]);
 
   const today = new Date();
   const hour = today.getHours();
