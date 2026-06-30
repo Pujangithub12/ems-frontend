@@ -10,6 +10,7 @@ import {
   Loader2,
   Filter,
   Trash2,
+  Edit2,
 } from "lucide-react";
 
 type Project = {
@@ -80,6 +81,12 @@ const ProjectsPage: React.FC = () => {
   const [dueDate, setDueDate] = useState("");
   const [status, setStatus] = useState<Project["status"]>("pending");
   const [submitting, setSubmitting] = useState(false);
+  // Edit state
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editStatus, setEditStatus] = useState<Project["status"]>("pending");
 
   const loadProjects = async () => {
     setLoading(true);
@@ -144,6 +151,38 @@ const ProjectsPage: React.FC = () => {
       );
     } finally {
       setDeletingProjectId(null);
+    }
+  };
+
+  const handleEditClick = (project: Project) => {
+    setEditingProject(project);
+    setEditName(project.name);
+    setEditDescription(project.description || "");
+    setEditDueDate(project.dueDate || "");
+    setEditStatus(project.status);
+  };
+
+  const updateProject = async (event?: React.FormEvent | React.MouseEvent) => {
+    if (event) event.preventDefault();
+    if (!editingProject || !editName.trim()) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/api/projects/${editingProject.id}`, {
+        name: editName,
+        description: editDescription,
+        dueDate: editDueDate || undefined,
+        status: editStatus,
+      });
+      await loadProjects();
+      setEditingProject(null);
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          err.message ||
+          "Unable to update project.",
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -319,22 +358,35 @@ const ProjectsPage: React.FC = () => {
 
                 {/* Col 5: Actions (Admin Only) */}
                 {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteProject(project.id);
-                    }}
-                    disabled={deletingProjectId === project.id}
-                    className="flex-shrink-0 p-2 transition-colors rounded opacity-0 text-slate-400 hover:text-red-700 hover:bg-red-50 group-hover:opacity-100 disabled:opacity-50"
-                    title="Delete Project"
-                  >
-                    {deletingProjectId === project.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditClick(project);
+                      }}
+                      className="flex-shrink-0 p-2 transition-colors rounded opacity-0 text-slate-400 hover:text-blue-700 hover:bg-blue-50 group-hover:opacity-100"
+                      title="Edit Project"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteProject(project.id);
+                      }}
+                      disabled={deletingProjectId === project.id}
+                      className="flex-shrink-0 p-2 transition-colors rounded opacity-0 text-slate-400 hover:text-red-700 hover:bg-red-50 group-hover:opacity-100 disabled:opacity-50"
+                      title="Delete Project"
+                    >
+                      {deletingProjectId === project.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </button>
@@ -418,6 +470,8 @@ const ProjectsPage: React.FC = () => {
                     >
                       <option value="pending">Pending</option>
                       <option value="in_progress">Active</option>
+                      <option value="on_hold">On Hold</option>
+                      <option value="completed">Completed</option>
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                   </div>
@@ -450,6 +504,97 @@ const ProjectsPage: React.FC = () => {
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   )}{" "}
                   Launch Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingProject && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
+          <div className="w-full max-w-xl overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div>
+                <Eyebrow>Edit Project</Eyebrow>
+                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
+                  Update Project
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={updateProject} className="p-6 space-y-5">
+              <div>
+                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  placeholder="e.g. Website Redesign"
+                />
+              </div>
+              <div>
+                <Eyebrow className="mb-1.5">Description</Eyebrow>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                  rows={3}
+                  placeholder="Describe the project goals..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Eyebrow className="mb-1.5">Status</Eyebrow>
+                  <div className="relative">
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as any)}
+                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">Active</option>
+                      <option value="on_hold">On Hold</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+                <div>
+                  <Eyebrow className="mb-1.5">Deadline</Eyebrow>
+                  <input
+                    type="date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                >
+                  {submitting && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}{" "}
+                  Save Changes
                 </button>
               </div>
             </form>
