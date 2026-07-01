@@ -16,38 +16,7 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import FileExplorer from "./FileExplorer";
-
-type ProjectTask = {
-  id: number;
-  title: string;
-  description?: string;
-  dueDate?: string;
-  priority?: "high" | "medium" | "low";
-  status?: "pending" | "in_progress" | "completed" | "on_hold";
-  progress?: number;
-  assignedUsers?: Array<{ id: number; fullName: string }>;
-};
-
-type ProjectHeading = {
-  id: number;
-  name: string;
-  tasks: ProjectTask[];
-  subHeadings: ProjectHeading[];
-};
-
-type Project = {
-  id: number;
-  name: string;
-  description?: string;
-  progress: number;
-  tasksCount: number;
-  membersCount: number;
-  dueDate?: string;
-  status: string;
-  assignees?: Array<{ id: number; fullName: string }>;
-  headings: ProjectHeading[];
-  files: any[];
-};
+import { Project, ProjectHeading, ProjectTask } from "../types";
 
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
