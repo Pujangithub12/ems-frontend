@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
-import { Lock, Mail, Loader2, ShieldCheck, ArrowRight } from "lucide-react";
+import { Lock, Mail, Loader2, ShieldCheck, ArrowRight, User } from "lucide-react";
 
 const AdminLogin: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -26,84 +26,109 @@ const AdminLogin: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#F6F7F9] px-4">
       <div className="max-w-md w-full">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-200 mb-6">
-            <ShieldCheck className="w-8 h-8 text-white" />
+        {/* Branding Header */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-900 rounded-full flex items-center justify-center text-white mx-auto mb-4">
+            <User className="w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Portal</h1>
-          <p className="text-slate-500">Welcome back! Please enter your details.</p>
+          <div
+            className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-2"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            Administrator Access
+          </div>
+          <h1 className="font-semibold text-[24px] tracking-tight text-slate-900">
+            Admin Portal
+          </h1>
+          <p className="text-slate-500 text-[14px] mt-1">
+            Welcome back. Please enter your credentials.
+          </p>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100">
-          <form onSubmit={submit} className="space-y-6">
+        {/* Form Card */}
+        <div className="bg-white border border-slate-200 rounded-md p-8">
+          <form onSubmit={submit} className="space-y-5">
             {error && (
-              <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-sm font-medium animate-shake">
-                {error}
+              <div className="p-3 bg-red-50 border border-red-100 rounded flex items-center gap-2 text-red-700 text-[13px]">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+                <span>{error}</span>
               </div>
             )}
-            
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Email Address</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                </div>
+
+            <div>
+              <div
+                className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-1.5"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                Email Address
+              </div>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   type="email"
                   placeholder="admin@ems.com"
-                  className="block w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
+                  className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700 ml-1">Password</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                </div>
+            <div>
+              <div
+                className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-1.5"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                Password
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   type="password"
                   placeholder="••••••••"
-                  className="block w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200"
+                  className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                 />
               </div>
             </div>
 
             <button
               disabled={loading}
-              className="group relative w-full flex items-center justify-center py-4 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-all duration-200 shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
             >
               {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <>
                   <span>Sign in to Dashboard</span>
-                  <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-            <p className="text-sm text-slate-500">
+          <div className="mt-6 pt-6 border-t border-slate-200 text-center">
+            <p className="text-slate-500 text-[13px]">
               Not an admin?{" "}
-              <Link to="/login/user" className="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
+              <Link
+                to="/login/user"
+                className="text-blue-900 font-medium hover:text-blue-800 transition-colors"
+              >
                 Sign in as User
               </Link>
             </p>
           </div>
         </div>
-        
-        <p className="mt-8 text-center text-xs text-slate-400">
+
+        <p
+          className="mt-8 text-center text-slate-400"
+          style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
+        >
           &copy; 2026 EMS Management System. All rights reserved.
         </p>
       </div>

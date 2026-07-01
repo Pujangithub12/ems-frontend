@@ -58,6 +58,7 @@ type Task = {
   createdAt: string;
   subTasks: { id: number; title: string; status: string; children?: any[] }[];
   projectName?: string;
+  project?: { id: number; name: string };
 };
 
 const formatDate = (dateString: string) =>
@@ -175,8 +176,8 @@ const AssignedTasks: React.FC = () => {
   const [filterEmployee, setFilterEmployee] = useState("");
   const [editProgress, setEditProgress] = useState(0);
 
-  const [newProjectName, setNewProjectName] = useState("");
-  const [editProjectName, setEditProjectName] = useState("");
+  const [newProjectId, setNewProjectId] = useState<number | null>(null);
+  const [editProjectId, setEditProjectId] = useState<number | null>(null);
 
   type ModalSubTask = {
     id: string;
@@ -400,7 +401,7 @@ const AssignedTasks: React.FC = () => {
     setEditDueDate(task.dueDate.slice(0, 10));
     setEditUserIds(task.assignedUsers.map((u) => u.id));
     setEditProgress(task.progress);
-    setEditProjectName(task.projectName || "");
+    setEditProjectId(task.project?.id || null);
     setEditSubTasks(convertToModal(taskSubTasks[task.id] || []));
     setEditTaskError(null);
     setShowUpdateModal(true);
@@ -450,8 +451,11 @@ const AssignedTasks: React.FC = () => {
       formData.append("userIds", editUserIds.join(","));
       formData.append("progress", String(editProgress));
       formData.append("subTasks", JSON.stringify(editSubTasks));
-      if (editProjectName) {
-        formData.append("projectName", editProjectName);
+      if (editProjectId) {
+        const selectedProject = projects.find((p) => p.id === editProjectId);
+        formData.append("projectId", String(editProjectId));
+        if (selectedProject)
+          formData.append("projectName", selectedProject.name);
       }
       if (editFiles) {
         for (let i = 0; i < editFiles.length; i++) {
@@ -601,10 +605,16 @@ const AssignedTasks: React.FC = () => {
 
       console.log("Subtask updated! Refreshing...");
 
-      const res = await api.get(`/api/tasks/${expandedTaskId}/subtasks`);
-      console.log("Refreshed subtasks from backend:", res.data);
+      const [subTasksRes, commentsRes] = await Promise.all([
+        api.get(`/api/tasks/${expandedTaskId}/subtasks`),
+        api.get(
+          `/api/tasks/${expandedTaskId}/subtasks/${editingSubTask.id}/comments`,
+        ),
+      ]);
 
-      const detailed = convertToDetailed(res.data);
+      console.log("Refreshed subtasks from backend:", subTasksRes.data);
+
+      const detailed = convertToDetailed(subTasksRes.data);
       console.log("Converted to detailed subtasks:", detailed);
 
       setTaskSubTasks((prev) => ({ ...prev, [expandedTaskId]: detailed }));
@@ -615,6 +625,8 @@ const AssignedTasks: React.FC = () => {
             : t,
         ),
       );
+
+      setSubTaskComments(commentsRes.data);
 
       const findSubTask = (
         list: DetailedSubTask[],
@@ -662,7 +674,7 @@ const AssignedTasks: React.FC = () => {
     setEditingTaskId(null);
     setAddTaskError(null);
     setNewProgress(0);
-    setNewProjectName("");
+    setNewProjectId(null);
     setNewSubTasks([]);
   };
 
@@ -674,10 +686,10 @@ const AssignedTasks: React.FC = () => {
     setEditTaskError(null);
     setUserSearchTerm("");
     setNewProgress(0);
-    setNewProjectName("");
+    setNewProjectId(null);
     setNewSubTasks([]);
     setEditProgress(0);
-    setEditProjectName("");
+    setEditProjectId(null);
     setEditSubTasks([]);
   };
 
@@ -696,7 +708,12 @@ const AssignedTasks: React.FC = () => {
       formData.append("userIds", newUserIds.join(","));
       formData.append("progress", String(newProgress));
       formData.append("subTasks", JSON.stringify(newSubTasks));
-      if (newProjectName) formData.append("projectName", newProjectName);
+      if (newProjectId) {
+        const selectedProject = projects.find((p) => p.id === newProjectId);
+        formData.append("projectId", String(newProjectId));
+        if (selectedProject)
+          formData.append("projectName", selectedProject.name);
+      }
       if (newFiles) {
         for (let i = 0; i < newFiles.length; i++) {
           formData.append("files", newFiles[i]);
@@ -720,7 +737,7 @@ const AssignedTasks: React.FC = () => {
       setNewAssignAll(false);
       setNewFiles(null);
       setNewProgress(0);
-      setNewProjectName("");
+      setNewProjectId(null);
       setNewSubTasks([]);
     } catch (err: any) {
       setAddTaskError(
@@ -782,7 +799,7 @@ const AssignedTasks: React.FC = () => {
                 console.log("Selected Subtask:", st);
                 console.log("History:", st.history);
                 setEditingSubTask(st);
-                setNewSubTaskUpdateTitle(st.title);
+                setNewSubTaskUpdateTitle(""); // Clear for new update
                 setSubTaskProgress(st.progress || 0);
                 setShowSubTaskUpdatePopup(true);
               }}
@@ -1160,15 +1177,19 @@ const AssignedTasks: React.FC = () => {
                 <div className="space-y-1.5">
                   <Eyebrow className="mb-1.5">Project Name</Eyebrow>
                   <select
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
+                    value={newProjectId || ""}
+                    onChange={(e) =>
+                      setNewProjectId(
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
                     className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                   >
                     <option value="" disabled>
                       Select a project
                     </option>
                     {projects.map((project) => (
-                      <option key={project.id} value={project.name}>
+                      <option key={project.id} value={project.id}>
                         {project.name}
                       </option>
                     ))}
@@ -1451,15 +1472,19 @@ const AssignedTasks: React.FC = () => {
                 <div className="space-y-1.5">
                   <Eyebrow className="mb-1.5">Project Name</Eyebrow>
                   <select
-                    value={editProjectName}
-                    onChange={(e) => setEditProjectName(e.target.value)}
+                    value={editProjectId || ""}
+                    onChange={(e) =>
+                      setEditProjectId(
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
                     className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                   >
                     <option value="" disabled>
                       Select a project
                     </option>
                     {projects.map((project) => (
-                      <option key={project.id} value={project.name}>
+                      <option key={project.id} value={project.id}>
                         {project.name}
                       </option>
                     ))}
@@ -1863,8 +1888,7 @@ const AssignedTasks: React.FC = () => {
               <div>
                 <Eyebrow>Update Sub-Task</Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  {assignedTasks.find((t) => t.id === expandedTaskId)?.title ||
-                    "N/A"}
+                  {editingSubTask.title}
                 </h3>
               </div>
               <button
@@ -1875,15 +1899,23 @@ const AssignedTasks: React.FC = () => {
               </button>
             </div>
             <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+              {/* Show original subtask title as read-only */}
+              <div className="p-3 border rounded bg-slate-50 border-slate-200">
+                <Eyebrow className="mb-1.5">Original Sub-Task</Eyebrow>
+                <p className="text-[13px] text-slate-800 font-medium">
+                  {editingSubTask.title}
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-10">
                 <div className="md:col-span-7">
-                  <Eyebrow className="mb-1.5">New Sub-Task Update</Eyebrow>
-                  <input
-                    type="text"
+                  <Eyebrow className="mb-1.5">Update Description</Eyebrow>
+                  <textarea
                     value={newSubTaskUpdateTitle}
                     onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                    placeholder="Enter new sub-task title"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                    rows={3}
+                    placeholder="Describe your update..."
                   />
                 </div>
                 <div className="md:col-span-3">

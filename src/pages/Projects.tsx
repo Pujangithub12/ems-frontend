@@ -67,6 +67,7 @@ const ProjectsPage: React.FC = () => {
   const isAdmin = user?.role === "admin";
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -80,6 +81,7 @@ const ProjectsPage: React.FC = () => {
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [status, setStatus] = useState<Project["status"]>("pending");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const [submitting, setSubmitting] = useState(false);
   // Edit state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -87,6 +89,9 @@ const ProjectsPage: React.FC = () => {
   const [editDescription, setEditDescription] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editStatus, setEditStatus] = useState<Project["status"]>("pending");
+  const [editSelectedAssigneeIds, setEditSelectedAssigneeIds] = useState<
+    number[]
+  >([]);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -104,8 +109,18 @@ const ProjectsPage: React.FC = () => {
     }
   };
 
+  const loadUsers = async () => {
+    try {
+      const response = await api.get("/api/users");
+      setUsers(response.data);
+    } catch (err) {
+      console.error("Failed to load users", err);
+    }
+  };
+
   useEffect(() => {
     loadProjects();
+    loadUsers();
   }, [workspace?.id]);
 
   const createProject = async (event?: React.FormEvent | React.MouseEvent) => {
@@ -118,11 +133,13 @@ const ProjectsPage: React.FC = () => {
         description,
         dueDate: dueDate || undefined,
         status,
+        assigneeIds: selectedAssigneeIds,
       });
       setName("");
       setDescription("");
       setDueDate("");
       setStatus("pending");
+      setSelectedAssigneeIds([]);
       await loadProjects();
       setShowCreateForm(false);
     } catch (err: any) {
@@ -160,6 +177,7 @@ const ProjectsPage: React.FC = () => {
     setEditDescription(project.description || "");
     setEditDueDate(project.dueDate || "");
     setEditStatus(project.status);
+    setEditSelectedAssigneeIds(project.assignees?.map((a) => a.id) || []);
   };
 
   const updateProject = async (event?: React.FormEvent | React.MouseEvent) => {
@@ -172,6 +190,7 @@ const ProjectsPage: React.FC = () => {
         description: editDescription,
         dueDate: editDueDate || undefined,
         status: editStatus,
+        assigneeIds: editSelectedAssigneeIds,
       });
       await loadProjects();
       setEditingProject(null);
@@ -487,6 +506,39 @@ const ProjectsPage: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                  {users.map((u) => (
+                    <label
+                      key={u.id}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAssigneeIds.includes(u.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAssigneeIds([
+                              ...selectedAssigneeIds,
+                              u.id,
+                            ]);
+                          } else {
+                            setSelectedAssigneeIds(
+                              selectedAssigneeIds.filter((id) => id !== u.id),
+                            );
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                      />
+                      <span className="text-[13px] text-slate-700">
+                        {u.fullName}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
                 <button
                   type="button"
@@ -575,6 +627,41 @@ const ProjectsPage: React.FC = () => {
                     onChange={(e) => setEditDueDate(e.target.value)}
                     className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                   />
+                </div>
+              </div>
+
+              <div>
+                <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                  {users.map((u) => (
+                    <label
+                      key={u.id}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editSelectedAssigneeIds.includes(u.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditSelectedAssigneeIds([
+                              ...editSelectedAssigneeIds,
+                              u.id,
+                            ]);
+                          } else {
+                            setEditSelectedAssigneeIds(
+                              editSelectedAssigneeIds.filter(
+                                (id) => id !== u.id,
+                              ),
+                            );
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                      />
+                      <span className="text-[13px] text-slate-700">
+                        {u.fullName}
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
 

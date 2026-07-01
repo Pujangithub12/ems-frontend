@@ -13,18 +13,18 @@ import {
   AlertCircle,
   Plus,
   Calendar,
+  User as UserIcon,
 } from "lucide-react";
-import KanbanBoard from "./KanbanBoard";
 import FileExplorer from "./FileExplorer";
 
 type ProjectTask = {
   id: number;
   title: string;
-  description: string;
-  dueDate: string;
-  priority: "high" | "medium" | "low";
-  status: "pending" | "in_progress" | "completed";
-  progress: number;
+  description?: string;
+  dueDate?: string;
+  priority?: "high" | "medium" | "low";
+  status?: "pending" | "in_progress" | "completed" | "on_hold";
+  progress?: number;
   assignedUsers?: Array<{ id: number; fullName: string }>;
 };
 
@@ -106,15 +106,48 @@ const ProjectDetails: React.FC = () => {
     try {
       const response = await api.get<any>(`/api/projects/${id}`);
       const data = response.data;
+      console.log("Project data loaded:", data);
+      console.log("projectTasks:", data.projectTasks);
+      console.log("headings:", data.headings);
 
       const allTasks: ProjectTask[] = [];
+      const taskIds = new Set<number>();
+
       const flattenTasks = (headings: any[]) => {
+        if (!Array.isArray(headings)) return;
         headings.forEach((h) => {
-          if (h.tasks) allTasks.push(...h.tasks);
+          // Add tasks from this heading
+          if (h.tasks && Array.isArray(h.tasks)) {
+            h.tasks.forEach((t: ProjectTask) => {
+              if (!taskIds.has(t.id)) {
+                console.log(
+                  "Adding task from heading/subheading:",
+                  t.id,
+                  t.title,
+                );
+                taskIds.add(t.id);
+                allTasks.push(t);
+              }
+            });
+          }
+          // Recursively process subheadings
           if (h.subHeadings) flattenTasks(h.subHeadings);
         });
       };
       if (data.headings) flattenTasks(data.headings);
+      // Also add all projectTasks that are associated directly (without heading)
+      if (data.projectTasks && Array.isArray(data.projectTasks)) {
+        console.log("Adding projectTasks:", data.projectTasks.length);
+        data.projectTasks.forEach((t: ProjectTask) => {
+          if (!taskIds.has(t.id)) {
+            console.log("Adding projectTask:", t.id, t.title);
+            taskIds.add(t.id);
+            allTasks.push(t);
+          }
+        });
+      } else {
+        console.log("No projectTasks found");
+      }
 
       const completedTasks = allTasks.filter(
         (t) => t.status === "completed",
@@ -182,11 +215,130 @@ const ProjectDetails: React.FC = () => {
   }
 
   const renderTabContent = () => {
+    // Get all tasks
+    const allTasks: ProjectTask[] = [];
+    const taskIds = new Set<number>();
+    console.log("Rendering tasks tab. Project data:", project);
+    const flattenTasks = (headings: any[]) => {
+      if (!Array.isArray(headings)) return;
+      headings.forEach((h) => {
+        console.log("Heading:", h);
+        if (h.tasks && Array.isArray(h.tasks)) {
+          h.tasks.forEach((t: ProjectTask) => {
+            if (!taskIds.has(t.id)) {
+              console.log("Adding task in render:", t.id, t.title);
+              taskIds.add(t.id);
+              allTasks.push(t);
+            }
+          });
+        }
+        if (h.subHeadings) flattenTasks(h.subHeadings);
+      });
+    };
+    if (project.headings) flattenTasks(project.headings);
+    console.log("After headings, allTasks:", allTasks);
+    if (
+      (project as any).projectTasks &&
+      Array.isArray((project as any).projectTasks)
+    ) {
+      console.log(
+        "projectTasks found in render:",
+        (project as any).projectTasks,
+      );
+      (project as any).projectTasks.forEach((t: ProjectTask) => {
+        if (!taskIds.has(t.id)) {
+          console.log("Adding projectTask in render:", t.id, t.title);
+          taskIds.add(t.id);
+          allTasks.push(t);
+        }
+      });
+    } else {
+      console.log("No projectTasks found in render");
+    }
+    console.log("Final allTasks for render:", allTasks);
+
     switch (activeTab) {
       case "overview":
         return <FileExplorer project={project} />;
       case "tasks":
-        return <KanbanBoard project={project} onUpdate={loadProject} />;
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">All Tasks</h3>
+              <span className="text-slate-500 text-sm">
+                {allTasks.length} tasks
+              </span>
+            </div>
+            <div className="space-y-3">
+              {allTasks.length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <CheckSquare className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-500">No tasks yet</p>
+                </div>
+              ) : (
+                allTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-slate-900">
+                          {task.title}
+                        </h4>
+                        {task.description && (
+                          <p className="text-slate-500 text-sm mt-1">
+                            {task.description}
+                          </p>
+                        )}
+                      </div>
+                      <StatusPill status={task.status || "pending"} />
+                    </div>
+
+                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                      {task.dueDate && (
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            {new Date(task.dueDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1">
+                        <UserIcon className="w-4 h-4" />
+                        <span>{task.assignedUsers?.length || 0} assigned</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-600 font-medium">
+                          {task.progress ?? 0}% complete
+                        </span>
+                      </div>
+                    </div>
+
+                    {task.assignedUsers && task.assignedUsers.length > 0 && (
+                      <div className="mt-3 flex -space-x-2">
+                        {task.assignedUsers.slice(0, 4).map((user) => (
+                          <div
+                            key={user.id}
+                            className="w-8 h-8 rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-xs font-semibold"
+                            title={user.fullName}
+                          >
+                            {user.fullName.charAt(0)}
+                          </div>
+                        ))}
+                        {task.assignedUsers.length > 4 && (
+                          <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-slate-500 text-xs font-semibold">
+                            +{task.assignedUsers.length - 4}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
       case "files":
         return (
           <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded border-slate-200">

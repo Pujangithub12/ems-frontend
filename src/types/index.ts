@@ -12,6 +12,8 @@ export type User = {
 
 export type TreeNode = {
   id: string;
+  dbId?: number;
   label: string;
+  userId?: number;
   children: TreeNode[];
 };
