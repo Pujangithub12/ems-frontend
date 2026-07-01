@@ -12,6 +12,41 @@ export type User = {
 
 export type TreeNode = {
   id: string;
+  dbId?: number;
   label: string;
+  userId?: number;
   children: TreeNode[];
+};
+
+export type ProjectTask = {
+  id: number;
+  title: string;
+  description?: string;
+  dueDate?: string;
+  priority?: "high" | "medium" | "low";
+  status?: "pending" | "in_progress" | "completed" | "on_hold";
+  progress?: number;
+  assignedUsers?: Array<{ id: number; fullName: string }>;
+};
+
+export type ProjectHeading = {
+  id: number;
+  name: string;
+  tasks: ProjectTask[];
+  subHeadings: ProjectHeading[];
+};
+
+export type Project = {
+  id: number;
+  name: string;
+  description?: string;
+  progress: number;
+  tasksCount: number;
+  membersCount: number;
+  dueDate?: string;
+  status: string;
+  assignees?: Array<{ id: number; fullName: string }>;
+  headings: ProjectHeading[];
+  files: any[];
+  projectTasks?: ProjectTask[];
 };

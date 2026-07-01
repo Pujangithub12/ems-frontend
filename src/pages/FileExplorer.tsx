@@ -15,25 +15,7 @@ import {
   Clock,
   AlertCircle
 } from "lucide-react";
-
-type ProjectTask = {
-  id: number;
-  title: string;
-  status: string;
-};
-
-type ProjectHeading = {
-  id: number;
-  name: string;
-  tasks: ProjectTask[];
-  subHeadings: ProjectHeading[];
-};
-
-type Project = {
-  id: number;
-  name: string;
-  headings: ProjectHeading[];
-};
+import { Project, ProjectHeading, ProjectTask } from "../types";
 
 interface TreeItemProps {
   item: any;

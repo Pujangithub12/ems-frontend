@@ -60,6 +60,7 @@ type Task = {
   createdAt: string;
   subTasks: { id: number; title: string; status: string; children?: any[] }[];
   projectName?: string;
+  project?: { id: number; name: string };
 };
 
 const formatDate = (dateString: string) =>
@@ -153,7 +154,7 @@ const MyTasks: React.FC = () => {
   const [addingTask, setAddingTask] = useState(false);
   const [addTaskError, setAddTaskError] = useState<string | null>(null);
   const [newProgress, setNewProgress] = useState(0);
-  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectId, setNewProjectId] = useState<number | null>(null);
 
   type ModalSubTask = { id: string; title: string; subTasks?: ModalSubTask[] };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
@@ -302,7 +303,7 @@ const MyTasks: React.FC = () => {
     setSelectedTask(null);
     setAddTaskError(null);
     setNewProgress(0);
-    setNewProjectName("");
+    setNewProjectId(null);
     setNewSubTasks([]);
   };
 
@@ -312,7 +313,7 @@ const MyTasks: React.FC = () => {
     setAddTaskError(null);
     setUserSearchTerm("");
     setNewProgress(0);
-    setNewProjectName("");
+    setNewProjectId(null);
     setNewSubTasks([]);
     setNewUserIds([]);
   };
@@ -332,7 +333,12 @@ const MyTasks: React.FC = () => {
       formData.append("userIds", newUserIds.join(","));
       formData.append("progress", String(newProgress));
       formData.append("subTasks", JSON.stringify(newSubTasks));
-      if (newProjectName) formData.append("projectName", newProjectName);
+      if (newProjectId) {
+        const selectedProject = projects.find((p) => p.id === newProjectId);
+        formData.append("projectId", String(newProjectId));
+        if (selectedProject)
+          formData.append("projectName", selectedProject.name);
+      }
       if (newFiles)
         for (let i = 0; i < newFiles.length; i++)
           formData.append("files", newFiles[i]);
@@ -1283,15 +1289,19 @@ const MyTasks: React.FC = () => {
                   <div className="relative">
                     <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                     <select
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
+                      value={newProjectId || ""}
+                      onChange={(e) =>
+                        setNewProjectId(
+                          e.target.value ? Number(e.target.value) : null,
+                        )
+                      }
                       className="w-full pl-9 pr-4 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
                     >
                       <option value="" disabled>
                         Select a project
                       </option>
                       {projects.map((project) => (
-                        <option key={project.id} value={project.name}>
+                        <option key={project.id} value={project.id}>
                           {project.name}
                         </option>
                       ))}

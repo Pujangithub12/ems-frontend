@@ -83,6 +83,7 @@ const Users: React.FC = () => {
   const [userFormSubmitting, setUserFormSubmitting] = useState(false);
 
   const [tree, setTree] = useState<TreeNode>(initialTree);
+  const [treeLoading, setTreeLoading] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedUser, setDraggedUser] = useState<User | null>(null);
 
@@ -142,8 +143,36 @@ const Users: React.FC = () => {
     }
   };
 
+  const loadHierarchy = async () => {
+    setTreeLoading(true);
+    try {
+      const response = await api.get<TreeNode>("/api/hierarchy");
+      if (response.data) {
+        setTree(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to load hierarchy", err);
+    } finally {
+      setTreeLoading(false);
+    }
+  };
+
+  const saveHierarchy = async (newTree: TreeNode) => {
+    try {
+      const response = await api.put<TreeNode>("/api/hierarchy", {
+        tree: newTree,
+      });
+      if (response.data) {
+        setTree(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to save hierarchy", err);
+    }
+  };
+
   useEffect(() => {
     loadUsers();
+    loadHierarchy();
   }, []);
 
   const resetUserForm = () => {
@@ -245,14 +274,19 @@ const Users: React.FC = () => {
       const newNode: TreeNode = {
         id: generateId(),
         label: draggedUser.fullName,
+        userId: draggedUser.id,
         children: [],
       };
-      setTree((prev) => addChildToNode(prev, over.id as string, newNode));
+      const newTree = addChildToNode(tree, over.id as string, newNode);
+      setTree(newTree);
+      saveHierarchy(newTree);
     }
   };
 
   const handleDeleteNode = (nodeId: string) => {
-    setTree((prev) => removeNodeFromTree(prev, nodeId));
+    const newTree = removeNodeFromTree(tree, nodeId);
+    setTree(newTree);
+    saveHierarchy(newTree);
   };
 
   const filteredUsers = users.filter(
