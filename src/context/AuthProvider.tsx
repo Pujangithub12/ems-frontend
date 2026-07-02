@@ -53,6 +53,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   //   2. login() succeeds → setUser(admin)
   //   3. checkAuth() finishes → GET /api/me returns 401 (cookie race) → setUser(null)  ← kicks user out
   const didLoginRef = useRef(false);
+  const inactivityTimerRef = useRef<number | null>(null);
+  const INACTIVITY_TIMEOUT = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
+
+  const resetInactivityTimer = () => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    if (user) {
+      inactivityTimerRef.current = setTimeout(() => {
+        logout();
+      }, INACTIVITY_TIMEOUT) as unknown as number;
+    }
+  };
+
+  const handleUserActivity = () => {
+    resetInactivityTimer();
+  };
 
   const fetchWorkspacesAndCurrent = async () => {
     try {
@@ -90,6 +107,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      // Reset timer when user is authenticated
+      resetInactivityTimer();
+      // Add event listeners for user activity
+      const events = [
+        "mousedown",
+        "mousemove",
+        "keydown",
+        "scroll",
+        "click",
+        "touchstart",
+      ];
+      events.forEach((event) => {
+        window.addEventListener(event, handleUserActivity);
+      });
+      return () => {
+        // Clean up event listeners
+        events.forEach((event) => {
+          window.removeEventListener(event, handleUserActivity);
+        });
+        // Clear timer
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+        }
+      };
+    } else {
+      // Clear timer when user is not authenticated
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    }
+  }, [user]);
 
   const login = async (credentials: {
     email: string;
