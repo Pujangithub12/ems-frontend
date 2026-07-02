@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     if (user) {
       inactivityTimerRef.current = setTimeout(() => {
         logout();
-      }, INACTIVITY_TIMEOUT);
+      }, INACTIVITY_TIMEOUT) as unknown as number;
     }
   };
 
