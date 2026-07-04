@@ -26,6 +26,23 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// The active workspace is derived from the URL (see DashboardLayout), not
+// from the shared workspaceId cookie — this lets each request declare which
+// workspace it's scoped to synchronously, so switching workspaces takes
+// effect on the very next request instead of racing a cookie update.
+let activeWorkspaceId: number | null = null;
+
+export function setActiveWorkspaceId(id: number | null) {
+  activeWorkspaceId = id;
+}
+
+api.interceptors.request.use((config) => {
+  if (activeWorkspaceId !== null) {
+    config.headers.set("X-Workspace-Id", String(activeWorkspaceId));
+  }
+  return config;
+});
+
 // Response interceptor to handle 401s
 api.interceptors.response.use(
   (response) => response,

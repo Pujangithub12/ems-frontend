@@ -12,6 +12,7 @@ import {
   UserCheck,
   Users as UsersIcon,
 } from "lucide-react";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 type User = {
   id: number;
@@ -68,7 +69,7 @@ const Avatar: React.FC<{ name: string; size?: number }> = ({
 );
 
 const Announcements: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(false);
@@ -77,6 +78,12 @@ const Announcements: React.FC = () => {
     null,
   );
   const [deletingAnnouncementId, setDeletingAnnouncementId] = useState<
+    number | null
+  >(null);
+
+  // Delete Confirmation Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<
     number | null
   >(null);
 
@@ -127,16 +134,24 @@ const Announcements: React.FC = () => {
   useEffect(() => {
     loadAnnouncements();
     loadUsers();
-  }, []);
+  }, [workspace?.id]);
 
-  const deleteAnnouncement = async (id: number) => {
-    if (!window.confirm("Are you sure you want to remove this announcement?"))
-      return;
-    setDeletingAnnouncementId(id);
+  const deleteAnnouncement = (id: number) => {
+    setAnnouncementToDelete(id);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAnnouncement = async () => {
+    if (!announcementToDelete) return;
+    setDeletingAnnouncementId(announcementToDelete);
     setAnnouncementsError(null);
     try {
-      await api.delete(`/api/announcements/${id}`);
-      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+      await api.delete(`/api/announcements/${announcementToDelete}`);
+      setAnnouncements((prev) =>
+        prev.filter((a) => a.id !== announcementToDelete),
+      );
+      setShowDeleteModal(false);
+      setAnnouncementToDelete(null);
     } catch (err: any) {
       setAnnouncementsError(
         err?.response?.data?.message ||
@@ -370,6 +385,17 @@ const Announcements: React.FC = () => {
           </form>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setAnnouncementToDelete(null);
+        }}
+        onConfirm={confirmDeleteAnnouncement}
+        message="Are you sure you want to remove this announcement?"
+      />
 
       {/* Announcements Feed */}
       <div className="flex-1 overflow-y-auto bg-[#F6F7F9]">

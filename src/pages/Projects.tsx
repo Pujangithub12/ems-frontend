@@ -12,6 +12,7 @@ import {
   Trash2,
   Edit2,
 } from "lucide-react";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 type Project = {
   id: number;
@@ -76,6 +77,8 @@ const ProjectsPage: React.FC = () => {
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
     null,
   );
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<number | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -153,13 +156,19 @@ const ProjectsPage: React.FC = () => {
     }
   };
 
-  const deleteProject = async (projectId: number) => {
-    if (!window.confirm("Are you sure you want to delete this project?"))
-      return;
-    setDeletingProjectId(projectId);
+  const deleteProject = (projectId: number) => {
+    setProjectToDelete(projectId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    setDeletingProjectId(projectToDelete);
     try {
-      await api.delete(`/api/projects/${projectId}`);
+      await api.delete(`/api/projects/${projectToDelete}`);
       await loadProjects();
+      setShowDeleteModal(false);
+      setProjectToDelete(null);
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
@@ -284,7 +293,7 @@ const ProjectsPage: React.FC = () => {
             <button
               key={project.id}
               type="button"
-              onClick={() => navigate(`/project/${project.id}/details`)}
+              onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
               className="block w-full p-5 text-left transition-colors bg-white border rounded-md cursor-pointer border-slate-200 hover:bg-slate-50 group"
             >
               <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_160px_180px_auto] gap-5 items-center">
@@ -688,6 +697,17 @@ const ProjectsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setProjectToDelete(null);
+        }}
+        onConfirm={confirmDeleteProject}
+        message="Are you sure you want to delete this project?"
+      />
     </div>
   );
 };

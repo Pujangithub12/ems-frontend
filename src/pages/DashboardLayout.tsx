@@ -1,6 +1,7 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import { setActiveWorkspaceId } from "../api/axios";
 import {
   LayoutDashboard,
   Briefcase,
@@ -9,14 +10,11 @@ import {
   Users as UsersIcon,
   Calendar,
   LogOut,
-  User as UserIcon,
   Menu,
   X,
   History,
   Bell,
   ChevronDown,
-  Settings,
-  HelpCircle,
 } from "lucide-react";
 
 // Import the new Workspace Switcher component
@@ -47,18 +45,48 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout, loading, workspace } = useAuth();
+  const { user, logout, loading, workspace, workspaces, selectWorkspace } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { workspaceId: workspaceIdParam } = useParams<{ workspaceId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  const paramWorkspaceId = workspaceIdParam ? Number(workspaceIdParam) : null;
+  const isValidParamId = paramWorkspaceId !== null && Number.isInteger(paramWorkspaceId);
+
+  // Every outgoing request is scoped to whatever workspace the URL says, set
+  // synchronously during render (not an effect) so it's already correct
+  // before any child page's data-fetching effect can fire on this same pass —
+  // this is what makes switching workspaces take effect immediately.
+  if (isValidParamId) {
+    setActiveWorkspaceId(paramWorkspaceId);
+  }
 
   React.useEffect(() => {
     if (!loading && !user) {
       navigate("/login/user", { replace: true });
     }
   }, [loading, user, navigate]);
+
+  // Keep the display context (workspace name, etc.) in sync with the URL,
+  // and bounce away from a workspace id the user isn't actually a member of
+  // (stale bookmark, removed membership, ...).
+  React.useEffect(() => {
+    if (loading || !user || !isValidParamId || workspaces.length === 0) return;
+
+    const targetExists = workspaces.some((w) => w.id === paramWorkspaceId);
+    if (!targetExists) {
+      const fallback = workspace ?? workspaces[0];
+      if (fallback) navigate(`/${fallback.id}/dashboard`, { replace: true });
+      return;
+    }
+
+    if (workspace?.id !== paramWorkspaceId) {
+      selectWorkspace(paramWorkspaceId!);
+    }
+  }, [loading, user, isValidParamId, paramWorkspaceId, workspaces, workspace, navigate, selectWorkspace]);
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -73,7 +101,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  if (loading) {
+  if (loading || !isValidParamId) {
     return (
       <div className="fixed inset-0 flex items-center justify-center flex-col gap-4 bg-[#F6F7F9]">
         <div className="w-8 h-8 border-2 rounded-full border-slate-200 border-t-blue-900 animate-spin" />
@@ -89,31 +117,33 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   if (!user) return null;
 
+  const prefix = `/${paramWorkspaceId}`;
+
   // FIXED: Combined into a single "Tasks" route and removed "/mytask"
   const navItems = [
     {
-      path: "/dashboard",
+      path: `${prefix}/dashboard`,
       label: "Overview",
       icon: LayoutDashboard,
       id: "overview",
     },
-    { path: "/project", label: "Projects", icon: Briefcase, id: "project" },
+    { path: `${prefix}/project`, label: "Projects", icon: Briefcase, id: "project" },
     {
-      path: "/tasks",
+      path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
       id: "tasks",
     },
     {
-      path: "/announcements",
+      path: `${prefix}/announcements`,
       label: "Announcements",
       icon: Megaphone,
       id: "announcements",
     },
-    { path: "/users", label: "Users", icon: UsersIcon, id: "users" },
-    { path: "/calendar", label: "Calendar", icon: Calendar, id: "calendar" },
+    { path: `${prefix}/users`, label: "Users", icon: UsersIcon, id: "users" },
+    { path: `${prefix}/calendar`, label: "Calendar", icon: Calendar, id: "calendar" },
     {
-      path: "/leaverequests",
+      path: `${prefix}/leaverequests`,
       label: "Leave Requests",
       icon: Calendar,
       id: "leaverequests",
@@ -122,7 +152,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   const reports = [
     {
-      path: "/activities",
+      path: `${prefix}/activities`,
       label: "Activity History",
       icon: History,
       id: "activities",
@@ -359,24 +389,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   </div>
                 </div>
                 <div className="py-1">
-                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
-                    <UserIcon className="w-3.5 h-3.5 opacity-70" />
-                    My profile
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
-                    <Bell className="w-3.5 h-3.5 opacity-70" />
-                    Notification settings
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
-                    <Settings className="w-3.5 h-3.5 opacity-70" />
-                    Settings
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-600 hover:bg-slate-100">
-                    <HelpCircle className="w-3.5 h-3.5 opacity-70" />
-                    Help & support
-                  </button>
-                </div>
-                <div className="py-1 border-t border-slate-200">
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-red-700 hover:bg-red-50"
@@ -393,7 +405,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         {/* Page content */}
         <div className="flex-1 overflow-auto">
           <div
-            key={workspace?.id || "default"}
+            key={paramWorkspaceId ?? "default"}
             className="duration-300 animate-in fade-in slide-in-from-bottom-2"
           >
             {children}

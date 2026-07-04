@@ -1,32 +1,44 @@
 import React from "react";
-import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import AdminLogin from "./pages/AdminLogin";
 import UserLogin from "./pages/UserLogin";
 import Dashboard from "./pages/Dashboard";
-import AssignedTasks from "./pages/AssignedTasks";
 import Announcements from "./pages/Announcements";
 import Users from "./pages/Users";
 import ProjectPage from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
-import MyTasks from "./pages/MyTasks";
 import CalendarPage from "./pages/Calendar";
 import LeaveRequests from "./pages/LeaveRequests";
 import Activities from "./pages/Activities";
 import DashboardLayout from "./pages/DashboardLayout";
-import { AuthProvider } from "./context/AuthProvider";
+import { AuthProvider, useAuth } from "./context/AuthProvider";
 import TasksPage from "./pages/Tasks";
+
+/**
+ * Resolves "/" and any unmatched path to the caller's current workspace —
+ * the URL (not a shared cookie) is the source of truth for which workspace
+ * is active, so every real page lives under /:workspaceId/...
+ */
+const RootRedirect: React.FC = () => {
+  const { user, workspace, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return <Navigate replace to="/login/user" />;
+  if (workspace) return <Navigate replace to={`/${workspace.id}/dashboard`} />;
+  return null;
+};
 
 function App() {
   return (
     <AuthProvider>
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <Routes>
-          <Route path="/" element={<Navigate replace to="/dashboard" />} />
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login/user" element={<UserLogin />} />
           <Route path="/login/admin" element={<AdminLogin />} />
 
           <Route
-            path="/dashboard"
+            path="/:workspaceId/dashboard"
             element={
               <DashboardLayout>
                 <Dashboard />
@@ -34,7 +46,7 @@ function App() {
             }
           />
           <Route
-            path="/tasks"
+            path="/:workspaceId/tasks"
             element={
               <DashboardLayout>
                 <TasksPage />
@@ -42,7 +54,7 @@ function App() {
             }
           />
           <Route
-            path="/project"
+            path="/:workspaceId/project"
             element={
               <DashboardLayout>
                 <ProjectPage />
@@ -50,7 +62,7 @@ function App() {
             }
           />
           <Route
-            path="/project/:id/details"
+            path="/:workspaceId/project/:id/details"
             element={
               <DashboardLayout>
                 <ProjectDetails />
@@ -58,7 +70,7 @@ function App() {
             }
           />
           <Route
-            path="/announcements"
+            path="/:workspaceId/announcements"
             element={
               <DashboardLayout>
                 <Announcements />
@@ -66,7 +78,7 @@ function App() {
             }
           />
           <Route
-            path="/task"
+            path="/:workspaceId/task"
             element={
               <DashboardLayout>
                 <TasksPage />
@@ -74,7 +86,7 @@ function App() {
             }
           />
           <Route
-            path="/users"
+            path="/:workspaceId/users"
             element={
               <DashboardLayout>
                 <Users />
@@ -82,7 +94,7 @@ function App() {
             }
           />
           <Route
-            path="/calendar"
+            path="/:workspaceId/calendar"
             element={
               <DashboardLayout>
                 <CalendarPage />
@@ -90,7 +102,7 @@ function App() {
             }
           />
           <Route
-            path="/leaverequests"
+            path="/:workspaceId/leaverequests"
             element={
               <DashboardLayout>
                 <LeaveRequests />
@@ -98,13 +110,15 @@ function App() {
             }
           />
           <Route
-            path="/activities"
+            path="/:workspaceId/activities"
             element={
               <DashboardLayout>
                 <Activities />
               </DashboardLayout>
             }
           />
+
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </div>
     </AuthProvider>

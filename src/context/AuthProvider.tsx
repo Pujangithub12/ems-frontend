@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import api from "../api/axios";
+import api, { setActiveWorkspaceId } from "../api/axios";
 
 export type User = {
   id: string;
@@ -31,8 +31,18 @@ type AuthContextType = {
     role?: string;
   }) => Promise<void>;
   logout: () => void;
-  switchWorkspace: (workspaceId: number) => Promise<void>;
-  createWorkspace: (name: string, description?: string) => Promise<void>;
+  /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
+  selectWorkspace: (workspaceId: number) => Workspace | null;
+  createWorkspace: (name: string, description?: string) => Promise<Workspace | null>;
+  updateWorkspace: (
+    workspaceId: number,
+    name: string,
+    description?: string,
+  ) => Promise<void>;
+  deleteWorkspace: (
+    workspaceId: number,
+    confirmName: string,
+  ) => Promise<Workspace | null>;
   loading: boolean;
 };
 
@@ -83,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       setWorkspaces(validWorkspaces);
       setWorkspace(currentRes.data.workspace);
+      setActiveWorkspaceId(currentRes.data.workspace?.id ?? null);
     } catch (err) {
       console.error("Failed to fetch workspaces", err);
     }
@@ -167,35 +178,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
+    setActiveWorkspaceId(null);
   };
 
-  const switchWorkspace = async (workspaceId: number) => {
-    try {
-      // 1. First update state INSTANTLY with the local workspace
-      const targetWorkspace = workspaces.find((w) => w.id === workspaceId);
-      if (targetWorkspace) {
-        setWorkspace(targetWorkspace);
-      }
+  // Called by DashboardLayout when the URL's :workspaceId no longer matches
+  // the active one. Synchronous: updates the outgoing request header and the
+  // display context immediately, then fires off a best-effort cookie sync
+  // (used as the default workspace for requests that can't set headers).
+  const selectWorkspace = (workspaceId: number): Workspace | null => {
+    const target = workspaces.find((w) => w.id === workspaceId) ?? null;
+    if (!target) return null;
 
-      // 2. Then call API to sync with server
-      const res = await api.post("/api/workspaces/switch", { workspaceId });
+    setWorkspace(target);
+    setActiveWorkspaceId(target.id);
+    api.post("/api/workspaces/switch", { workspaceId: target.id }).catch((err) => {
+      console.error("Failed to persist workspace switch", err);
+    });
 
-      // 3. Finally sync with server response
-      setWorkspace(res.data.workspace);
-    } catch (err) {
-      console.error("Failed to switch workspace", err);
-    }
+    return target;
   };
 
-  const createWorkspace = async (name: string, description?: string) => {
+  const createWorkspace = async (
+    name: string,
+    description?: string,
+  ): Promise<Workspace | null> => {
     try {
       const res = await api.post("/api/workspaces", { name, description });
-      const newWorkspace = res.data.workspace;
-      setWorkspaces([...workspaces, newWorkspace]);
-      await switchWorkspace(newWorkspace.id);
+      const newWorkspace: Workspace = res.data.workspace;
+      setWorkspaces((prev) => [...prev, newWorkspace]);
+      return newWorkspace;
     } catch (err) {
       console.error("Failed to create workspace", err);
+      return null;
     }
+  };
+
+  const updateWorkspace = async (
+    workspaceId: number,
+    name: string,
+    description?: string,
+  ) => {
+    const res = await api.put(`/api/workspaces/${workspaceId}`, {
+      name,
+      description,
+    });
+    const updated: Workspace = res.data.workspace;
+    setWorkspaces((prev) => prev.map((w) => (w.id === workspaceId ? updated : w)));
+    if (workspace?.id === workspaceId) {
+      setWorkspace(updated);
+    }
+  };
+
+  const deleteWorkspace = async (
+    workspaceId: number,
+    confirmName: string,
+  ): Promise<Workspace | null> => {
+    const res = await api.delete(`/api/workspaces/${workspaceId}`, {
+      data: { confirmName },
+    });
+    await fetchWorkspacesAndCurrent();
+    // The workspace the caller should be moved to (backend only returns this
+    // when the deleted workspace was the caller's active one).
+    return res.data.workspace ?? null;
   };
 
   return (
@@ -206,8 +250,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         workspaces,
         login,
         logout,
-        switchWorkspace,
+        selectWorkspace,
         createWorkspace,
+        updateWorkspace,
+        deleteWorkspace,
         loading,
       }}
     >
