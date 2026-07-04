@@ -76,7 +76,7 @@ const formatDateGroup = (dateString: string) => {
 };
 
 const Activities: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
@@ -125,7 +125,7 @@ const Activities: React.FC = () => {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, []);
+  }, [workspace?.id]);
 
   const categories = [
     { id: "all", label: "All events" },

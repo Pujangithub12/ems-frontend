@@ -25,6 +25,7 @@ import {
 import { TreeItem, DraggableUser } from "../components/tree";
 import { User, TreeNode } from "../types";
 import UserFormModal from "../components/UserFormModal";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 const initialTree: TreeNode = {
   id: "root",
@@ -86,6 +87,12 @@ const Users: React.FC = () => {
   const [treeLoading, setTreeLoading] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedUser, setDraggedUser] = useState<User | null>(null);
+
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    userId: number | null;
+  }>({ isOpen: false, userId: null });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -170,10 +177,12 @@ const Users: React.FC = () => {
     }
   };
 
+  const { workspace } = useAuth();
+
   useEffect(() => {
     loadUsers();
     loadHierarchy();
-  }, []);
+  }, [workspace?.id]);
 
   const resetUserForm = () => {
     setUserForm({
@@ -247,11 +256,18 @@ const Users: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (!window.confirm("Delete this user?")) return;
+  const handleDeleteUser = (id: number) => {
+    setConfirmModal({ isOpen: true, userId: id });
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!confirmModal.userId) return;
     try {
-      await api.delete(`/api/users/${id}`);
-      setUsers((prev) => prev.filter((user) => user.id !== id));
+      await api.delete(`/api/users/${confirmModal.userId}`);
+      setUsers((prev) =>
+        prev.filter((user) => user.id !== confirmModal.userId),
+      );
+      setConfirmModal({ isOpen: false, userId: null });
     } catch (err: any) {
       setUsersError(
         err?.response?.data?.message || err.message || "Unable to delete user.",
@@ -376,6 +392,14 @@ const Users: React.FC = () => {
         }}
         onSubmit={handleSubmitUser}
         onFieldChange={handleUserFieldChange}
+      />
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ isOpen: false, userId: null })}
+        onConfirm={confirmDeleteUser}
+        message="Are you sure you want to delete this user?"
       />
 
       {/* Content based on View Mode */}

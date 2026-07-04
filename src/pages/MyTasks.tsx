@@ -130,7 +130,7 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
 };
 
 const MyTasks: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -283,7 +283,7 @@ const MyTasks: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [workspace?.id]);
 
   const toggleCompany = (companyName: string) => {
     setExpandedCompanies((prev) => {

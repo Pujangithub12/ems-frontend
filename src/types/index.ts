@@ -36,6 +36,19 @@ export type ProjectHeading = {
   subHeadings: ProjectHeading[];
 };
 
+export type ProjectFile = {
+  id: number;
+  name: string;
+  isFolder: boolean;
+  type?: string;
+  parentId?: number | null;
+  size?: number | null;
+  path?: string | null;
+  version: string;
+  uploadedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
 export type Project = {
   id: number;
   name: string;
@@ -47,6 +60,6 @@ export type Project = {
   status: string;
   assignees?: Array<{ id: number; fullName: string }>;
   headings: ProjectHeading[];
-  files: any[];
+  files: ProjectFile[];
   projectTasks?: ProjectTask[];
 };

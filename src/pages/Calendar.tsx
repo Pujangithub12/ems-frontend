@@ -33,7 +33,7 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 const CalendarPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [value, setValue] = useState<Date>(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +59,7 @@ const CalendarPage: React.FC = () => {
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [workspace?.id]);
 
   const handleChange: CalendarProps["onChange"] = (nextValue) => {
     const nextDate = Array.isArray(nextValue) ? nextValue[0] : nextValue;

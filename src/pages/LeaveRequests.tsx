@@ -43,7 +43,7 @@ const getInitials = (name: string) =>
   name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 
 const LeaveRequests: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -73,7 +73,7 @@ const LeaveRequests: React.FC = () => {
 
   useEffect(() => {
     loadRequests();
-  }, []);
+  }, [workspace?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

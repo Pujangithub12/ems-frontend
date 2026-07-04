@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 type AssignedUser = {
   id: number;
@@ -148,7 +149,7 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
 };
 
 const AssignedTasks: React.FC = () => {
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -197,6 +198,10 @@ const AssignedTasks: React.FC = () => {
   const [editingTaskLoading, setEditingTaskLoading] = useState(false);
   const [editTaskError, setEditTaskError] = useState<string | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // Delete Confirmation Modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
 
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   type DetailedSubTask = {
@@ -390,7 +395,7 @@ const AssignedTasks: React.FC = () => {
       }
     };
     loadData();
-  }, []);
+  }, [workspace?.id]);
 
   const handleEditClick = (task: Task) => {
     setEditingTaskId(task.id);
@@ -407,12 +412,18 @@ const AssignedTasks: React.FC = () => {
     setShowUpdateModal(true);
   };
 
-  const handleDeleteClick = async (taskId: number) => {
-    const ok = window.confirm("Are you sure you want to delete this task?");
-    if (!ok) return;
+  const handleDeleteClick = (taskId: number) => {
+    setTaskToDelete(taskId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return;
     try {
-      await api.delete(`/api/tasks/${taskId}`);
-      setAssignedTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await api.delete(`/api/tasks/${taskToDelete}`);
+      setAssignedTasks((prev) => prev.filter((t) => t.id !== taskToDelete));
+      setShowDeleteModal(false);
+      setTaskToDelete(null);
     } catch (err: any) {
       alert(err?.response?.data?.message || err.message || "Delete failed");
     }
@@ -2200,6 +2211,17 @@ const AssignedTasks: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setTaskToDelete(null);
+        }}
+        onConfirm={confirmDeleteTask}
+        message="Are you sure you want to delete this task?"
+      />
     </div>
   );
 };
