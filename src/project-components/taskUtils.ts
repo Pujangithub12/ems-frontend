@@ -1,7 +1,10 @@
-import { Project, ProjectTask } from "../types";
+import { ProjectHeading, ProjectTask } from "../types";
 
 /** Flattens a project's heading tree + direct project tasks into a single de-duplicated list. */
-export function flattenProjectTasks(project: Project): ProjectTask[] {
+export function flattenProjectTasks(project: {
+  headings?: ProjectHeading[];
+  projectTasks?: ProjectTask[];
+}): ProjectTask[] {
   const allTasks: ProjectTask[] = [];
   const taskIds = new Set<number>();
 
