@@ -11,8 +11,14 @@ import {
   Filter,
   Trash2,
   Edit2,
+  FolderKanban,
+  Calendar,
+  Users as UsersIcon,
+  TrendingUp,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { ProjectHeading, ProjectTask } from "../types";
+import { flattenProjectTasks } from "../project-components/taskUtils";
 
 type Project = {
   id: number;
@@ -25,6 +31,15 @@ type Project = {
   createdAt: string;
   progress?: number;
   tasksCount?: number;
+  headings?: ProjectHeading[];
+  projectTasks?: ProjectTask[];
+};
+
+const PROJECT_ICON_STYLES: Record<string, { bg: string; text: string }> = {
+  pending: { bg: "bg-amber-50", text: "text-amber-700" },
+  in_progress: { bg: "bg-blue-50", text: "text-blue-900" },
+  on_hold: { bg: "bg-red-50", text: "text-red-700" },
+  completed: { bg: "bg-emerald-50", text: "text-emerald-700" },
 };
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -214,15 +229,25 @@ const ProjectsPage: React.FC = () => {
     }
   };
 
+  const projectsWithProgress = useMemo(() => {
+    return projects.map((p) => {
+      const tasks = flattenProjectTasks(p);
+      const doneCount = tasks.filter((t) => t.status === "completed").length;
+      const progress =
+        tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
+      return { ...p, progress, tasksCount: tasks.length };
+    });
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
-    return projects.filter((p) => {
+    return projectsWithProgress.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || p.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [projects, searchQuery, statusFilter]);
+  }, [projectsWithProgress, searchQuery, statusFilter]);
 
   return (
     <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
@@ -289,14 +314,24 @@ const ProjectsPage: React.FC = () => {
         </div>
       ) : filteredProjects.length > 0 ? (
         <div className="space-y-3">
-          {filteredProjects.map((project) => (
+          {filteredProjects.map((project) => {
+            const iconStyle =
+              PROJECT_ICON_STYLES[project.status] || PROJECT_ICON_STYLES.pending;
+            return (
             <button
               key={project.id}
               type="button"
               onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
-              className="block w-full p-5 text-left transition-colors bg-white border rounded-md cursor-pointer border-slate-200 hover:bg-slate-50 group"
+              className="block w-full p-5 text-left bg-white border rounded-lg cursor-pointer border-slate-200 hover:border-blue-200 hover:shadow-md hover:-translate-y-0.5 transition-all group"
             >
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_160px_180px_auto] gap-5 items-center">
+              <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_180px_160px_180px_auto] gap-5 items-center">
+                {/* Icon badge */}
+                <div
+                  className={`hidden md:flex items-center justify-center w-11 h-11 rounded-lg flex-shrink-0 ${iconStyle.bg}`}
+                >
+                  <FolderKanban className={`w-5 h-5 ${iconStyle.text}`} />
+                </div>
+
                 {/* Col 1: Name & Meta */}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -312,7 +347,9 @@ const ProjectsPage: React.FC = () => {
 
                 {/* Col 2: Progress */}
                 <div>
-                  <Eyebrow>Progress</Eyebrow>
+                  <Eyebrow className="flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> Progress
+                  </Eyebrow>
                   <div className="flex items-baseline gap-1.5 mt-1">
                     <div className="font-semibold text-[22px] text-blue-900 tracking-tight leading-none">
                       {project.progress || 0}
@@ -334,7 +371,9 @@ const ProjectsPage: React.FC = () => {
 
                 {/* Col 3: Deadline & Tasks */}
                 <div>
-                  <Eyebrow>Deadline</Eyebrow>
+                  <Eyebrow className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Deadline
+                  </Eyebrow>
                   <div className="font-medium mt-1 text-slate-900 text-[13px]">
                     {project.dueDate
                       ? new Date(project.dueDate).toLocaleDateString(
@@ -350,7 +389,9 @@ const ProjectsPage: React.FC = () => {
 
                 {/* Col 4: Team */}
                 <div>
-                  <Eyebrow>Team Members</Eyebrow>
+                  <Eyebrow className="flex items-center gap-1">
+                    <UsersIcon className="w-3 h-3" /> Team Members
+                  </Eyebrow>
                   {project.assignees && project.assignees.length > 0 ? (
                     <div className="flex items-center gap-2 mt-1.5">
                       <div className="flex flex-shrink-0 -space-x-2">
@@ -418,7 +459,8 @@ const ProjectsPage: React.FC = () => {
                 )}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
