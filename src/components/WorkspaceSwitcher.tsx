@@ -130,13 +130,13 @@ const WorkspaceSwitcher: React.FC = () => {
       {/* Trigger Button */}
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2.5 hover:bg-slate-200/60 rounded px-2.5 py-2.5 text-left transition-colors"
+        className="w-full flex items-center gap-2.5 hover:bg-slate-800 rounded px-2.5 py-2.5 text-left transition-colors"
       >
         <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
           {workspace?.name.charAt(0).toUpperCase() || "EM"}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-bold tracking-tight leading-tight truncate text-[14px] text-slate-900">
+          <div className="font-bold tracking-tight leading-tight truncate text-[14px] text-white">
             {workspace?.name || "EMS Workspace"}
           </div>
           <div

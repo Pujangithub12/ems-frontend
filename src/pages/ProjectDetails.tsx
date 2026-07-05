@@ -180,15 +180,18 @@ const ProjectDetails: React.FC = () => {
   };
 
   return (
-    <div className="px-6 py-8 mx-auto max-w-6xl lg:px-8 lg:py-10">
+    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
+      {/* Back link — sits above and to the corner, separate from the title row */}
+      <button
+        onClick={() => navigate(`/${workspaceId}/project`)}
+        className="flex gap-1.5 items-center mb-4 text-[13px] font-medium transition-colors text-slate-500 hover:text-slate-700"
+      >
+        <ArrowLeft size={14} />
+        Back to Projects
+      </button>
+
       {/* Header */}
       <div className="flex gap-4 items-center mb-6">
-        <button
-          onClick={() => navigate(`/${workspaceId}/project`)}
-          className="p-2 rounded border transition-colors border-slate-200 hover:bg-slate-50 text-slate-500"
-        >
-          <ArrowLeft size={16} />
-        </button>
         <div className="flex-1 min-w-0">
           <Eyebrow>Project Details</Eyebrow>
           <div className="flex gap-3 items-center mt-1">
@@ -201,7 +204,7 @@ const ProjectDetails: React.FC = () => {
       </div>
 
       {/* Tabs & Content */}
-      <div className="overflow-hidden bg-white rounded-md border border-slate-200">
+      <div className="overflow-hidden w-full bg-white rounded-md border border-slate-200">
         <div className="flex overflow-x-auto gap-1 px-2 border-b border-slate-200">
           {tabs.map((tab) => {
             const Icon = tab.icon;

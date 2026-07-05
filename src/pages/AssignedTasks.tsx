@@ -8,7 +8,6 @@ import {
   Trash2,
   Clock,
   AlertCircle,
-  Building2,
   Users as UsersIcon,
   Paperclip,
   CheckCircle2,
@@ -47,7 +46,6 @@ type Project = {
 
 type Task = {
   id: number;
-  companyName: string;
   title: string;
   description?: string;
   priority: string;
@@ -75,19 +73,6 @@ const getFileUrl = (path: string) => {
   const normalizedPath = path.replace(/\\/g, "/");
   return `${API_BASE}/${normalizedPath}`;
 };
-
-const COMPANY_NAMES = [
-  "Janda Devi Nepal Energy Pvt Ltd",
-  "Bakas Renewable energy Ltd",
-  "Troika Energy Pvt Ltd",
-  "RR onstruction Pvt Ltd",
-  "Grid Tie Pvt Ltd",
-  "Janda Devi Biomass Pvt Ltd",
-  "Janda Devi Solar Pvt Ltd",
-  "Bhojpur Shivalaya Power Pvt Ltd",
-  "Green Leaves Pvt Ltd",
-  "Usolar Janda Energy Pvt Ltd",
-].sort((a, b) => a.localeCompare(b));
 
 // --- Design System Components ---
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -131,6 +116,10 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
     } else if (v === "pending") {
       bg = "#FEF3C7";
       fg = "#B45309";
+    } else if (v === "onhold" || v === "on_hold") {
+      bg = "#FEE2E2";
+      fg = "#B91C1C";
+      label = "On Hold";
     }
   }
   return (
@@ -156,7 +145,6 @@ const AssignedTasks: React.FC = () => {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState("high");
@@ -170,7 +158,6 @@ const AssignedTasks: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [newProgress, setNewProgress] = useState(0);
-  const [filterCompanyName, setFilterCompanyName] = useState("");
   const [filterProjectName, setFilterProjectName] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -188,7 +175,6 @@ const AssignedTasks: React.FC = () => {
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
   const [editSubTasks, setEditSubTasks] = useState<ModalSubTask[]>([]);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
-  const [editCompanyName, setEditCompanyName] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState("high");
@@ -220,9 +206,6 @@ const AssignedTasks: React.FC = () => {
   const [expandedNestedSubTasks, setExpandedNestedSubTasks] = useState<
     Set<string>
   >(new Set());
-  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(
-    new Set(),
-  );
   const [showActivityPopup, setShowActivityPopup] = useState(false);
 
   const [showSubTaskUpdatePopup, setShowSubTaskUpdatePopup] = useState(false);
@@ -242,27 +225,12 @@ const AssignedTasks: React.FC = () => {
     {},
   );
 
-  const toggleCompany = (companyName: string) => {
-    setExpandedCompanies((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(companyName)) {
-        newSet.delete(companyName);
-      } else {
-        newSet.add(companyName);
-      }
-      return newSet;
-    });
-  };
-
   const filteredTasks = assignedTasks.filter((task) => {
-    const matchesSearch =
-      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.companyName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCompany = filterCompanyName
-      ? task.companyName.toLowerCase() === filterCompanyName.toLowerCase()
-      : true;
+    const matchesSearch = task.title
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
     const matchesProject = filterProjectName
-      ? (task.projectName || "")
+      ? (task.project?.name || task.projectName || "")
           .toLowerCase()
           .includes(filterProjectName.toLowerCase())
       : true;
@@ -278,23 +246,12 @@ const AssignedTasks: React.FC = () => {
       : true;
     return (
       matchesSearch &&
-      matchesCompany &&
       matchesProject &&
       matchesPriority &&
       matchesStatus &&
       matchesEmployee
     );
   });
-
-  const groupedTasks = filteredTasks.reduce(
-    (acc, task) => {
-      const key = task.companyName || "Unassigned";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(task);
-      return acc;
-    },
-    {} as Record<string, Task[]>,
-  );
 
   const convertToDetailed = (subTasks: any[]): DetailedSubTask[] =>
     subTasks.map((st) => ({
@@ -399,7 +356,6 @@ const AssignedTasks: React.FC = () => {
 
   const handleEditClick = (task: Task) => {
     setEditingTaskId(task.id);
-    setEditCompanyName(task.companyName);
     setEditTitle(task.title);
     setEditDescription(task.description || "");
     setEditPriority(task.priority);
@@ -454,7 +410,6 @@ const AssignedTasks: React.FC = () => {
       const originalTask = assignedTasks.find((t) => t.id === editingTaskId);
       if (!originalTask) return;
       const formData = new FormData();
-      formData.append("companyName", editCompanyName);
       formData.append("title", editTitle);
       formData.append("description", editDescription);
       formData.append("priority", editPriority);
@@ -500,7 +455,6 @@ const AssignedTasks: React.FC = () => {
       const existingTask = assignedTasks.find((t) => t.id === taskId);
       const formData = new FormData();
       if (existingTask) {
-        formData.append("companyName", existingTask.companyName);
         formData.append("title", existingTask.title);
         formData.append("description", existingTask.description || "");
         formData.append("priority", existingTask.priority);
@@ -710,7 +664,6 @@ const AssignedTasks: React.FC = () => {
     setAddingTask(true);
     try {
       const formData = new FormData();
-      formData.append("companyName", newCompanyName);
       formData.append("title", newTitle);
       formData.append("description", newDescription);
       formData.append("priority", newPriority);
@@ -739,7 +692,6 @@ const AssignedTasks: React.FC = () => {
         [task.id]: convertToDetailed(task.subTasks || []),
       }));
       setShowAddTaskForm(false);
-      setNewCompanyName("");
       setNewTitle("");
       setNewDescription("");
       setNewPriority("high");
@@ -872,21 +824,6 @@ const AssignedTasks: React.FC = () => {
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
         <div>
-          <Eyebrow className="mb-1.5">Company</Eyebrow>
-          <select
-            value={filterCompanyName}
-            onChange={(e) => setFilterCompanyName(e.target.value)}
-            className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-          >
-            <option value="">All Companies</option>
-            {COMPANY_NAMES.map((company) => (
-              <option key={company} value={company}>
-                {company}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
           <Eyebrow className="mb-1.5">Project Name</Eyebrow>
           <input
             type="text"
@@ -919,6 +856,7 @@ const AssignedTasks: React.FC = () => {
             <option value="">All</option>
             <option value="pending">Pending</option>
             <option value="in_progress">In Progress</option>
+            <option value="on_hold">On Hold</option>
             <option value="completed">Completed</option>
           </select>
         </div>
@@ -969,172 +907,159 @@ const AssignedTasks: React.FC = () => {
             </p>
           </div>
         ) : (
-          Object.entries(groupedTasks).map(([companyName, tasks]) => (
-            <div
-              key={companyName}
-              className="overflow-hidden bg-white border rounded-md border-slate-200"
-            >
-              <button
-                onClick={() => toggleCompany(companyName)}
-                className="flex items-center justify-between w-full px-5 py-3 bg-[#EEF1F5]/50 hover:bg-[#EEF1F5] transition-colors text-left border-b border-slate-200"
-              >
-                <div className="flex items-center gap-2.5">
-                  {expandedCompanies.has(companyName) ? (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                  ) : (
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-                  )}
-                  <Building2 className="w-4 h-4 text-blue-900" />
-                  <span className="text-[13px] font-medium text-slate-900">
-                    {companyName}
-                  </span>
-                  <span
-                    className="px-1.5 py-0.5 text-[10px] font-medium bg-white border border-slate-200 rounded text-slate-500"
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {tasks.length} Tasks
-                  </span>
-                </div>
-              </button>
-
-              {expandedCompanies.has(companyName) && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead
-                      className="bg-[#EEF1F5]/30 text-left text-slate-400"
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        fontFamily: "'JetBrains Mono', monospace",
-                      }}
+          <div className="overflow-hidden bg-white border rounded-md border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead
+                  className="bg-[#EEF1F5]/30 text-left text-slate-400"
+                  style={{
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                >
+                  <tr>
+                    <th className="w-10 px-5 py-2.5 font-medium" />
+                    <th className="px-5 py-2.5 font-medium">Task</th>
+                    <th className="px-5 py-2.5 font-medium">Project Name</th>
+                    <th className="px-5 py-2.5 font-medium">Assigned To</th>
+                    <th className="px-5 py-2.5 font-medium text-center">
+                      Priority
+                    </th>
+                    <th className="px-5 py-2.5 font-medium text-center">
+                      Progress & Status
+                    </th>
+                    <th className="px-5 py-2.5 font-medium text-right">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredTasks.map((task) => (
+                    <tr
+                      key={task.id}
+                      className="transition-colors hover:bg-slate-50"
                     >
-                      <tr>
-                        <th className="px-5 py-2.5 font-medium">Task</th>
-                        <th className="px-5 py-2.5 font-medium">
-                          Project Name
-                        </th>
-                        <th className="px-5 py-2.5 font-medium text-center">
-                          Priority
-                        </th>
-                        <th className="px-5 py-2.5 font-medium text-center">
-                          Progress & Status
-                        </th>
-                        <th className="px-5 py-2.5 font-medium text-right">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {tasks.map((task) => (
-                        <tr
-                          key={task.id}
-                          className="transition-colors hover:bg-slate-50"
-                        >
-                          <td className="px-5 py-3">
-                            <div className="max-w-[300px]">
-                              <button
-                                onClick={() =>
-                                  setExpandedTaskId(
-                                    expandedTaskId === task.id ? null : task.id,
-                                  )
-                                }
-                                className="text-left"
-                              >
-                                <p className="text-[13px] font-medium text-slate-900 hover:text-blue-900 transition-colors">
-                                  {task.title}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                                    <Calendar className="w-3 h-3" />
-                                    {formatDate(task.dueDate)}
-                                  </div>
-                                  <div className="flex -space-x-1">
-                                    {task.assignedUsers.slice(0, 3).map((u) => (
-                                      <div
-                                        key={u.id}
-                                        className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
-                                        title={u.fullName}
-                                      >
-                                        {u.fullName.charAt(0)}
-                                      </div>
-                                    ))}
-                                    {task.assignedUsers.length > 3 && (
-                                      <div className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold border-2 border-white rounded-full bg-slate-100 text-slate-600">
-                                        +{task.assignedUsers.length - 3}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
+                      <td className="px-5 py-3">
+                        <input
+                          type="checkbox"
+                          checked={task.status === "completed"}
+                          onChange={(e) =>
+                            handleStatusChange(
+                              task.id,
+                              e.target.checked ? "completed" : "pending",
+                            )
+                          }
+                          className="w-4 h-4 rounded cursor-pointer text-blue-900 border-slate-300 focus:ring-blue-900"
+                          title="Mark as completed"
+                        />
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="max-w-[300px]">
+                          <button
+                            onClick={() =>
+                              setExpandedTaskId(
+                                expandedTaskId === task.id ? null : task.id,
+                              )
+                            }
+                            className="text-left"
+                          >
+                            <p className="text-[13px] font-medium text-slate-900 hover:text-blue-900 transition-colors">
+                              {task.title}
+                            </p>
+                            <div className="flex items-center gap-2.5 mt-1">
+                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                <Calendar className="w-3 h-3" />
+                                {formatDate(task.dueDate)}
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-5 py-3">
-                            <span className="text-[13px] font-medium text-blue-900">
-                              {task.projectName || "-"}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-[13px] font-medium text-blue-900">
+                          {task.project?.name || task.projectName || "-"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-1">
+                            {task.assignedUsers.slice(0, 3).map((u) => (
+                              <div
+                                key={u.id}
+                                className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
+                                title={u.fullName}
+                              >
+                                {u.fullName.charAt(0)}
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-[12px] text-slate-600 truncate max-w-[140px]">
+                            {task.assignedUsers.length === 0
+                              ? "Unassigned"
+                              : task.assignedUsers.map((u) => u.fullName).join(", ")}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <StatusPill type="priority" value={task.priority} />
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex flex-col items-center gap-1.5 min-w-[150px]">
+                          <div className="w-full h-1 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full bg-blue-900 rounded-full"
+                              style={{ width: `${task.progress}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-[11px] font-medium text-slate-700"
+                              style={{
+                                fontFamily: "'JetBrains Mono', monospace",
+                              }}
+                            >
+                              {task.progress}%
                             </span>
-                          </td>
-                          <td className="px-5 py-3 text-center">
-                            <StatusPill type="priority" value={task.priority} />
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex flex-col items-center gap-1.5 min-w-[150px]">
-                              <div className="w-full h-1 overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full bg-blue-900 rounded-full"
-                                  style={{ width: `${task.progress}%` }}
-                                />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className="text-[11px] font-medium text-slate-700"
-                                  style={{
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                  }}
-                                >
-                                  {task.progress}%
-                                </span>
-                                <select
-                                  value={task.status}
-                                  onChange={(e) =>
-                                    handleStatusChange(task.id, e.target.value)
-                                  }
-                                  className="appearance-none bg-transparent cursor-pointer outline-none"
-                                >
-                                  <option value="pending">Pending</option>
-                                  <option value="in_progress">
-                                    In Progress
-                                  </option>
-                                  <option value="completed">Completed</option>
-                                </select>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => handleEditClick(task)}
-                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-blue-900 hover:bg-blue-50"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(task.id)}
-                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                            <select
+                              value={task.status}
+                              onChange={(e) =>
+                                handleStatusChange(task.id, e.target.value)
+                              }
+                              className="appearance-none bg-transparent cursor-pointer outline-none"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="on_hold">On Hold</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleEditClick(task)}
+                            className="p-1.5 transition-colors rounded text-slate-400 hover:text-blue-900 hover:bg-blue-50"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(task.id)}
+                            className="p-1.5 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))
+          </div>
         )}
       </div>
 
@@ -1166,46 +1091,26 @@ const AssignedTasks: React.FC = () => {
                   {addTaskError}
                 </div>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Company</Eyebrow>
-                  <select
-                    value={newCompanyName}
-                    onChange={(e) => setNewCompanyName(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  >
-                    <option value="" disabled>
-                      Select company
+              <div className="space-y-1.5">
+                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                <select
+                  value={newProjectId || ""}
+                  onChange={(e) =>
+                    setNewProjectId(
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                >
+                  <option value="" disabled>
+                    Select a project
+                  </option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
                     </option>
-                    {COMPANY_NAMES.map((company) => (
-                      <option key={company} value={company}>
-                        {company}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                  <select
-                    value={newProjectId || ""}
-                    onChange={(e) =>
-                      setNewProjectId(
-                        e.target.value ? Number(e.target.value) : null,
-                      )
-                    }
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  >
-                    <option value="" disabled>
-                      Select a project
-                    </option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-1.5 md:col-span-2">
@@ -1461,46 +1366,26 @@ const AssignedTasks: React.FC = () => {
                   {editTaskError}
                 </div>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Company</Eyebrow>
-                  <select
-                    value={editCompanyName}
-                    onChange={(e) => setEditCompanyName(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  >
-                    <option value="" disabled>
-                      Select company
+              <div className="space-y-1.5">
+                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                <select
+                  value={editProjectId || ""}
+                  onChange={(e) =>
+                    setEditProjectId(
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                >
+                  <option value="" disabled>
+                    Select a project
+                  </option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
                     </option>
-                    {COMPANY_NAMES.map((company) => (
-                      <option key={company} value={company}>
-                        {company}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                  <select
-                    value={editProjectId || ""}
-                    onChange={(e) =>
-                      setEditProjectId(
-                        e.target.value ? Number(e.target.value) : null,
-                      )
-                    }
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  >
-                    <option value="" disabled>
-                      Select a project
-                    </option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-1.5 md:col-span-2">
@@ -1724,10 +1609,12 @@ const AssignedTasks: React.FC = () => {
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
               <div>
                 <Eyebrow>
-                  {
-                    assignedTasks.find((t) => t.id === expandedTaskId)
-                      ?.companyName
-                  }
+                  {(() => {
+                    const t = assignedTasks.find(
+                      (task) => task.id === expandedTaskId,
+                    );
+                    return t?.project?.name || t?.projectName || "Task";
+                  })()}
                 </Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
                   {assignedTasks.find((t) => t.id === expandedTaskId)?.title}

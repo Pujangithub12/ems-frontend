@@ -4,32 +4,40 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import { ProjectHeading, ProjectTask } from "../types";
 import { flattenProjectTasks } from "../project-components/taskUtils";
-import { StatusPill } from "../project-components/ProjectSharedComponents";
 import {
+  Cloud,
+  ShieldCheck,
   Clock,
-  CheckCircle2,
-  AlertCircle,
-  TrendingUp,
-  Calendar as CalendarIcon,
-  Building2,
-  Users as UsersIcon,
-  Loader2,
-  ChevronRight,
-  Zap,
-  ArrowRight,
+  SquarePen,
+  CalendarDays,
+  AlertTriangle,
+  Flag,
   UserCheck,
-  ListChecks,
+  CheckCircle2,
+  Building2,
+  Loader2,
+  ArrowRight,
+  Bell,
+  Activity as ActivityIcon,
+  Package,
+  Truck,
+  PackageX,
+  PackageSearch,
+  Boxes,
+  Warehouse,
+  Users as UsersIcon,
+  Layers,
+  Cable,
+  Sparkles,
+  Wand2,
 } from "lucide-react";
 
-type AssignedUser = {
-  id: number;
-  fullName: string;
-  email: string;
-};
+// ---- Types ---------------------------------------------------------------
+
+type AssignedUser = { id: number; fullName: string; email: string };
 
 type Task = {
   id: number;
-  companyName: string;
   title: string;
   description: string;
   priority: string;
@@ -51,13 +59,38 @@ type DashboardData = {
 type ProjectSummary = {
   id: number;
   name: string;
+  description?: string;
   status: string;
   dueDate?: string;
+  createdAt?: string;
   headings?: ProjectHeading[];
   projectTasks?: ProjectTask[];
 };
 
-type OngoingProject = ProjectSummary & { progress: number };
+type ScheduleHealth = "on_track" | "at_risk" | "delayed";
+
+type OngoingProject = ProjectSummary & {
+  progress: number;
+  health: ScheduleHealth;
+  scheduleLabel: string;
+};
+
+type LeaveRequest = {
+  id: number;
+  title: string;
+  status: string;
+  createdAt: string;
+  user: { id: number; fullName: string };
+};
+
+type ActivityEntry = {
+  id: number;
+  type: string;
+  description: string;
+  createdAt: string;
+};
+
+// ---- Helpers --------------------------------------------------------------
 
 const formatDate = (dateString: string) =>
   new Date(dateString).toLocaleDateString(undefined, {
@@ -66,16 +99,66 @@ const formatDate = (dateString: string) =>
     day: "numeric",
   });
 
-const dueDateBadge = (dueDate?: string): { label: string; tone: string } => {
-  if (!dueDate) return { label: "No deadline", tone: "text-slate-400" };
-  const diffDays = Math.round(
-    (new Date(dueDate).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) /
-      86400000,
-  );
-  if (diffDays < 0) return { label: `Overdue ${Math.abs(diffDays)}d`, tone: "text-red-700" };
-  if (diffDays === 0) return { label: "Due today", tone: "text-amber-700" };
-  if (diffDays <= 7) return { label: `${diffDays}d left`, tone: "text-amber-700" };
-  return { label: formatDate(dueDate), tone: "text-slate-500" };
+const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
+
+const daysBetween = (a: Date, b: Date) =>
+  Math.round((b.getTime() - a.getTime()) / 86400000);
+
+/** "10 min ago" / "2 hrs ago" / "3 days ago" — coarse, human relative time. */
+const timeAgo = (dateString: string) => {
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
+
+/**
+ * Derives a project's schedule health by comparing actual progress against
+ * the progress you'd "expect" given how much of the createdAt -> dueDate
+ * window has elapsed. Real, computed data — not a stored field — since the
+ * app doesn't track an explicit "planned pace" per project.
+ */
+function scheduleHealth(
+  progress: number,
+  createdAt: string | undefined,
+  dueDate: string | undefined,
+): { health: ScheduleHealth; scheduleLabel: string } {
+  const today = new Date();
+  if (!dueDate) return { health: "on_track", scheduleLabel: "No deadline set" };
+
+  const due = new Date(dueDate);
+  const start = createdAt ? new Date(createdAt) : today;
+  const totalDays = Math.max(1, daysBetween(start, due));
+  const elapsedDays = Math.min(totalDays, Math.max(0, daysBetween(start, today)));
+  const expectedProgress = (elapsedDays / totalDays) * 100;
+  const deltaDays = Math.round(((progress - expectedProgress) / 100) * totalDays);
+
+  if (today.getTime() > due.getTime() && progress < 100) {
+    return { health: "delayed", scheduleLabel: `${Math.abs(daysBetween(due, today))} days behind` };
+  }
+  if (deltaDays <= -3) {
+    return { health: "at_risk", scheduleLabel: `${Math.abs(deltaDays)} days behind` };
+  }
+  if (deltaDays > 0) {
+    return { health: "on_track", scheduleLabel: `${deltaDays} days ahead` };
+  }
+  return { health: "on_track", scheduleLabel: "On schedule" };
+}
+
+const HEALTH_META: Record<
+  ScheduleHealth,
+  { label: string; dot: string; text: string; bar: string; iconBg: string }
+> = {
+  on_track: { label: "On Track", dot: "bg-emerald-500", text: "text-emerald-700", bar: "bg-emerald-500", iconBg: "bg-emerald-50" },
+  at_risk: { label: "At Risk", dot: "bg-amber-500", text: "text-amber-700", bar: "bg-amber-500", iconBg: "bg-amber-50" },
+  delayed: { label: "Delayed", dot: "bg-red-500", text: "text-red-700", bar: "bg-red-500", iconBg: "bg-red-50" },
 };
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -90,46 +173,126 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   </div>
 );
 
-const STAT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  amber: {
-    bg: "bg-amber-50",
-    text: "text-amber-700",
-    border: "hover:border-amber-300",
-  },
-  blue: {
-    bg: "bg-blue-50",
-    text: "text-blue-900",
-    border: "hover:border-blue-300",
-  },
-  emerald: {
-    bg: "bg-emerald-50",
-    text: "text-emerald-700",
-    border: "hover:border-emerald-300",
-  },
-  red: {
-    bg: "bg-red-50",
-    text: "text-red-700",
-    border: "hover:border-red-300",
-  },
-  violet: {
-    bg: "bg-violet-50",
-    text: "text-violet-700",
-    border: "hover:border-violet-300",
-  },
+// ---- Static placeholder content --------------------------------------------
+// The sections below (Today's Schedule, Supply Chain, Team Availability,
+// Construction Progress Today, AI Insights) have no backing feature in this
+// app yet (no time-boxed calendar events, no procurement/inventory tables,
+// no attendance tracking, no construction-metric fields, no AI integration).
+// Per product decision, they're rendered here as static sample data purely
+// to match the reference design, not as live figures.
+
+const MOCK_SCHEDULE = [
+  { time: "09:00", ampm: "AM", title: "Site Visit", subtitle: "Solar Plant Construction" },
+  { time: "11:30", ampm: "AM", title: "Project Review Meeting", subtitle: "Conference Room" },
+  { time: "02:00", ampm: "PM", title: "Client Meeting", subtitle: "Online Meeting" },
+  { time: "04:00", ampm: "PM", title: "Daily Progress Review", subtitle: "Team Standup" },
+];
+
+const MOCK_SUPPLY_CHAIN = [
+  { group: "PROCUREMENT", label: "Orders Pending", value: 5 },
+  { group: "PROCUREMENT", label: "Materials in Transit", value: 8 },
+  { group: "PROCUREMENT", label: "Delayed Deliveries", value: 3 },
+  { group: "INVENTORY", label: "Low Stock Items", value: 12 },
+  { group: "INVENTORY", label: "Out of Stock Items", value: 5 },
+];
+
+const MOCK_TEAM: { label: string; count: number; pct: number; color: string }[] = [
+  { label: "Present", count: 32, pct: 67, color: "#10b981" },
+  { label: "On Leave", count: 5, pct: 10, color: "#ef4444" },
+  { label: "On Site", count: 7, pct: 15, color: "#1e3a8a" },
+  { label: "In Office", count: 3, pct: 6, color: "#f59e0b" },
+  { label: "Working Remotely", count: 1, pct: 2, color: "#94a3b8" },
+];
+const MOCK_TEAM_TOTAL = MOCK_TEAM.reduce((sum, t) => sum + t.count, 0);
+
+const MOCK_CONSTRUCTION = [
+  { label: "Piles Completed", value: "18", unit: "NOS", icon: Layers },
+  { label: "Structures Installed", value: "24", unit: "NOS", icon: Building2 },
+  { label: "Modules Installed", value: "420", unit: "NOS", icon: Package },
+  { label: "Cable Laid", value: "850", unit: "M", icon: Cable },
+  { label: "Concrete Poured", value: "12", unit: "M³", icon: Boxes },
+];
+
+const MOCK_AI_INSIGHTS = [
+  { tone: "red", icon: AlertTriangle, text: "3 critical tasks are overdue by more than 5 days" },
+  { tone: "amber", icon: Clock, text: "Project Hydro Power is 5 days behind schedule" },
+  { tone: "amber", icon: Clock, text: "Cable stock is sufficient for only 1 more week" },
+  { tone: "amber", icon: Clock, text: "2 approvals have been pending for more than 48 hours" },
+  { tone: "green", icon: CheckCircle2, text: "Great job! 21 tasks completed this week" },
+];
+const AI_TONE_CLASSES: Record<string, string> = {
+  red: "bg-red-50 text-red-700",
+  amber: "bg-amber-50 text-amber-700",
+  green: "bg-emerald-50 text-emerald-700",
 };
+
+// ---- Donut chart (hand-rolled SVG, no charting dependency needed) ----------
+
+const TeamDonut: React.FC<{ segments: typeof MOCK_TEAM; total: number }> = ({ segments, total }) => {
+  const radius = 60;
+  const stroke = 18;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <svg width={150} height={150} viewBox="0 0 150 150" className="flex-shrink-0">
+      <g transform="translate(75,75) rotate(-90)">
+        <circle r={radius} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+        {segments.map((seg) => {
+          const length = (seg.pct / 100) * circumference;
+          const dasharray = `${length} ${circumference - length}`;
+          const circle = (
+            <circle
+              key={seg.label}
+              r={radius}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={stroke}
+              strokeDasharray={dasharray}
+              strokeDashoffset={-offset}
+              strokeLinecap="butt"
+            />
+          );
+          offset += length;
+          return circle;
+        })}
+      </g>
+      <text x="75" y="70" textAnchor="middle" className="fill-slate-900" style={{ fontSize: 24, fontWeight: 700 }}>
+        {total}
+      </text>
+      <text x="75" y="88" textAnchor="middle" className="fill-slate-400" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
+        TOTAL
+      </text>
+    </svg>
+  );
+};
+
+// ---- Component --------------------------------------------------------------
 
 const Dashboard: React.FC = () => {
   const { user, workspace } = useAuth();
   const navigate = useNavigate();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
-    null,
-  );
+
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
 
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [teamCount, setTeamCount] = useState<number | null>(null);
+
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [activities, setActivities] = useState<ActivityEntry[]>([]);
+  const [notifTab, setNotifTab] = useState<"notifications" | "activity">("notifications");
+
+  const [now, setNow] = useState(new Date());
+
+  // Live clock, matching the reference header's ticking time pill.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -141,9 +304,7 @@ const Dashboard: React.FC = () => {
         setDashboardData(response.data);
       } catch (err: any) {
         setDashboardError(
-          err?.response?.data?.message ||
-            err.message ||
-            "Unable to load dashboard.",
+          err?.response?.data?.message || err.message || "Unable to load dashboard.",
         );
       } finally {
         setDashboardLoading(false);
@@ -154,24 +315,30 @@ const Dashboard: React.FC = () => {
   }, [user, workspace?.id]);
 
   useEffect(() => {
-    const loadProjectsAndTeam = async () => {
+    const loadExtras = async () => {
       if (!user) return;
       setProjectsLoading(true);
       try {
-        const [projectsRes, usersRes] = await Promise.all([
+        const [projectsRes, usersRes, tasksRes, leaveRes, activityRes] = await Promise.all([
           api.get<ProjectSummary[]>("/api/projects"),
           api.get<any[]>("/api/users"),
+          api.get<Task[]>("/api/tasks"),
+          api.get<LeaveRequest[]>("/api/leaverequest").catch(() => ({ data: [] })),
+          api.get<ActivityEntry[]>("/api/activities").catch(() => ({ data: [] })),
         ]);
         setProjects(projectsRes.data);
         setTeamCount(usersRes.data.length);
+        setAllTasks(tasksRes.data);
+        setLeaveRequests(leaveRes.data ?? []);
+        setActivities(activityRes.data ?? []);
       } catch (err) {
-        console.error("Failed to load projects for dashboard", err);
+        console.error("Failed to load dashboard extras", err);
       } finally {
         setProjectsLoading(false);
       }
     };
 
-    loadProjectsAndTeam();
+    loadExtras();
   }, [user, workspace?.id]);
 
   const ongoingProjects: OngoingProject[] = useMemo(() => {
@@ -180,9 +347,9 @@ const Dashboard: React.FC = () => {
       .map((p) => {
         const tasks = flattenProjectTasks(p);
         const doneCount = tasks.filter((t) => t.status === "completed").length;
-        const progress =
-          tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
-        return { ...p, progress };
+        const progress = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
+        const { health, scheduleLabel } = scheduleHealth(progress, p.createdAt, p.dueDate);
+        return { ...p, progress, health, scheduleLabel };
       })
       .sort((a, b) => {
         if (!a.dueDate && !b.dueDate) return 0;
@@ -192,387 +359,219 @@ const Dashboard: React.FC = () => {
       });
   }, [projects]);
 
-  const topProjects = ongoingProjects.slice(0, 5);
-  const visibleHighPriorityTasks = dashboardData?.highPriorityTasks.slice(0, 5) ?? [];
+  const topProjects = ongoingProjects.slice(0, 6);
+
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dueTodayCount = useMemo(
+    () =>
+      allTasks.filter((t) => t.status !== "completed" && t.dueDate && isSameDay(new Date(t.dueDate), new Date())).length,
+    [allTasks],
+  );
+  const overdueCount = useMemo(
+    () =>
+      allTasks.filter(
+        (t) => t.status !== "completed" && t.dueDate && new Date(t.dueDate).getTime() < todayStart.getTime(),
+      ).length,
+    [allTasks, todayStart],
+  );
+  // No separate "completedAt" is tracked on Task, so this approximates
+  // "done this week" via createdAt as the closest available real signal.
+  const doneThisWeekCount = useMemo(
+    () =>
+      allTasks.filter(
+        (t) => t.status === "completed" && daysBetween(new Date(t.createdAt), new Date()) <= 7,
+      ).length,
+    [allTasks],
+  );
+
+  const pendingLeaveRequests = useMemo(
+    () => leaveRequests.filter((lr) => lr.status === "pending"),
+    [leaveRequests],
+  );
 
   const today = new Date();
   const hour = today.getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const firstName = user?.fullName?.split(" ")[0] || "there";
+  const clockLabel = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
-  const stats = [
+  const kpis = [
     {
-      label: "Pending",
-      value: dashboardData?.pending ?? 0,
-      icon: Clock,
-      color: "amber",
-      sub: "awaiting action",
+      label: "My Tasks",
+      value: dashboardData?.total ?? 0,
+      sub: "assigned",
+      icon: SquarePen,
+      iconBg: "bg-slate-100",
+      iconText: "text-slate-600",
+      valueText: "text-slate-900",
       onClick: () => navigate(`/${workspace?.id}/tasks`),
     },
     {
-      label: "In Progress",
-      value: dashboardData?.inProgress ?? 0,
-      icon: TrendingUp,
-      color: "blue",
-      sub: "currently active",
+      label: "Due Today",
+      value: dueTodayCount,
+      sub: "tasks",
+      icon: CalendarDays,
+      iconBg: "bg-blue-50",
+      iconText: "text-blue-700",
+      valueText: "text-slate-900",
       onClick: () => navigate(`/${workspace?.id}/tasks`),
     },
     {
-      label: "Completed",
-      value: dashboardData?.completed ?? 0,
-      icon: CheckCircle2,
-      color: "emerald",
-      sub: "this period",
+      label: "Overdue",
+      value: overdueCount,
+      sub: "tasks",
+      icon: AlertTriangle,
+      iconBg: "bg-red-50",
+      iconText: "text-red-700",
+      valueText: "text-red-600",
       onClick: () => navigate(`/${workspace?.id}/tasks`),
     },
     {
       label: "High Priority",
       value: dashboardData?.highPriorityTasks.length ?? 0,
-      icon: AlertCircle,
-      color: "red",
-      sub: "needs attention",
+      sub: "tasks",
+      icon: Flag,
+      iconBg: "bg-red-50",
+      iconText: "text-red-700",
+      valueText: "text-slate-900",
       onClick: () => navigate(`/${workspace?.id}/tasks`),
     },
     {
-      label: "Waiting Approval",
+      label: "To Approve",
       value: dashboardData?.pendingLeaveRequests ?? 0,
-      icon: UserCheck,
-      color: "violet",
-      sub: "leave requests",
+      sub: "requests",
+      icon: Clock,
+      iconBg: "bg-amber-50",
+      iconText: "text-amber-700",
+      valueText: "text-slate-900",
       onClick: () => navigate(`/${workspace?.id}/leaverequests`),
+    },
+    {
+      label: "Done This Week",
+      value: doneThisWeekCount,
+      sub: "tasks",
+      icon: CheckCircle2,
+      iconBg: "bg-emerald-50",
+      iconText: "text-emerald-700",
+      valueText: "text-emerald-600",
+      onClick: () => navigate(`/${workspace?.id}/tasks`),
     },
   ];
 
   return (
-    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
-      {/* Greeting header */}
-      <Eyebrow>{today.toDateString()}</Eyebrow>
-      <h2 className="font-semibold mt-1 mb-1 text-[28px] tracking-tight text-slate-900">
-        {greeting}, {firstName}
-      </h2>
-      <p className="text-slate-600 mb-8 text-[14px]">
-        {dashboardLoading ? (
-          <span className="text-slate-400">Loading your workspace…</span>
-        ) : dashboardError ? (
-          <span className="text-red-700">Unable to load dashboard data.</span>
-        ) : (
-          <>
-            You have{" "}
-            <span className="font-semibold text-slate-900">
-              {dashboardData?.pending ?? 0} pending tasks
-            </span>{" "}
-            and{" "}
-            <span className="font-semibold text-slate-900">
-              {dashboardData?.highPriorityTasks.length ?? 0} high-priority items
-            </span>{" "}
-            requiring your attention.
-          </>
-        )}
-      </p>
+    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
+      {/* Header */}
+      <div className="flex flex-wrap gap-4 justify-between items-start mb-8">
+        <div>
+          <h2 className="font-semibold text-[28px] tracking-tight text-slate-900">
+            {greeting}, {firstName}
+          </h2>
+          <p className="text-slate-500 mt-1 text-[14px]">
+            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · Here's what's
+            happening across your workspace.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
+            <Cloud className="w-3.5 h-3.5 text-blue-500" />
+            26°C · Kathmandu
+          </span>
+          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            All systems operational
+          </span>
+          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
+            <Clock className="w-3.5 h-3.5 text-violet-500" />
+            {clockLabel}
+          </span>
+        </div>
+      </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 gap-3 mb-8 sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map((item) => {
-          const c = STAT_COLORS[item.color];
-          return (
-            <button
-              key={item.label}
-              onClick={item.onClick}
-              className={`group p-4 text-left bg-white border rounded-lg border-slate-200 transition-all hover:shadow-md hover:-translate-y-0.5 ${c.border}`}
-            >
-              <div className="flex items-center justify-between">
-                <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${c.bg}`}>
-                  <item.icon className={`w-5 h-5 ${c.text}`} />
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-slate-400" />
-              </div>
-              <div className={`mt-3 text-[26px] font-bold leading-none tracking-tight ${c.text}`}>
-                {item.value}
-              </div>
-              <Eyebrow className="mt-2">{item.label}</Eyebrow>
-              <div className="mt-0.5 text-slate-400 text-[11px]">{item.sub}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* High priority tasks */}
-        <div className="bg-white border rounded lg:col-span-2 border-slate-200">
-          <div className="flex items-center px-5 py-4 border-b border-slate-200">
-            <div>
-              <Eyebrow>Your high priority tasks</Eyebrow>
-              <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
-                Needs your attention
+      <div className="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-3 lg:grid-cols-6">
+        {kpis.map((item) => (
+          <button
+            key={item.label}
+            onClick={item.onClick}
+            className="p-4 text-left bg-white border rounded-lg border-slate-200 transition-shadow hover:shadow-md"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[12px] font-medium text-slate-500">{item.label}</span>
+              <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${item.iconBg}`}>
+                <item.icon className={`w-4 h-4 ${item.iconText}`} />
               </div>
             </div>
-            {!dashboardLoading && dashboardData && (
-              <span
-                className="ml-auto inline-flex items-center gap-1.5 rounded bg-red-100 text-red-700 px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-red-700" />
-                {dashboardData.highPriorityTasks.length} Critical
-              </span>
-            )}
-          </div>
+            <div className={`mt-3 text-[26px] font-bold leading-none tracking-tight ${item.valueText}`}>
+              {dashboardLoading ? "…" : item.value}
+            </div>
+            <div className="mt-1.5 text-slate-400 text-[12px]">{item.sub}</div>
+          </button>
+        ))}
+      </div>
 
-          <div className="p-5">
-            {dashboardLoading ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-12">
-                <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-                <div
-                  className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                >
-                  Fetching tasks
-                </div>
-              </div>
-            ) : dashboardError ? (
-              <div className="p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
-                <AlertCircle className="flex-shrink-0 w-4 h-4" />
-                <span>{dashboardError}</span>
-              </div>
-            ) : dashboardData && dashboardData.highPriorityTasks.length > 0 ? (
-              <div>
-                {visibleHighPriorityTasks.map((task, idx) => (
-                  <div
-                    key={task.id}
-                    onClick={() => navigate(`/${workspace?.id}/tasks`)}
-                    className={`py-3.5 flex items-center gap-3 hover:bg-slate-50 cursor-pointer px-2 -mx-2 rounded ${
-                      idx < visibleHighPriorityTasks.length - 1
-                        ? "border-b border-slate-200"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 bg-blue-100 rounded">
-                      <Zap className="w-4 h-4 text-blue-900" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px]">
-                        <span className="font-semibold text-slate-900">
-                          {task.title}
-                        </span>
-                      </div>
-                      <div className="text-slate-500 text-[12px] mt-0.5 flex items-center gap-2 flex-wrap">
-                        <span className="flex items-center gap-1.5">
-                          <Building2 className="w-3 h-3" />
-                          {task.companyName}
-                        </span>
-                        <span>·</span>
-                        <span className="flex items-center gap-1.5">
-                          <CalendarIcon className="w-3 h-3" />
-                          Due {formatDate(task.dueDate)}
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      className="rounded text-[10px] px-2 py-0.5 tracking-[0.05em] uppercase font-medium flex-shrink-0"
-                      style={{
-                        fontFamily: "'JetBrains Mono', monospace",
-                        background:
-                          task.priority === "high"
-                            ? "#FEE2E2"
-                            : task.priority === "medium"
-                              ? "#FEF3C7"
-                              : "#EEF1F5",
-                        color:
-                          task.priority === "high"
-                            ? "#B91C1C"
-                            : task.priority === "medium"
-                              ? "#B45309"
-                              : "#94A3B8",
-                      }}
-                    >
-                      {task.priority}
-                    </span>
-                    <div className="flex -space-x-1.5 flex-shrink-0">
-                      {task.assignedUsers.slice(0, 3).map((u) => (
-                        <div
-                          key={u.id}
-                          className="w-6 h-6 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-semibold text-slate-700"
-                          title={u.fullName}
-                        >
-                          {u.fullName.charAt(0)}
-                        </div>
-                      ))}
-                    </div>
-                    <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-slate-100">
-                  <CheckCircle2 className="w-6 h-6 text-slate-400" />
-                </div>
-                <div className="font-semibold text-[14px] text-slate-900 mb-1">
-                  All caught up
-                </div>
-                <div className="text-slate-500 text-[12px] max-w-xs">
-                  No high priority tasks require your attention right now.
-                </div>
-              </div>
-            )}
-          </div>
-          {!dashboardLoading && !dashboardError && (
+      {/* Project Progress Snapshot + Today's Schedule */}
+      <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-3">
+        <div className="bg-white border rounded-lg lg:col-span-2 border-slate-200">
+          <div className="flex items-center px-5 py-4 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">Project Progress Snapshot</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/tasks`)}
-              className="flex items-center justify-center w-full gap-1.5 py-3 text-[12px] font-medium text-blue-900 border-t border-slate-200 hover:bg-slate-50 transition-colors rounded-b"
+              onClick={() => navigate(`/${workspace?.id}/project`)}
+              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
-              View all tasks
+              View All Projects
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
-          )}
-        </div>
-
-        {/* Recent activity / summary */}
-        <div className="bg-white border rounded border-slate-200">
-          <div className="px-5 py-4 border-b border-slate-200">
-            <Eyebrow>Workspace summary</Eyebrow>
-            <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
-              At a glance
-            </div>
           </div>
-          <div>
-            {[
-              {
-                label: "Total tasks",
-                value: dashboardData?.total ?? 0,
-                sub: "across all statuses",
-                icon: ListChecks,
-                color: "blue",
-              },
-              {
-                label: "Completion rate",
-                value:
-                  dashboardData && dashboardData.total > 0
-                    ? Math.round(
-                        (dashboardData.completed / dashboardData.total) * 100,
-                      )
-                    : 0,
-                unit: "%",
-                sub: "this period",
-                icon: TrendingUp,
-                color: "emerald",
-              },
-              {
-                label: "Active projects",
-                value: projectsLoading ? "…" : ongoingProjects.length,
-                sub: "in progress or pending",
-                icon: Building2,
-                color: "amber",
-              },
-              {
-                label: "Team members",
-                value: teamCount ?? "…",
-                sub: "in this workspace",
-                icon: UsersIcon,
-                color: "violet",
-              },
-            ].map((row, i) => {
-              const c = STAT_COLORS[row.color];
-              return (
-                <div
-                  key={row.label}
-                  className={`px-5 py-3 flex items-center gap-3 ${
-                    i < 3 ? "border-b border-slate-200" : ""
-                  }`}
-                >
-                  <div className={`flex items-center justify-center w-8 h-8 rounded flex-shrink-0 ${c.bg}`}>
-                    <row.icon className={`w-4 h-4 ${c.text}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-slate-600 text-[12px]">{row.label}</div>
-                    <div className="text-slate-400 text-[11px] mt-0.5">
-                      {row.sub}
-                    </div>
-                  </div>
-                  <div className="font-semibold text-[15px] text-slate-900 tracking-tight flex-shrink-0">
-                    {row.value}
-                    {row.unit && (
-                      <span
-                        className="text-slate-400 text-[11px] ml-0.5"
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {row.unit}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
-      {/* Project progress snapshot */}
-      <div className="bg-white border rounded border-slate-200 mt-6">
-        <div className="flex items-center px-5 py-4 border-b border-slate-200">
-          <div>
-            <Eyebrow>Project progress snapshot</Eyebrow>
-            <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
-              Ongoing work
-            </div>
-          </div>
-          <button
-            onClick={() => navigate(`/${workspace?.id}/project`)}
-            className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
-          >
-            View all
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="p-5">
           {projectsLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-12">
               <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-              <div
-                className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                Fetching projects
-              </div>
             </div>
           ) : topProjects.length > 0 ? (
-            <div className="space-y-1">
+            <div className="px-5">
+              <div className="grid grid-cols-[1fr_180px_120px_120px] gap-3 py-2 text-[10px] tracking-[0.08em] uppercase text-slate-400 font-mono border-b border-slate-100">
+                <span>Project</span>
+                <span>Progress</span>
+                <span>Status</span>
+                <span>Schedule</span>
+              </div>
               {topProjects.map((p, idx) => {
-                const badge = dueDateBadge(p.dueDate);
+                const meta = HEALTH_META[p.health];
                 return (
                   <button
                     key={p.id}
                     onClick={() => navigate(`/${workspace?.id}/project/${p.id}/details`)}
-                    className={`w-full text-left py-3.5 px-2 -mx-2 rounded hover:bg-slate-50 transition-colors ${
-                      idx < topProjects.length - 1 ? "border-b border-slate-200" : ""
+                    className={`w-full text-left grid grid-cols-[1fr_180px_120px_120px] gap-3 items-center py-3.5 hover:bg-slate-50 transition-colors ${
+                      idx < topProjects.length - 1 ? "border-b border-slate-100" : ""
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="flex items-center min-w-0 gap-2">
-                        <span className="font-semibold text-[13px] text-slate-900 truncate">
-                          {p.name}
-                        </span>
-                        <StatusPill status={p.status} />
+                    <div className="flex gap-3 items-center min-w-0">
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${meta.iconBg}`}>
+                        <Building2 className={`w-4 h-4 ${meta.text}`} />
                       </div>
-                      <span
-                        className={`text-[11px] font-medium flex-shrink-0 ${badge.tone}`}
-                      >
-                        {badge.label}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[13px] text-slate-900 truncate">{p.name}</div>
+                        {p.description && (
+                          <div className="text-slate-400 text-[11px] truncate">{p.description}</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex gap-2 items-center">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full transition-all rounded-full bg-blue-900"
-                          style={{ width: `${p.progress}%` }}
-                        />
+                        <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${p.progress}%` }} />
                       </div>
-                      <span className="text-[11px] text-slate-500 w-9 text-right flex-shrink-0">
-                        {p.progress}%
-                      </span>
+                      <span className="text-[11px] text-slate-500 w-8 flex-shrink-0">{p.progress}%</span>
                     </div>
+                    <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${meta.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </div>
+                    <div className="text-[12px] text-slate-500">{p.scheduleLabel}</div>
                   </button>
                 );
               })}
@@ -582,57 +581,208 @@ const Dashboard: React.FC = () => {
               <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-slate-100">
                 <Building2 className="w-6 h-6 text-slate-400" />
               </div>
-              <div className="font-semibold text-[14px] text-slate-900 mb-1">
-                No ongoing projects
-              </div>
+              <div className="font-semibold text-[14px] text-slate-900 mb-1">No ongoing projects</div>
               <div className="text-slate-500 text-[12px] max-w-xs">
                 All projects are completed, or none have been created yet.
               </div>
             </div>
           )}
+          <div className="h-2" />
+        </div>
+
+        {/* Today's Schedule (sample data — no time-boxed calendar events yet) */}
+        <div className="bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center px-5 py-4 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">Today's Schedule</div>
+            <button
+              onClick={() => navigate(`/${workspace?.id}/calendar`)}
+              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
+            >
+              View Calendar
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            {MOCK_SCHEDULE.map((item, idx) => (
+              <div key={idx} className="flex gap-3">
+                <div className="w-12 text-right flex-shrink-0">
+                  <div className="font-mono font-semibold text-[13px] text-slate-900">{item.time}</div>
+                  <div className="text-slate-400 text-[10px]">{item.ampm}</div>
+                </div>
+                <div className="pl-3 border-l-2 border-blue-100">
+                  <div className="font-medium text-[13px] text-slate-900">{item.title}</div>
+                  <div className="text-slate-400 text-[12px]">{item.subtitle}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="p-5 mt-6 bg-white border rounded border-slate-200">
-        <Eyebrow>Quick actions</Eyebrow>
-        <div className="font-semibold mt-0.5 mb-4 text-[15px] text-slate-900">
-          Jump to a module
-        </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[
-            {
-              label: "Projects",
-              sub: "Pipeline & construction",
-              icon: Building2,
-              path: "project",
-            },
-            { label: "Tasks", sub: "Assigned work", icon: CheckCircle2, path: "tasks" },
-            { label: "Users", sub: "Team directory", icon: UsersIcon, path: "users" },
-            {
-              label: "Calendar",
-              sub: "Schedule & leaves",
-              icon: CalendarIcon,
-              path: "calendar",
-            },
-          ].map((a) => (
+      {/* Notifications/Activity + Supply Chain + Team Availability */}
+      <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-3">
+        <div className="bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center gap-5 px-5 pt-3 border-b border-slate-200">
             <button
-              key={a.label}
-              onClick={() => navigate(`/${workspace?.id}/${a.path}`)}
-              className="flex items-start gap-3 p-3 text-left transition-colors border rounded border-slate-200 hover:bg-slate-50"
+              onClick={() => setNotifTab("notifications")}
+              className={`pb-3 text-[13px] font-medium border-b-2 transition-colors ${
+                notifTab === "notifications" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+              }`}
             >
-              <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded bg-slate-100">
-                <a.icon className="w-4 h-4 text-slate-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-[13px] text-slate-900">
-                  {a.label}
-                </div>
-                <div className="text-slate-500 text-[11px] mt-0.5">{a.sub}</div>
-              </div>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400 mt-1 flex-shrink-0" />
+              Notifications
             </button>
-          ))}
+            <button
+              onClick={() => setNotifTab("activity")}
+              className={`pb-3 text-[13px] font-medium border-b-2 transition-colors ${
+                notifTab === "activity" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              Recent Activity
+            </button>
+            <button
+              onClick={() => navigate(`/${workspace?.id}/activities`)}
+              className="flex items-center flex-shrink-0 gap-1 ml-auto mb-3 text-[12px] font-medium text-blue-900 hover:text-blue-700"
+            >
+              View All
+            </button>
+          </div>
+          <div className="p-4 space-y-3 max-h-[200px] overflow-y-auto">
+            {notifTab === "notifications" ? (
+              pendingLeaveRequests.length > 0 ? (
+                pendingLeaveRequests.slice(0, 6).map((lr) => (
+                  <div key={lr.id} className="flex gap-2.5 items-start">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] text-slate-700">
+                        <span className="font-semibold text-slate-900">Leave request from {lr.user.fullName}</span>{" "}
+                        needs your approval
+                      </div>
+                      <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(lr.createdAt)}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex gap-2.5 items-start">
+                  <Bell className="mt-0.5 w-4 h-4 text-slate-300 flex-shrink-0" />
+                  <div className="text-slate-400 text-[13px]">Nothing needs your attention right now.</div>
+                </div>
+              )
+            ) : activities.length > 0 ? (
+              activities.slice(0, 6).map((a) => (
+                <div key={a.id} className="flex gap-2.5 items-start">
+                  <ActivityIcon className="mt-0.5 w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[13px] text-slate-700">{a.description}</div>
+                    <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(a.createdAt)}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-slate-400 text-[13px]">No recent activity yet.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Supply Chain (sample data — procurement/inventory tracking isn't built yet) */}
+        <div className="bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center px-5 py-3 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">Supply Chain</div>
+            <span className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900">
+              View All
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {MOCK_SUPPLY_CHAIN.map((row) => (
+              <div key={row.label} className="flex gap-3 items-center px-5 py-2">
+                <span
+                  className="font-mono text-[9px] tracking-[0.08em] uppercase text-slate-400 w-24 flex-shrink-0"
+                >
+                  {row.group}
+                </span>
+                <span className="flex-1 text-[13px] text-slate-700">{row.label}</span>
+                <span className="flex items-center justify-center min-w-[26px] h-6 px-1.5 rounded-full bg-amber-50 text-amber-700 text-[12px] font-semibold">
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Team Availability (sample data — no attendance/location tracking yet) */}
+        <div className="bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center px-5 py-3 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">Team Availability</div>
+            <button
+              onClick={() => navigate(`/${workspace?.id}/users`)}
+              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
+            >
+              View Team
+            </button>
+          </div>
+          <div className="flex gap-5 items-center p-4">
+            <TeamDonut segments={MOCK_TEAM} total={teamCount ?? MOCK_TEAM_TOTAL} />
+            <div className="flex-1 space-y-1.5 min-w-0">
+              {MOCK_TEAM.map((seg) => (
+                <div key={seg.label} className="flex gap-2 items-center text-[12px]">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: seg.color }} />
+                  <span className="flex-1 text-slate-600 truncate">{seg.label}</span>
+                  <span className="font-semibold text-slate-900">{seg.count}</span>
+                  <span className="text-slate-400 w-10 text-right">({seg.pct}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Construction Progress Today + AI Insights */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Sample data — no construction-metric fields exist on Project/Task yet */}
+        <div className="bg-white border rounded-lg lg:col-span-3 border-slate-200">
+          <div className="flex items-center px-5 py-4 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">Construction Progress Today</div>
+            <button
+              onClick={() => navigate(`/${workspace?.id}/project`)}
+              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
+            >
+              View Details
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-5">
+            {MOCK_CONSTRUCTION.map((item) => (
+              <div key={item.label} className="text-center">
+                <div className="flex items-center justify-center mx-auto mb-2 w-10 h-10 rounded-lg bg-blue-50">
+                  <item.icon className="w-4.5 h-4.5 text-blue-700" />
+                </div>
+                <div className="font-bold text-[20px] text-slate-900 tracking-tight">{item.value}</div>
+                <div className="text-slate-400 text-[10px] tracking-wide">{item.unit}</div>
+                <div className="text-slate-500 text-[11px] mt-1">{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* AI Insights (sample data — no AI feature is wired up yet) */}
+        <div className="bg-white border rounded-lg lg:col-span-2 border-slate-200">
+          <div className="flex items-center px-5 py-4 border-b border-slate-200">
+            <div className="font-semibold text-[15px] text-slate-900">AI Insights</div>
+            <span className="flex items-center flex-shrink-0 gap-1 ml-auto text-[10px] font-medium text-violet-500 tracking-wide uppercase">
+              <Sparkles className="w-3 h-3" />
+              Powered by AI
+            </span>
+          </div>
+          <div className="p-4 space-y-2">
+            {MOCK_AI_INSIGHTS.map((insight, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-2.5 items-center px-3 py-2.5 rounded-md text-[12.5px] ${AI_TONE_CLASSES[insight.tone]}`}
+              >
+                <insight.icon className="w-4 h-4 flex-shrink-0" />
+                {insight.text}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

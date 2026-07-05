@@ -7,8 +7,8 @@ import {
   Clock,
   Loader2,
   AlertCircle,
-  Building2,
   CheckCircle2,
+  Check,
   X,
   ChevronDown,
   ChevronRight,
@@ -33,22 +33,8 @@ type Project = {
   tasksCount?: number;
 };
 
-const COMPANY_NAMES = [
-  "Janda Devi Nepal Energy Pvt Ltd",
-  "Bakas Renewable energy Ltd",
-  "Troika Energy Pvt Ltd",
-  "RR onstruction Pvt Ltd",
-  "Grid Tie Pvt Ltd",
-  "Janda Devi Biomass Pvt Ltd",
-  "Janda Devi Solar Pvt Ltd",
-  "Bhojpur Shivalaya Power Pvt Ltd",
-  "Green Leaves Pvt Ltd",
-  "Usolar Janda Energy Pvt Ltd",
-].sort((a, b) => a.localeCompare(b));
-
 type Task = {
   id: number;
-  companyName: string;
   title: string;
   description?: string;
   priority: string;
@@ -69,6 +55,20 @@ const formatDate = (dateString: string) =>
     month: "short",
     day: "numeric",
   });
+
+const isOverdue = (dueDate: string, status: string) =>
+  status !== "completed" &&
+  new Date(dueDate).getTime() < new Date(new Date().toDateString()).getTime();
+
+const PROJECT_GROUP_COLORS = [
+  "#7C6FF0",
+  "#28B8A6",
+  "#F5729A",
+  "#4FA3E3",
+  "#F5A623",
+  "#E0554C",
+  "#4B7A3B",
+];
 
 // --- Design System Components ---
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -106,12 +106,16 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
     if (v === "completed") {
       bg = "#DCFCE7";
       fg = "#15803D";
-    } else if (v === "inprogress") {
+    } else if (v === "inprogress" || v === "in_progress") {
       bg = "#DBEAFE";
       fg = "#1E3A8A";
     } else if (v === "pending") {
       bg = "#FEF3C7";
       fg = "#B45309";
+    } else if (v === "onhold" || v === "on_hold") {
+      bg = "#FEE2E2";
+      fg = "#B91C1C";
+      label = "On Hold";
     }
   }
   return (
@@ -135,15 +139,11 @@ const MyTasks: React.FC = () => {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(
-    new Set(),
-  );
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
 
   // Add Task Form States
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState("high");
@@ -167,6 +167,9 @@ const MyTasks: React.FC = () => {
   const [filterProjectName, setFilterProjectName] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
+    new Set(),
+  );
 
   type DetailedSubTask = {
     id: string | number;
@@ -285,25 +288,16 @@ const MyTasks: React.FC = () => {
     loadData();
   }, [workspace?.id]);
 
-  const toggleCompany = (companyName: string) => {
-    setExpandedCompanies((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(companyName)) newSet.delete(companyName);
-      else newSet.add(companyName);
-      return newSet;
-    });
-  };
-
   const openPopup = (task: Task) => setSelectedTask(task);
   const closePopup = () => setSelectedTask(null);
 
-  const openAddTaskModal = () => {
+  const openAddTaskModal = (projectId?: number) => {
     if (user) setNewUserIds([Number(user.id)]);
     setShowAddTaskForm(true);
     setSelectedTask(null);
     setAddTaskError(null);
     setNewProgress(0);
-    setNewProjectId(null);
+    setNewProjectId(projectId ?? null);
     setNewSubTasks([]);
   };
 
@@ -324,7 +318,6 @@ const MyTasks: React.FC = () => {
     setAddingTask(true);
     try {
       const formData = new FormData();
-      formData.append("companyName", newCompanyName);
       formData.append("title", newTitle);
       formData.append("description", newDescription);
       formData.append("priority", newPriority);
@@ -357,6 +350,20 @@ const MyTasks: React.FC = () => {
       );
     } finally {
       setAddingTask(false);
+    }
+  };
+
+  const handleStatusChange = async (taskId: number, newStatus: string) => {
+    try {
+      const res = await api.put<any>(`/api/tasks/${taskId}/status`, {
+        status: newStatus,
+      });
+      const updated: Task = res.data.task || res.data;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    } catch (err: any) {
+      alert(
+        err?.response?.data?.message || err.message || "Status update failed",
+      );
     }
   };
 
@@ -524,11 +531,11 @@ const MyTasks: React.FC = () => {
       ? task.assignedUsers.some((u) => u.id === Number(user.id))
       : false;
     if (!isAssigned) return false;
-    const matchesSearch =
-      task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.companyName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = task.title
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
     const matchesProject = filterProjectName
-      ? (task.projectName || "")
+      ? (task.project?.name || task.projectName || "")
           .toLowerCase()
           .includes(filterProjectName.toLowerCase())
       : true;
@@ -542,15 +549,51 @@ const MyTasks: React.FC = () => {
     return matchesSearch && matchesProject && matchesPriority && matchesStatus;
   });
 
-  const groupedTasks = filteredTasks.reduce(
-    (acc, task) => {
-      const key = task.companyName || "Unassigned";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(task);
-      return acc;
-    },
-    {} as Record<string, Task[]>,
-  );
+  type ProjectGroup = {
+    key: string;
+    name: string;
+    projectId: number | null;
+    color: string;
+    tasks: Task[];
+  };
+
+  const projectGroups: ProjectGroup[] = (() => {
+    const map = new Map<string, ProjectGroup>();
+    filteredTasks.forEach((task) => {
+      const projectId = task.project?.id ?? null;
+      const name = task.project?.name || task.projectName || "No Project";
+      const key = projectId != null ? `p-${projectId}` : `name-${name}`;
+      if (!map.has(key)) {
+        map.set(key, { key, name, projectId, color: "", tasks: [] });
+      }
+      map.get(key)!.tasks.push(task);
+    });
+    const groups = Array.from(map.values()).sort((a, b) => {
+      if (a.name === "No Project") return 1;
+      if (b.name === "No Project") return -1;
+      return a.name.localeCompare(b.name);
+    });
+    groups.forEach((g, i) => {
+      g.color = PROJECT_GROUP_COLORS[i % PROJECT_GROUP_COLORS.length];
+      g.tasks.sort(
+        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+      );
+    });
+    return groups;
+  })();
+
+  const toggleGroup = (key: string) => {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const expandAllGroups = () => setCollapsedProjects(new Set());
+  const collapseAllGroups = () =>
+    setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
 
   return (
     <div className="p-6 space-y-6">
@@ -567,7 +610,7 @@ const MyTasks: React.FC = () => {
           />
         </div>
         <button
-          onClick={openAddTaskModal}
+          onClick={() => openAddTaskModal()}
           className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Add My Own Task
@@ -609,159 +652,231 @@ const MyTasks: React.FC = () => {
             <option value="">All</option>
             <option value="pending">Pending</option>
             <option value="inprogress">In Progress</option>
+            <option value="on_hold">On Hold</option>
             <option value="completed">Completed</option>
           </select>
         </div>
       </div>
 
-      {/* Content Table */}
-      <div className="overflow-hidden bg-white border rounded-md border-slate-200">
-        {tasksLoading ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-            <div
-              className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+      {/* Content: grouped by project */}
+      {tasksLoading ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-md border-slate-200">
+          <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+          <div
+            className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            Loading tasks
+          </div>
+        </div>
+      ) : tasksError ? (
+        <div className="p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
+          <AlertCircle className="flex-shrink-0 w-4 h-4" />
+          <span>{tasksError}</span>
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
+          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+            <CheckCircle2 className="w-6 h-6 text-slate-400" />
+          </div>
+          <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
+            No tasks found
+          </h3>
+          <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
+            You don't have any tasks matching the current filters.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={expandAllGroups}
+              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
             >
-              Loading tasks
-            </div>
+              Expand all
+            </button>
+            <button
+              onClick={collapseAllGroups}
+              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+            >
+              Collapse all
+            </button>
           </div>
-        ) : tasksError ? (
-          <div className="m-6 p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
-            <AlertCircle className="flex-shrink-0 w-4 h-4" />
-            <span>{tasksError}</span>
-          </div>
-        ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
-              <CheckCircle2 className="w-6 h-6 text-slate-400" />
-            </div>
-            <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
-              No tasks found
-            </h3>
-            <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
-              You don't have any tasks matching the current filters.
-            </p>
-          </div>
-        ) : (
-          <div>
-            {Object.entries(groupedTasks).map(([companyName, companyTasks]) => (
-              <div
-                key={companyName}
-                className="border-b border-slate-200 last:border-0"
-              >
-                <button
-                  onClick={() => toggleCompany(companyName)}
-                  className="flex items-center justify-between w-full px-5 py-3 bg-[#EEF1F5]/50 hover:bg-[#EEF1F5] transition-colors text-left"
+
+          <div className="space-y-3">
+            {projectGroups.map((group) => {
+              const isCollapsed = collapsedProjects.has(group.key);
+              const doneCount = group.tasks.filter(
+                (t) => t.status === "completed",
+              ).length;
+              const pct = group.tasks.length
+                ? Math.round((doneCount / group.tasks.length) * 100)
+                : 0;
+
+              return (
+                <div
+                  key={group.key}
+                  className="overflow-hidden bg-white border rounded-lg border-slate-200"
                 >
-                  <div className="flex items-center gap-2.5">
-                    {expandedCompanies.has(companyName) ? (
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                  <button
+                    onClick={() => toggleGroup(group.key)}
+                    className="flex items-center w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/60"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
                     ) : (
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
                     )}
-                    <Building2 className="w-4 h-4 text-blue-900" />
-                    <span className="text-[13px] font-medium text-slate-900">
-                      {companyName}
-                    </span>
                     <span
-                      className="px-1.5 py-0.5 text-[10px] font-medium bg-white border border-slate-200 rounded text-slate-500"
+                      className="flex-shrink-0 rounded-full w-2.5 h-2.5"
+                      style={{ background: group.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[14px] text-slate-900 truncate">
+                        {group.name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {doneCount} of {group.tasks.length} done
+                      </div>
+                    </div>
+                    <div className="items-center flex-shrink-0 hidden gap-2 sm:flex">
+                      <div className="w-[90px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, background: group.color }}
+                        />
+                      </div>
+                      <span
+                        className="text-[11px] text-slate-400 w-9 text-right"
+                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                      >
+                        {pct}%
+                      </span>
+                    </div>
+                    <span
+                      className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full flex-shrink-0"
                       style={{ fontFamily: "'JetBrains Mono', monospace" }}
                     >
-                      {companyTasks.length} tasks
+                      {group.tasks.length}
                     </span>
-                  </div>
-                </button>
+                  </button>
 
-                {expandedCompanies.has(companyName) && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead
-                        className="bg-[#EEF1F5]/30 text-left text-slate-400"
-                        style={{
-                          fontSize: 10,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}
-                      >
-                        <tr>
-                          <th className="px-5 py-2.5 font-medium">Task</th>
-                          <th className="px-5 py-2.5 font-medium">Project</th>
-                          <th className="px-5 py-2.5 font-medium text-center">
-                            Priority
-                          </th>
-                          <th className="px-5 py-2.5 font-medium text-center">
-                            Progress & Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {companyTasks.map((task) => (
-                          <tr
+                  {!isCollapsed && (
+                    <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
+                      {group.tasks.map((task) => {
+                        const overdue = isOverdue(task.dueDate, task.status);
+                        const completed = task.status === "completed";
+                        return (
+                          <div
                             key={task.id}
-                            className="transition-colors border-t border-slate-200 hover:bg-slate-50"
+                            className={`flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50 transition-colors ${
+                              completed ? "opacity-60" : ""
+                            }`}
                           >
-                            <td className="px-5 py-3">
-                              <button
-                                onClick={() => openPopup(task)}
-                                className="text-left"
+                            <button
+                              onClick={() =>
+                                handleStatusChange(
+                                  task.id,
+                                  completed ? "pending" : "completed",
+                                )
+                              }
+                              className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                                completed
+                                  ? "bg-slate-900 border-slate-900"
+                                  : "border-slate-300 hover:border-slate-400"
+                              }`}
+                              title="Mark as completed"
+                            >
+                              {completed && (
+                                <Check
+                                  className="w-2.5 h-2.5 text-white"
+                                  strokeWidth={3}
+                                />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => openPopup(task)}
+                              className="flex-1 min-w-0 text-left"
+                            >
+                              <p
+                                className={`text-[13px] font-medium text-slate-900 truncate ${
+                                  completed ? "line-through" : ""
+                                }`}
                               >
-                                <p className="text-[13px] font-medium text-slate-900 hover:text-blue-900 transition-colors">
-                                  {task.title}
-                                </p>
-                                <p className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
-                                  <Clock className="w-3 h-3" /> Due{" "}
-                                  {formatDate(task.dueDate)}
-                                </p>
-                              </button>
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className="text-[13px] font-medium text-blue-900">
-                                {task.projectName || "-"}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3 text-center">
-                              <StatusPill
-                                type="priority"
-                                value={task.priority}
-                              />
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="flex flex-col items-center gap-1.5 min-w-[120px]">
-                                <div className="w-full h-1 overflow-hidden rounded-full bg-slate-100">
-                                  <div
-                                    className="h-full bg-blue-900 rounded-full"
-                                    style={{ width: `${task.progress}%` }}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="text-[11px] font-medium text-slate-700"
-                                    style={{
-                                      fontFamily: "'JetBrains Mono', monospace",
-                                    }}
-                                  >
-                                    {task.progress}%
-                                  </span>
-                                  <StatusPill
-                                    type="status"
-                                    value={task.status}
-                                  />
-                                </div>
+                                {task.title}
+                              </p>
+                              <p
+                                className={`flex items-center gap-1 text-[11px] mt-0.5 ${
+                                  overdue ? "text-red-600" : "text-slate-500"
+                                }`}
+                              >
+                                <Clock className="w-3 h-3" /> Due{" "}
+                                {formatDate(task.dueDate)}
+                              </p>
+                            </button>
+                            <div className="flex-shrink-0">
+                              <StatusPill type="priority" value={task.priority} />
+                            </div>
+                            <div className="items-center flex-shrink-0 hidden gap-1.5 sm:flex">
+                              <div className="h-1 overflow-hidden rounded-full bg-slate-100 w-14">
+                                <div
+                                  className="h-full rounded-full bg-blue-900"
+                                  style={{ width: `${task.progress}%` }}
+                                />
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
+                              <select
+                                value={task.status}
+                                onChange={(e) =>
+                                  handleStatusChange(task.id, e.target.value)
+                                }
+                                className="text-[11px] text-slate-600 bg-transparent outline-none appearance-none cursor-pointer"
+                                style={{
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}
+                              >
+                                <option value="pending">Pending</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="on_hold">On Hold</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                            </div>
+                            <div className="flex-shrink-0 -space-x-1 flex">
+                              {task.assignedUsers.length === 0 ? (
+                                <span className="text-[11px] text-slate-400">
+                                  Unassigned
+                                </span>
+                              ) : (
+                                task.assignedUsers.slice(0, 3).map((u) => (
+                                  <div
+                                    key={u.id}
+                                    className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
+                                    title={u.fullName}
+                                  >
+                                    {u.fullName.charAt(0)}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() =>
+                          openAddTaskModal(group.projectId ?? undefined)
+                        }
+                        className="flex items-center w-full gap-1.5 px-2.5 py-2 text-[12px] text-slate-500 border border-dashed border-slate-200 rounded-md hover:text-slate-700 hover:border-slate-300 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add task to{" "}
+                        {group.name}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {/* Task Details Popup */}
       {selectedTask && (
@@ -769,7 +884,9 @@ const MyTasks: React.FC = () => {
           <div className="w-full max-w-2xl bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
               <div>
-                <Eyebrow>{selectedTask.companyName}</Eyebrow>
+                <Eyebrow>
+                  {selectedTask.project?.name || selectedTask.projectName || "Task"}
+                </Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
                   {selectedTask.title}
                 </h3>
@@ -1261,53 +1378,28 @@ const MyTasks: React.FC = () => {
                   <span>{addTaskError}</span>
                 </div>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Eyebrow className="mb-1.5">Company</Eyebrow>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                    <select
-                      value={newCompanyName}
-                      onChange={(e) => setNewCompanyName(e.target.value)}
-                      required
-                      className="w-full pl-9 pr-4 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
-                    >
-                      <option value="" disabled>
-                        Select company
+              <div>
+                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                <div className="relative">
+                  <select
+                    value={newProjectId || ""}
+                    onChange={(e) =>
+                      setNewProjectId(
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    className="w-full px-4 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
+                  >
+                    <option value="" disabled>
+                      Select a project
+                    </option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
                       </option>
-                      {COMPANY_NAMES.map((company, idx) => (
-                        <option key={idx} value={company}>
-                          {company}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                    <select
-                      value={newProjectId || ""}
-                      onChange={(e) =>
-                        setNewProjectId(
-                          e.target.value ? Number(e.target.value) : null,
-                        )
-                      }
-                      className="w-full pl-9 pr-4 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
-                    >
-                      <option value="" disabled>
-                        Select a project
-                      </option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 

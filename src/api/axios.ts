@@ -53,7 +53,7 @@ api.interceptors.response.use(
       const isMePath = error.config.url?.includes("/api/me");
 
       if (!isLoginPath && !isMePath) {
-        window.location.href = "/login/user";
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);

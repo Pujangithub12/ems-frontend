@@ -9,6 +9,7 @@ export interface ScheduleTaskDto {
   startDate: string | null;
   parentId: string | null;
   predecessorId: string | null;
+  progress: number | null;
 }
 
 /** ScheduleRow (all-string, form-friendly) -> ScheduleTaskDto (typed, for the wire). */
@@ -24,6 +25,10 @@ export function rowsToDto(rows: ScheduleRow[]): ScheduleTaskDto[] {
     parentId: row.parentId.trim() === "" ? null : row.parentId.trim(),
     predecessorId:
       row.predecessorId.trim() === "" ? null : row.predecessorId.trim(),
+    progress:
+      row.progress.trim() === "" || Number.isNaN(Number(row.progress))
+        ? null
+        : Math.max(0, Math.min(100, Number(row.progress))),
   }));
 }
 
@@ -36,6 +41,7 @@ export function dtoToRows(dtos: ScheduleTaskDto[]): ScheduleRow[] {
     startDate: dto.startDate ?? "",
     parentId: dto.parentId ?? "",
     predecessorId: dto.predecessorId ?? "",
+    progress: dto.progress != null ? String(dto.progress) : "",
   }));
 }
 

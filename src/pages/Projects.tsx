@@ -322,7 +322,7 @@ const ProjectsPage: React.FC = () => {
               key={project.id}
               type="button"
               onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
-              className="block w-full p-5 text-left bg-white border rounded-lg cursor-pointer border-slate-200 hover:border-blue-200 hover:shadow-md hover:-translate-y-0.5 transition-all group"
+              className="block w-full p-5 text-left bg-white border rounded-lg cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md transition-shadow group"
             >
               <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_180px_160px_180px_auto] gap-5 items-center">
                 {/* Icon badge */}

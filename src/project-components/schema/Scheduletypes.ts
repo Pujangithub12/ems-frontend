@@ -16,6 +16,8 @@ export interface ScheduleRow {
   parentId: string;
   /** Comma-separated list of predecessor IDs, or "". */
   predecessorId: string;
+  /** Percent complete (0-100), as a string; blank means not tracked. */
+  progress: string;
 }
 
 export function emptyScheduleRow(): ScheduleRow {
@@ -26,5 +28,6 @@ export function emptyScheduleRow(): ScheduleRow {
     startDate: "",
     parentId: "",
     predecessorId: "",
+    progress: "",
   };
 }
