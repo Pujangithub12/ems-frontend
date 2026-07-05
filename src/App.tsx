@@ -1,7 +1,6 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import AdminLogin from "./pages/AdminLogin";
-import UserLogin from "./pages/UserLogin";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Announcements from "./pages/Announcements";
 import Users from "./pages/Users";
@@ -10,7 +9,7 @@ import ProjectDetails from "./pages/ProjectDetails";
 import CalendarPage from "./pages/Calendar";
 import LeaveRequests from "./pages/LeaveRequests";
 import Activities from "./pages/Activities";
-import DashboardLayout from "./pages/DashboardLayout";
+import DashboardLayout from "./layout/DashboardLayout";
 import { AuthProvider, useAuth } from "./context/AuthProvider";
 import TasksPage from "./pages/Tasks";
 
@@ -23,7 +22,7 @@ const RootRedirect: React.FC = () => {
   const { user, workspace, loading } = useAuth();
 
   if (loading) return null;
-  if (!user) return <Navigate replace to="/login/user" />;
+  if (!user) return <Navigate replace to="/login" />;
   if (workspace) return <Navigate replace to={`/${workspace.id}/dashboard`} />;
   return null;
 };
@@ -34,8 +33,9 @@ function App() {
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <Routes>
           <Route path="/" element={<RootRedirect />} />
-          <Route path="/login/user" element={<UserLogin />} />
-          <Route path="/login/admin" element={<AdminLogin />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/login/user" element={<Navigate replace to="/login" />} />
+          <Route path="/login/admin" element={<Navigate replace to="/login" />} />
 
           <Route
             path="/:workspaceId/dashboard"

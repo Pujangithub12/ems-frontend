@@ -17,8 +17,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-// Import the new Workspace Switcher component
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
+import SidebarLink from "../components/SidebarLink";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -44,6 +44,21 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   </div>
 );
 
+const Avatar: React.FC<{ name: string; size?: number; dark?: boolean }> = ({
+  name,
+  size = 32,
+  dark = false,
+}) => (
+  <div
+    className={`rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 ${
+      dark ? "bg-blue-900" : "bg-slate-500"
+    }`}
+    style={{ width: size, height: size, fontSize: size * 0.36 }}
+  >
+    {initials(name)}
+  </div>
+);
+
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const { user, logout, loading, workspace, workspaces, selectWorkspace } = useAuth();
   const location = useLocation();
@@ -66,7 +81,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   React.useEffect(() => {
     if (!loading && !user) {
-      navigate("/login/user", { replace: true });
+      navigate("/login", { replace: true });
     }
   }, [loading, user, navigate]);
 
@@ -119,7 +134,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   const prefix = `/${paramWorkspaceId}`;
 
-  // FIXED: Combined into a single "Tasks" route and removed "/mytask"
+  // Combined into a single "Tasks" route and removed "/mytask"
   const navItems = [
     {
       path: `${prefix}/dashboard`,
@@ -167,56 +182,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     navItems.find((item) => item.path === location.pathname)?.label ||
     reports.find((item) => item.path === location.pathname)?.label ||
     "Dashboard";
+  // Nested project details route (/:workspaceId/project/:id/details) has no
+  // exact navItems match, so it falls through to a breadcrumb instead of a title.
+  const isProjectDetails = /^\/[^/]+\/project\/[^/]+\/details/.test(location.pathname);
 
   const handleLogout = () => {
-    const target =
-      user?.role === "admin" || user?.role === "super_admin"
-        ? "/login/admin"
-        : "/login/user";
     logout();
-    navigate(target, { replace: true });
+    navigate("/login", { replace: true });
   };
-
-  const NavButton: React.FC<{
-    active: boolean;
-    to: string;
-    icon: React.ElementType;
-    label: string;
-    onClick?: () => void;
-  }> = ({ active, to, icon: Icon, label, onClick }) => (
-    <Link
-      to={to}
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 pl-2.5 pr-2.5 py-2 rounded text-left text-[13px] transition-colors ${
-        active
-          ? "bg-white text-slate-900 font-medium"
-          : "text-slate-600 hover:bg-white"
-      }`}
-    >
-      <Icon className="w-3.5 h-3.5 opacity-70" />
-      <span>{label}</span>
-    </Link>
-  );
-
-  const Avatar: React.FC<{ name: string; size?: number; dark?: boolean }> = ({
-    name,
-    size = 32,
-    dark = false,
-  }) => (
-    <div
-      className={`rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 ${
-        dark ? "bg-blue-900" : "bg-slate-500"
-      }`}
-      style={{ width: size, height: size, fontSize: size * 0.36 }}
-    >
-      {initials(name)}
-    </div>
-  );
 
   return (
     <div className="flex min-h-screen bg-[#F6F7F9]">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-56 bg-[#EEF1F5] border-r border-slate-200 flex-col h-screen sticky top-0 flex-shrink-0">
+      <aside className="hidden lg:flex w-56 bg-slate-900 border-r border-slate-800 flex-col h-screen sticky top-0 flex-shrink-0">
         {/* Brand / Workspace Switcher */}
         <div className="p-3">
           <WorkspaceSwitcher />
@@ -227,36 +205,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <Eyebrow>Operations</Eyebrow>
           <div className="h-1.5" />
           {navItems.map((it) => (
-            <NavButton
-              key={it.id}
-              active={location.pathname === it.path}
-              to={it.path}
-              icon={it.icon}
-              label={it.label}
-            />
+            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
           ))}
           <div className="h-3" />
           <Eyebrow>Reports</Eyebrow>
           <div className="h-1.5" />
           {reports.map((it) => (
-            <NavButton
-              key={it.id}
-              active={location.pathname === it.path}
-              to={it.path}
-              icon={it.icon}
-              label={it.label}
-            />
+            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
           ))}
         </nav>
 
         {/* User footer */}
-        <div className="flex items-center gap-3 p-4 border-t border-slate-200">
+        <div className="flex items-center gap-3 p-4 border-t border-slate-800">
           <Avatar name={user?.fullName || "Guest"} size={32} dark />
           <div className="flex-1 min-w-0">
-            <div className="font-medium truncate text-[13px] text-slate-900">
+            <div className="font-medium truncate text-[13px] text-white">
               {user?.fullName || "Guest"}
             </div>
-            <div className="text-[11px] text-slate-500 truncate capitalize">
+            <div className="text-[11px] text-slate-400 truncate capitalize">
               {user?.role || "No role"}
             </div>
           </div>
@@ -270,19 +236,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             onClick={() => setIsMobileMenuOpen(false)}
             className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
           />
-          <aside className="fixed inset-y-0 left-0 w-60 bg-[#EEF1F5] border-r border-slate-200 flex flex-col z-50 lg:hidden shadow-xl">
-            <div className="flex items-center justify-between p-3 border-b border-slate-200">
+          <aside className="fixed inset-y-0 left-0 w-60 bg-slate-900 border-r border-slate-800 flex flex-col z-50 lg:hidden shadow-xl">
+            <div className="flex items-center justify-between p-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px]">
                   EM
                 </div>
-                <span className="font-bold text-[14px] text-slate-900">
+                <span className="font-bold text-[14px] text-white">
                   EMS
                 </span>
               </div>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="p-1.5 text-slate-500 hover:bg-slate-200/60 rounded"
+                className="p-1.5 text-slate-400 hover:bg-slate-800 rounded"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -291,9 +257,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Operations</Eyebrow>
               <div className="h-1.5" />
               {navItems.map((it) => (
-                <NavButton
+                <SidebarLink
                   key={it.id}
-                  active={location.pathname === it.path}
                   to={it.path}
                   icon={it.icon}
                   label={it.label}
@@ -304,9 +269,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Reports</Eyebrow>
               <div className="h-1.5" />
               {reports.map((it) => (
-                <NavButton
+                <SidebarLink
                   key={it.id}
-                  active={location.pathname === it.path}
                   to={it.path}
                   icon={it.icon}
                   label={it.label}
@@ -314,13 +278,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 />
               ))}
             </nav>
-            <div className="flex items-center gap-3 p-4 border-t border-slate-200">
+            <div className="flex items-center gap-3 p-4 border-t border-slate-800">
               <Avatar name={user?.fullName || "Guest"} size={32} dark />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate text-[13px] text-slate-900">
+                <div className="font-medium truncate text-[13px] text-white">
                   {user?.fullName || "Guest"}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate capitalize">
+                <div className="text-[11px] text-slate-400 truncate capitalize">
                   {user?.role || "No role"}
                 </div>
               </div>
@@ -341,13 +305,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           </button>
 
           <div className="min-w-0">
-            <h1 className="font-semibold leading-tight truncate text-[17px] text-slate-900">
-              {currentTitle}
-            </h1>
+            {isProjectDetails ? (
+              <h1 className="flex gap-1.5 items-center font-semibold leading-tight truncate text-[17px] text-slate-900">
+                <Link
+                  to={`${prefix}/project`}
+                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Projects
+                </Link>
+                <span className="text-slate-300">/</span>
+                <span>Project Details</span>
+              </h1>
+            ) : (
+              <h1 className="font-semibold leading-tight truncate text-[17px] text-slate-900">
+                {currentTitle}
+              </h1>
+            )}
             <div className="text-[11px] text-slate-500 hidden sm:block truncate">
-              {activeSection === "overview"
-                ? "EMS Workspace · Management"
-                : currentTitle}
+              {isProjectDetails
+                ? "Projects · Details"
+                : activeSection === "overview"
+                  ? "EMS Workspace · Management"
+                  : currentTitle}
             </div>
           </div>
 

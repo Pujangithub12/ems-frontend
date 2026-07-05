@@ -25,11 +25,7 @@ type AuthContextType = {
   user: User;
   workspace: Workspace | null;
   workspaces: Workspace[];
-  login: (credentials: {
-    email: string;
-    password: string;
-    role?: string;
-  }) => Promise<void>;
+  login: (credentials: { email: string; password: string }) => Promise<void>;
   logout: () => void;
   /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
   selectWorkspace: (workspaceId: number) => Workspace | null;
@@ -153,11 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [user]);
 
-  const login = async (credentials: {
-    email: string;
-    password: string;
-    role?: string;
-  }) => {
+  const login = async (credentials: { email: string; password: string }) => {
     // Mark that we've logged in so the concurrent checkAuth won't overwrite us
     didLoginRef.current = true;
     const res = await api.post("/api/login", credentials);

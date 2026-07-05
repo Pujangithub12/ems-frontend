@@ -34,11 +34,12 @@ interface ProjectTasksTabProps {
   onTaskUpdate?: () => void;
 }
 
-type TaskStatus = "pending" | "in_progress" | "completed";
+type TaskStatus = "pending" | "in_progress" | "completed" | "on_hold";
 
 const COLUMNS: { status: TaskStatus; title: string; accent: string }[] = [
   { status: "pending", title: "Pending", accent: "border-t-slate-400" },
   { status: "in_progress", title: "In Progress", accent: "border-t-amber-400" },
+  { status: "on_hold", title: "On Hold", accent: "border-t-rose-400" },
   { status: "completed", title: "Completed", accent: "border-t-emerald-500" },
 ];
 

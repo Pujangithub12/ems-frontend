@@ -24,15 +24,24 @@ import AddScheduleModal from "./modal/AddScheduleModal";
  * Expected columns (header matching is case-insensitive and whitespace-tolerant):
  *   ID              optional, e.g. "1", "1.1" — auto-generated if omitted
  *   Task Name       required
- *   Duration        number (days)
+ *   Duration        number (days) — 0 marks the row as a milestone
  *   Start Date      Excel date or "YYYY-MM-DD"
+ *   Progress        percent complete, 0-100 (optional, defaults to 0)
  *   Parent ID       optional, references the ID of the owning summary task
  *   Predecessor ID  optional, comma separated list of ID(s) this task depends on
  *
  * A row is a "summary" bar only when it has no Start Date/Duration AND at
  * least one other row references it via Parent ID — @svar-ui/react-gantt
  * crashes on a childless summary-type task, so a childless one is instead
- * rendered as a normal 1-day placeholder task.
+ * rendered as a normal 1-day placeholder task. A row with Duration = 0 (and a
+ * Start Date) is rendered as a milestone (diamond marker) instead.
+ *
+ * Status (Completed / In Progress / Delayed / Not Started) is derived from
+ * Progress + dates relative to today, and drives both the "Status" column
+ * pill and the chart bar color. Bar colors are applied via a dynamically
+ * generated `data-task-id` CSS block (see `buildStatusCss`) rather than the
+ * library's `type` field, so the library's own summary-bracket / milestone-
+ * diamond rendering is left completely untouched.
  */
 
 // ---- Types -----------------------------------------------------------
@@ -51,7 +60,10 @@ interface NormalizedRow {
   startDate?: string | number | Date;
   parentId?: string | number;
   predecessorId?: string | number;
+  progress?: number | string;
 }
+
+type ScheduleStatus = "completed" | "in_progress" | "delayed" | "not_started";
 
 interface ParsedRow {
   id: string;
@@ -61,6 +73,8 @@ interface ParsedRow {
   parentId: string | null;
   predecessorIds: string[];
   isSummary: boolean;
+  isMilestone: boolean;
+  progress: number | null;
 }
 
 interface GanttTask {
@@ -73,6 +87,12 @@ interface GanttTask {
   type: "task" | "summary" | "milestone";
   parent: string | number;
   open?: boolean;
+  status: ScheduleStatus;
+  wbs: string;
+  durationLabel: string;
+  startLabel: string;
+  finishLabel: string;
+  progressLabel: string;
 }
 
 interface GanttLink {
@@ -106,6 +126,11 @@ const HEADER_ALIASES: Record<string, keyof NormalizedRow> = {
   predecessor: "predecessorId",
   "predecessor ids": "predecessorId",
   predecessors: "predecessorId",
+  progress: "progress",
+  "% complete": "progress",
+  "percent complete": "progress",
+  "% done": "progress",
+  complete: "progress",
 };
 
 const REQUIRED_CANONICAL_COLUMNS: (keyof NormalizedRow)[] = ["taskName"];
@@ -129,6 +154,46 @@ const SCALES: Record<ViewMode, { unit: string; step: number; format: string }[]>
     { unit: "year", step: 1, format: "%Y" },
     { unit: "month", step: 1, format: "%M" },
   ],
+};
+
+/** Colors + labels for each derived status — shared by the Status column, the
+ * legend, and the dynamically generated chart-bar CSS. */
+const STATUS_META: Record<
+  ScheduleStatus,
+  { label: string; bar: string; barBorder: string; pillBg: string; pillText: string; dot: string }
+> = {
+  completed: {
+    label: "Completed",
+    bar: "#10b981",
+    barBorder: "#059669",
+    pillBg: "#d1fae5",
+    pillText: "#047857",
+    dot: "#10b981",
+  },
+  in_progress: {
+    label: "In Progress",
+    bar: "#3b82f6",
+    barBorder: "#2563eb",
+    pillBg: "#dbeafe",
+    pillText: "#1d4ed8",
+    dot: "#3b82f6",
+  },
+  delayed: {
+    label: "Delayed",
+    bar: "#f43f5e",
+    barBorder: "#e11d48",
+    pillBg: "#ffe4e6",
+    pillText: "#be123c",
+    dot: "#f43f5e",
+  },
+  not_started: {
+    label: "Not Started",
+    bar: "#cbd5e1",
+    barBorder: "#94a3b8",
+    pillBg: "#f1f5f9",
+    pillText: "#475569",
+    dot: "#94a3b8",
+  },
 };
 
 // ---- Helpers -------------------------------------------------------------
@@ -190,6 +255,19 @@ function formatDateInput(date: Date | null): string {
   return `${y}-${m}-${d}`;
 }
 
+/** "21 Jan" style, matching the reference design's compact date columns. */
+function formatDateLabel(date: Date): string {
+  return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+}
+
+/** Derives Completed / In Progress / Delayed / Not Started from progress + dates. */
+function computeStatus(progress: number, start: Date, end: Date, today: Date): ScheduleStatus {
+  if (progress >= 100) return "completed";
+  if (end.getTime() < today.getTime()) return "delayed";
+  if (start.getTime() > today.getTime()) return "not_started";
+  return "in_progress";
+}
+
 /** Convert normalized rows (from an Excel upload) into editable ScheduleRow
  * form so they can be shown/edited in the same modal used for manual entry. */
 function normalizedRowsToScheduleRows(rows: NormalizedRow[]): ScheduleRow[] {
@@ -200,6 +278,7 @@ function normalizedRowsToScheduleRows(rows: NormalizedRow[]): ScheduleRow[] {
     startDate: formatDateInput(coerceDate(row.startDate)),
     parentId: row.parentId != null ? String(row.parentId).trim() : "",
     predecessorId: row.predecessorId != null ? String(row.predecessorId).trim() : "",
+    progress: row.progress != null && row.progress !== "" ? String(row.progress) : "",
   }));
 }
 
@@ -232,10 +311,18 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
             .map((s) => s.trim())
             .filter(Boolean);
 
+    const progressRaw = item.progress;
+    const progressNum =
+      progressRaw === undefined || progressRaw === "" || progressRaw === null ? null : Number(progressRaw);
+    const progress =
+      progressNum === null || isNaN(progressNum) ? null : Math.max(0, Math.min(100, progressNum));
+
     // A row with no Start Date or Duration is treated as a summary bar.
     const isSummary = !start || duration === null;
+    // A row with an explicit zero Duration (and a real Start Date) is a milestone.
+    const isMilestone = duration === 0 && start != null;
 
-    return { id, name, duration, start, parentId, predecessorIds, isSummary };
+    return { id, name, duration, start, parentId, predecessorIds, isSummary, isMilestone, progress };
   });
 
   const byId = new Map<string, ParsedRow>();
@@ -267,7 +354,7 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
     visited.add(row.id);
 
     if (!row.isSummary && row.start && row.duration != null) {
-      return { start: row.start, end: addDays(row.start, row.duration) };
+      return { start: row.start, end: addDays(row.start, row.duration || 1) };
     }
 
     const children = childrenByParent.get(row.id) ?? [];
@@ -293,6 +380,51 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
 
   parsedRows.filter((r) => r.isSummary).forEach((r) => resolveSpan(r));
 
+  // --- Step 2b: roll up progress from children for summary rows ---
+  const summaryProgress = new Map<string, number>();
+
+  function resolveProgress(row: ParsedRow, visited = new Set<string>()): number | null {
+    if (!row.isSummary) return row.progress;
+    if (summaryProgress.has(row.id)) return summaryProgress.get(row.id)!;
+    if (visited.has(row.id)) return null;
+    visited.add(row.id);
+
+    const children = childrenByParent.get(row.id) ?? [];
+    if (children.length === 0) return null;
+
+    const values = children
+      .map((child) => resolveProgress(child, visited))
+      .filter((v): v is number => v != null);
+    if (values.length === 0) return null;
+
+    const avg = Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
+    summaryProgress.set(row.id, avg);
+    return avg;
+  }
+
+  parsedRows.filter((r) => r.isSummary).forEach((r) => resolveProgress(r));
+
+  // --- Step 2c: WBS numbering (1, 1.1, 1.2, 2, 2.1, ...), parents processed first ---
+  const wbsById = new Map<string, string>();
+  const childOrderCounter = new Map<string, number>();
+
+  function computeWbs(row: ParsedRow, visited = new Set<string>()): string {
+    if (wbsById.has(row.id)) return wbsById.get(row.id)!;
+    if (visited.has(row.id)) return "?";
+    visited.add(row.id);
+
+    const parentKey = row.parentId && byId.has(row.parentId) ? row.parentId : "__root__";
+    const count = (childOrderCounter.get(parentKey) ?? 0) + 1;
+    childOrderCounter.set(parentKey, count);
+
+    const code =
+      parentKey !== "__root__" ? `${computeWbs(byId.get(parentKey)!, visited)}.${count}` : `${count}`;
+    wbsById.set(row.id, code);
+    return code;
+  }
+
+  parsedRows.forEach((r) => computeWbs(r));
+
   // --- Step 3: build @svar-ui/react-gantt task objects ---
   const today = startOfDay(new Date());
   const tasks: GanttTask[] = [];
@@ -303,7 +435,11 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
     let type: GanttTask["type"] = "task";
     const hasChildren = (childrenByParent.get(row.id)?.length ?? 0) > 0;
 
-    if (row.isSummary && hasChildren) {
+    if (row.isMilestone) {
+      type = "milestone";
+      start = row.start!;
+      end = addDays(start, 1);
+    } else if (row.isSummary && hasChildren) {
       // Genuine summary bar — has subtasks to roll dates up from.
       type = "summary";
       const span = summarySpans.get(row.id);
@@ -338,19 +474,30 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
 
     const parent = row.parentId && byId.has(row.parentId) ? row.parentId : 0;
 
+    const progress =
+      type === "summary" ? summaryProgress.get(row.id) ?? 0 : row.progress ?? 0;
+    const statusEnd = type === "milestone" ? start : end;
+    const status = computeStatus(progress, start, statusEnd, today);
+
     tasks.push({
       id: row.id,
       text: row.name,
       start,
       end,
       duration: dayDiff(end, start),
-      progress: 0,
+      progress,
       type,
       parent,
       // A summary task with no children triggers a known crash in
       // @svar-ui/react-gantt, so only ever mark it "open" when it truly is
       // a summary (which by construction always has children here).
       open: type === "summary",
+      status,
+      wbs: wbsById.get(row.id) ?? "",
+      durationLabel: type === "milestone" ? "—" : `${row.duration ?? dayDiff(end, start)} day${(row.duration ?? 0) === 1 ? "" : "s"}`,
+      startLabel: formatDateLabel(start),
+      finishLabel: type === "milestone" ? formatDateLabel(start) : formatDateLabel(end),
+      progressLabel: `${progress}%`,
     });
   });
 
@@ -384,6 +531,19 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
   });
 
   return { tasks, links, warnings: Array.from(new Set(warnings)) };
+}
+
+/** Generates a `data-task-id`-scoped CSS block that colors each bar/diamond
+ * by its derived status, without touching the library's own `type`-driven
+ * structural rendering (summary brackets, milestone diamonds stay intact). */
+function buildStatusCss(tasks: GanttTask[]): string {
+  return tasks
+    .map((t) => {
+      const meta = STATUS_META[t.status];
+      const selector = `[data-task-id="${t.id}"]`;
+      return `${selector} .wx-bar, ${selector} .wx-segment, ${selector} .wx-content { background-color: ${meta.bar} !important; border-color: ${meta.barBorder} !important; }`;
+    })
+    .join("\n");
 }
 
 // ---- Component -------------------------------------------------------------
@@ -428,6 +588,37 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   const { tasks: ganttTasks, links: ganttLinks, warnings: ganttWarnings } = useMemo(
     () => buildGanttData(scheduleRows as NormalizedRow[]),
     [scheduleRows],
+  );
+
+  const statusCss = useMemo(() => buildStatusCss(ganttTasks), [ganttTasks]);
+
+  const columns = useMemo(
+    () => [
+      { id: "wbs", header: "#", width: 52, align: "center" as const },
+      { id: "text", header: "Task Name", flexgrow: 2 },
+      { id: "durationLabel", header: "Duration", width: 90 },
+      { id: "startLabel", header: "Start", width: 84 },
+      { id: "finishLabel", header: "Finish", width: 84 },
+      { id: "progressLabel", header: "Progress", width: 80, align: "center" as const },
+      {
+        id: "status",
+        header: "Status",
+        width: 130,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        template: (value: any) => {
+          const meta = STATUS_META[value as ScheduleStatus] ?? STATUS_META.not_started;
+          return `<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;background:${meta.pillBg};color:${meta.pillText}"><span style="width:6px;height:6px;border-radius:9999px;background:${meta.dot};display:inline-block"></span>${meta.label}</span>`;
+        },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any[],
+    [],
+  );
+
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const highlightTime = useCallback(
+    (date: Date, unit: string) => (unit === "day" && startOfDay(date).getTime() === today.getTime() ? "wx-today-column" : ""),
+    [today],
   );
 
   const persistSchedule = useCallback(
@@ -601,8 +792,9 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             <ul className="pl-5 mt-2 space-y-1 list-disc">
               <li><strong>ID</strong> (optional) — unique task identifier, e.g. "1", "1.1". Needed for Parent ID / Predecessor ID references.</li>
               <li><strong>Task Name</strong> — task label (required)</li>
-              <li><strong>Duration</strong> — length in days</li>
+              <li><strong>Duration</strong> — length in days (0 marks a milestone)</li>
               <li><strong>Start Date</strong> — date the task begins</li>
+              <li><strong>Progress</strong> (optional) — percent complete, 0-100</li>
               <li><strong>Parent ID</strong> (optional) — ID of the owning summary task</li>
               <li><strong>Predecessor ID</strong> (optional) — comma-separated IDs this task depends on</li>
             </ul>
@@ -689,12 +881,46 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             </div>
           )}
 
+          {/* Per-task status colors + a soft highlight over today's column. */}
+          <style>{`
+            ${statusCss}
+            .wx-today-column { background-color: rgba(37, 99, 235, 0.06) !important; }
+            .wx-willow-theme .wx-gantt { --wx-gantt-task-border-radius: 6px; }
+          `}</style>
+
           {/* Scrollable, responsive Gantt panel */}
-          <div className="overflow-x-auto bg-white rounded border border-slate-200" style={{ height: 520 }}>
+          <div className="overflow-x-auto bg-white rounded-lg border border-slate-200" style={{ height: 520 }}>
             <div className="min-w-[600px] h-full">
               <Willow>
-                <Gantt tasks={ganttTasks} links={ganttLinks} scales={scales} cellWidth={viewMode === "month" ? 90 : 55} />
+                <Gantt
+                  tasks={ganttTasks}
+                  links={ganttLinks}
+                  scales={scales}
+                  columns={columns}
+                  highlightTime={highlightTime}
+                  cellWidth={viewMode === "month" ? 90 : 55}
+                />
               </Willow>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-x-6 gap-y-2 items-center px-1 text-[12px] text-slate-600">
+            {(Object.keys(STATUS_META) as ScheduleStatus[]).map((key) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: STATUS_META[key].dot }}
+                />
+                {STATUS_META[key].label}
+              </div>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-2 h-2 bg-slate-500"
+                style={{ transform: "rotate(45deg)" }}
+              />
+              Milestone
             </div>
           </div>
         </>

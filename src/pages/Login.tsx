@@ -1,19 +1,17 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import {
   Lock,
   Mail,
   Loader2,
-  ShieldCheck,
   ArrowRight,
-  User,
+  ShieldCheck,
   Eye,
   EyeOff,
-  ChevronLeft,
 } from "lucide-react";
 
-const AdminLogin: React.FC = () => {
+const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,7 +26,7 @@ const AdminLogin: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      await auth.login({ email, password, role: "admin" });
+      await auth.login({ email, password });
       nav("/");
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Login failed");
@@ -74,11 +72,11 @@ const AdminLogin: React.FC = () => {
             Enterprise Management System
           </div>
           <h1 className="font-semibold leading-tight mb-5 text-[42px] tracking-[-0.025em]">
-            Secure access for administrators.
+            Connect with your team.
           </h1>
           <p className="leading-relaxed text-[15px] text-white/70">
-            Manage users, configure system settings, and oversee operations from
-            a single, unified dashboard designed for efficiency.
+            Access your projects, track progress, and collaborate seamlessly.
+            Your workspace is ready for you.
           </p>
         </div>
 
@@ -105,48 +103,15 @@ const AdminLogin: React.FC = () => {
           <div className="w-9 h-9 rounded bg-[#1E3A8A] text-white flex items-center justify-center font-bold text-sm">
             E
           </div>
-          <div className="font-bold tracking-tight text-xl">EMS Admin</div>
+          <div className="font-bold tracking-tight text-xl">EMS</div>
         </div>
 
         <div className="w-full fade-in" style={{ maxWidth: 380 }}>
-          {/* Workspace Indicator Style Header */}
-          <div className="mb-7 pb-4 border-b border-[#E2E8F0]">
-            <div
-              className="font-mono text-[#94A3B8]"
-              style={{
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              Signing in as
-            </div>
-            <div className="flex items-center gap-2.5 mt-1.5">
-              <div className="w-8 h-8 rounded bg-[#1E3A8A] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                AD
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-[15px] tracking-[-0.01em]">
-                  Administrator
-                </div>
-                <div className="text-[#94A3B8] font-mono truncate text-[10px]">
-                  admin.ems.com
-                </div>
-              </div>
-              <Link
-                to="/login/user"
-                className="text-[#475569] hover:bg-[#EEF1F5] rounded font-medium text-[12px] px-2.5 py-1 border border-[#E2E8F0] transition-colors"
-              >
-                Switch
-              </Link>
-            </div>
-          </div>
-
           <h2 className="font-semibold text-[24px] tracking-[-0.02em] leading-[1.2]">
             Welcome back
           </h2>
           <p className="text-[#94A3B8] mb-6 mt-1 text-[13px]">
-            Enter your credentials to access the admin panel.
+            Enter your credentials to access your dashboard.
           </p>
 
           <form onSubmit={submit} className="space-y-5">
@@ -170,7 +135,7 @@ const AdminLogin: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   type="email"
-                  placeholder="admin@ems.com"
+                  placeholder="you@ems.com"
                   autoComplete="email"
                   className="w-full pl-10 pr-3 py-2.5 bg-white border border-[#E2E8F0] rounded-md text-[14px] text-[#0F172A] placeholder-[#94A3B8] outline-none focus:border-[#1E3A8A] focus:ring-[3px] focus:ring-[#1E3A8A]/10 transition-all"
                 />
@@ -184,7 +149,6 @@ const AdminLogin: React.FC = () => {
                     Password
                   </span>
                 </label>
-                {/* Optional: Add Forgot Password link here if needed */}
               </div>
               <div className="relative group">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] group-focus-within:text-[#1E3A8A] transition-colors" />
@@ -232,18 +196,6 @@ const AdminLogin: React.FC = () => {
               )}
             </button>
           </form>
-
-          <div className="mt-8 pt-6 border-t border-[#E2E8F0] text-center">
-            <p className="text-[#94A3B8] text-[12px]">
-              Not an admin?{" "}
-              <Link
-                to="/login/user"
-                className="text-[#1E3A8A] font-medium hover:underline transition-colors"
-              >
-                Sign in as User
-              </Link>
-            </p>
-          </div>
         </div>
 
         {/* Bottom Footer */}
@@ -256,144 +208,4 @@ const AdminLogin: React.FC = () => {
   );
 };
 
-export default AdminLogin;
-
-// import React, { useState } from "react";
-// import { useNavigate, Link } from "react-router-dom";
-// import { useAuth } from "../context/AuthProvider";
-// import { Lock, Mail, Loader2, ShieldCheck, ArrowRight, User } from "lucide-react";
-
-// const AdminLogin: React.FC = () => {
-//   const [email, setEmail] = useState("");
-//   const [password, setPassword] = useState("");
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState<string | null>(null);
-//   const auth = useAuth();
-//   const nav = useNavigate();
-
-//   const submit = async (e: React.FormEvent) => {
-//     e.preventDefault();
-//     setError(null);
-//     setLoading(true);
-//     try {
-//       await auth.login({ email, password, role: "admin" });
-//       nav("/");
-//     } catch (err: any) {
-//       setError(err?.response?.data?.message || err.message || "Login failed");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <div className="min-h-screen flex items-center justify-center bg-[#F6F7F9] px-4">
-//       <div className="max-w-md w-full">
-//         {/* Branding Header */}
-//         <div className="text-center mb-8">
-//           <div className="w-16 h-16 bg-blue-900 rounded-full flex items-center justify-center text-white mx-auto mb-4">
-//             <User className="w-8 h-8" />
-//           </div>
-//           <div
-//             className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-2"
-//             style={{ fontFamily: "'JetBrains Mono', monospace" }}
-//           >
-//             Administrator Access
-//           </div>
-//           <h1 className="font-semibold text-[24px] tracking-tight text-slate-900">
-//             Admin Portal
-//           </h1>
-//           <p className="text-slate-500 text-[14px] mt-1">
-//             Welcome back. Please enter your credentials.
-//           </p>
-//         </div>
-
-//         {/* Form Card */}
-//         <div className="bg-white border border-slate-200 rounded-md p-8">
-//           <form onSubmit={submit} className="space-y-5">
-//             {error && (
-//               <div className="p-3 bg-red-50 border border-red-100 rounded flex items-center gap-2 text-red-700 text-[13px]">
-//                 <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-//                 <span>{error}</span>
-//               </div>
-//             )}
-
-//             <div>
-//               <div
-//                 className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-1.5"
-//                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
-//               >
-//                 Email Address
-//               </div>
-//               <div className="relative">
-//                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-//                 <input
-//                   value={email}
-//                   onChange={(e) => setEmail(e.target.value)}
-//                   required
-//                   type="email"
-//                   placeholder="admin@ems.com"
-//                   className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-//                 />
-//               </div>
-//             </div>
-
-//             <div>
-//               <div
-//                 className="text-[10px] tracking-[0.1em] uppercase text-slate-400 mb-1.5"
-//                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
-//               >
-//                 Password
-//               </div>
-//               <div className="relative">
-//                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-//                 <input
-//                   value={password}
-//                   onChange={(e) => setPassword(e.target.value)}
-//                   required
-//                   type="password"
-//                   placeholder="••••••••"
-//                   className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-//                 />
-//               </div>
-//             </div>
-
-//             <button
-//               disabled={loading}
-//               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
-//             >
-//               {loading ? (
-//                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-//               ) : (
-//                 <>
-//                   <span>Sign in to Dashboard</span>
-//                   <ArrowRight className="w-3.5 h-3.5" />
-//                 </>
-//               )}
-//             </button>
-//           </form>
-
-//           <div className="mt-6 pt-6 border-t border-slate-200 text-center">
-//             <p className="text-slate-500 text-[13px]">
-//               Not an admin?{" "}
-//               <Link
-//                 to="/login/user"
-//                 className="text-blue-900 font-medium hover:text-blue-800 transition-colors"
-//               >
-//                 Sign in as User
-//               </Link>
-//             </p>
-//           </div>
-//         </div>
-
-//         <p
-//           className="mt-8 text-center text-slate-400"
-//           style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
-//         >
-//           &copy; 2026 EMS Management System. All rights reserved.
-//         </p>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default AdminLogin;
+export default Login;

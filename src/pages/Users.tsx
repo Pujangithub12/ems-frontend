@@ -48,6 +48,13 @@ const getInitials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
+/** Capitalizes the first letter of each word, leaving the rest untouched. */
+const capitalizeWords = (value: string) =>
+  value
+    .split(" ")
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = "",
@@ -305,12 +312,14 @@ const Users: React.FC = () => {
     saveHierarchy(newTree);
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.jobPosition.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredUsers = users
+    .filter(
+      (user) =>
+        user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.jobPosition.toLowerCase().includes(searchTerm.toLowerCase()),
+    )
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
   const isAdminOrSuperAdmin =
     currentUser?.role === "admin" || currentUser?.role === "super_admin";
@@ -321,8 +330,21 @@ const Users: React.FC = () => {
     user: { bg: "#DBEAFE", fg: "#1E3A8A" },
   };
 
+  // Cycled, deterministic (by id) avatar colors so the list reads with the
+  // same varied-but-consistent look row to row instead of one flat color.
+  const AVATAR_COLORS = [
+    "#4338CA", // indigo
+    "#047857", // emerald
+    "#BE123C", // rose
+    "#7C3AED", // violet
+    "#1D4ED8", // blue
+    "#475569", // slate
+    "#B45309", // amber
+  ];
+  const avatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
+
   return (
-    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
+    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
         <div>
@@ -435,22 +457,22 @@ const Users: React.FC = () => {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead
-                  className="bg-[#EEF1F5]/50 text-left text-slate-400"
-                  style={{
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                >
-                  <tr>
-                    <th className="px-6 py-3 font-medium">Employee</th>
-                    <th className="px-6 py-3 font-medium">Position</th>
-                    <th className="px-6 py-3 font-medium">Contact</th>
-                    <th className="px-6 py-3 font-medium">Role</th>
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="px-6 py-3 text-[11px] font-medium tracking-wide text-slate-400 uppercase">
+                      Employee
+                    </th>
+                    <th className="px-6 py-3 text-[11px] font-medium tracking-wide text-slate-400 uppercase">
+                      Position
+                    </th>
+                    <th className="px-6 py-3 text-[11px] font-medium tracking-wide text-slate-400 uppercase">
+                      Contact
+                    </th>
+                    <th className="px-6 py-3 text-[11px] font-medium tracking-wide text-slate-400 uppercase">
+                      Role
+                    </th>
                     {isAdminOrSuperAdmin && (
-                      <th className="px-6 py-3 font-medium text-right">
+                      <th className="px-6 py-3 text-[11px] font-medium tracking-wide text-right text-slate-400 uppercase">
                         Actions
                       </th>
                     )}
@@ -465,71 +487,54 @@ const Users: React.FC = () => {
                     return (
                       <tr
                         key={userItem.id}
-                        className="transition-colors border-b border-slate-200 hover:bg-slate-50"
+                        className="transition-colors border-b border-slate-100 hover:bg-slate-50"
                       >
-                        <td className="px-6 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-blue-900 flex items-center justify-center text-white text-[10px] font-semibold flex-shrink-0">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[11px] font-semibold text-white rounded-full"
+                              style={{ background: avatarColor(userItem.id) }}
+                            >
                               {getInitials(userItem.fullName)}
                             </div>
-                            <div>
-                              <div className="font-medium text-[13px] text-slate-900">
-                                {userItem.fullName}
+                            <div className="min-w-0">
+                              <div className="font-medium text-[13.5px] text-slate-900 truncate">
+                                {capitalizeWords(userItem.fullName)}
                               </div>
-                              <div
-                                className="text-slate-500"
-                                style={{
-                                  fontSize: 11,
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}
-                              >
+                              <div className="text-slate-400 text-[12px] truncate">
                                 {userItem.email}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td
-                          className="px-6 py-3 text-slate-600"
-                          style={{ fontSize: 13 }}
-                        >
-                          {userItem.jobPosition}
+                        <td className="px-6 py-4 text-slate-600 text-[13px]">
+                          {capitalizeWords(userItem.jobPosition)}
                         </td>
-                        <td className="px-6 py-3">
+                        <td className="px-6 py-4">
                           <div className="space-y-1">
-                            <div
-                              className="flex items-center gap-2 text-slate-600"
-                              style={{ fontSize: 12 }}
-                            >
-                              <Mail className="w-3 h-3 text-slate-400" />{" "}
+                            <div className="flex items-center gap-2 text-slate-500 text-[12.5px]">
+                              <Mail className="w-3 h-3 text-slate-400" />
                               {userItem.email}
                             </div>
-                            <div
-                              className="flex items-center gap-2 text-slate-600"
-                              style={{ fontSize: 12 }}
-                            >
-                              <Phone className="w-3 h-3 text-slate-400" />{" "}
+                            <div className="flex items-center gap-2 text-slate-500 text-[12.5px]">
+                              <Phone className="w-3 h-3 text-slate-400" />
                               {userItem.phoneNumber}
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-3">
+                        <td className="px-6 py-4">
                           <span
-                            className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
+                            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
                             style={{
-                              fontFamily: "'JetBrains Mono', monospace",
                               background: rStyle.bg,
                               color: rStyle.fg,
                             }}
                           >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ background: rStyle.fg }}
-                            />
                             {userItem.role}
                           </span>
                         </td>
                         {isAdminOrSuperAdmin && (
-                          <td className="px-6 py-3 text-right">
+                          <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={() => handleStartEditUser(userItem)}

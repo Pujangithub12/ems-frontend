@@ -35,6 +35,13 @@ const COLUMNS: {
   },
   { field: "startDate", label: "Start Date", type: "date", width: "w-40" },
   {
+    field: "progress",
+    label: "Progress (%)",
+    type: "number",
+    width: "w-28",
+    placeholder: "0-100",
+  },
+  {
     field: "parentId",
     label: "Parent ID",
     type: "text",
@@ -112,6 +119,15 @@ const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
     );
     if (badDuration) {
       setError(`Duration for "${badDuration.taskName}" must be a number.`);
+      return;
+    }
+    const badProgress = meaningfulRows.find((r) => {
+      if (r.progress.trim() === "") return false;
+      const n = Number(r.progress);
+      return Number.isNaN(n) || n < 0 || n > 100;
+    });
+    if (badProgress) {
+      setError(`Progress for "${badProgress.taskName}" must be a number between 0 and 100.`);
       return;
     }
 
