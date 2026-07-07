@@ -55,6 +55,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     if (currentUserRole === "super_admin") {
       return [
         { value: "user", label: "Standard User" },
+        { value: "finance", label: "Finance" },
         { value: "admin", label: "Administrator" },
         { value: "super_admin", label: "Super Administrator" },
       ];
@@ -62,6 +63,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     if (currentUserRole === "admin") {
       return [
         { value: "user", label: "Standard User" },
+        { value: "finance", label: "Finance" },
         { value: "admin", label: "Administrator" },
       ];
     }
@@ -108,6 +110,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
                 <input
+                  name="new-user-full-name"
+                  autoComplete="off"
                   value={userForm.fullName}
                   onChange={(e) => onFieldChange("fullName", e.target.value)}
                   required
@@ -123,6 +127,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
                 <Mail className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="email"
+                  name="new-user-email"
+                  autoComplete="off"
                   value={userForm.email}
                   onChange={(e) => onFieldChange("email", e.target.value)}
                   required
@@ -137,6 +143,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
                 <input
+                  name="new-user-phone"
+                  autoComplete="off"
                   value={userForm.phoneNumber}
                   onChange={(e) => onFieldChange("phoneNumber", e.target.value)}
                   required
@@ -151,6 +159,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <div className="relative">
                 <Briefcase className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
                 <input
+                  name="new-user-job-position"
+                  autoComplete="off"
                   value={userForm.jobPosition}
                   onChange={(e) => onFieldChange("jobPosition", e.target.value)}
                   required
@@ -198,6 +208,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             <div className="relative">
               <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-400" />
               <textarea
+                name="new-user-address"
+                autoComplete="off"
                 value={userForm.address}
                 onChange={(e) => onFieldChange("address", e.target.value)}
                 required
@@ -214,6 +226,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <Lock className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 type="password"
+                name="new-user-password"
+                autoComplete="new-password"
                 value={userForm.password}
                 onChange={(e) => onFieldChange("password", e.target.value)}
                 className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"

@@ -31,7 +31,7 @@ function dueDateInfo(dueDate?: string): { label: string; tone: string } | null {
   if (days < 0) return { label: `Overdue by ${Math.abs(days)}d`, tone: "text-red-700" };
   if (days === 0) return { label: "Due today", tone: "text-amber-700" };
   if (days <= 7) return { label: `${days}d left`, tone: "text-amber-700" };
-  return { label: `${days}d left`, tone: "text-slate-400" };
+  return { label: `${days}d left`, tone: "text-blue-700" };
 }
 
 const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
@@ -46,21 +46,22 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
       label: "Total Tasks",
       value: project.tasksCount,
       icon: ListChecks,
-      accent: "text-blue-900",
+      sub: "Tasks",
+      subTone: "text-slate-400",
     },
     {
       label: "Team Members",
       value: project.membersCount,
       icon: Users,
-      accent: "text-indigo-700",
+      sub: "Members",
+      subTone: "text-slate-400",
     },
     {
       label: "Deadline",
       value: project.dueDate ? new Date(project.dueDate).toLocaleDateString() : "Not set",
       icon: Calendar,
-      accent: "text-slate-700",
       sub: deadline?.label,
-      subTone: deadline?.tone,
+      subTone: deadline?.tone || "text-slate-400",
     },
   ];
 
@@ -70,7 +71,7 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
       <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-5">
           <div className="flex items-center gap-5 p-6 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 lg:col-span-2">
-            <div className="relative w-24 h-24 shrink-0">
+            <div className="relative w-28 h-28 shrink-0">
               <CircularProgressbar
                 value={project.progress}
                 text={`${project.progress}%`}
@@ -78,7 +79,7 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
                   pathColor: isComplete ? "#059669" : "#1e3a8a",
                   trailColor: "#e2e8f0",
                   textColor: "#0f172a",
-                  textSize: "22px",
+                  textSize: "26px",
                   pathTransitionDuration: 0.6,
                 })}
               />
@@ -86,8 +87,8 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
             <div className="min-w-0">
               <Eyebrow>Project Progress</Eyebrow>
               <div className="flex items-center gap-1.5 mt-1">
-                {isComplete && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                <span className="font-semibold text-[14px] text-slate-900">
+                {isComplete && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                <span className="font-bold text-[16px] text-slate-900">
                   {isComplete
                     ? "Complete"
                     : project.progress >= 50
@@ -105,14 +106,16 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
             {statCards.map((stat) => (
               <div key={stat.label} className="p-6">
                 <Eyebrow>{stat.label}</Eyebrow>
-                <div className="flex items-center gap-2 mt-2">
-                  <stat.icon className={`w-4 h-4 ${stat.accent}`} />
-                  <span className="font-semibold text-[19px] tracking-tight text-slate-900">
+                <div className="flex items-center gap-3 mt-3">
+                  <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-full bg-blue-50">
+                    <stat.icon className="w-[18px] h-[18px] text-blue-700" />
+                  </div>
+                  <span className="font-bold text-[26px] tracking-tight text-slate-900 leading-none">
                     {stat.value}
                   </span>
                 </div>
                 {stat.sub && (
-                  <div className={`mt-1.5 text-[11px] font-medium ${stat.subTone}`}>
+                  <div className={`mt-2 text-[12px] font-medium ${stat.subTone}`}>
                     {stat.sub}
                   </div>
                 )}

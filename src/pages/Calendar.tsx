@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Calendar, { CalendarProps } from "react-calendar";
 import "react-calendar/dist/Calendar.css";
+import NepaliDate from "nepali-date-converter";
 import {
   ChevronRight,
   ChevronLeft,
@@ -12,6 +13,38 @@ import {
 } from "lucide-react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
+
+const BS_MONTHS = [
+  "Baisakh",
+  "Jestha",
+  "Asar",
+  "Shrawan",
+  "Bhadra",
+  "Aswin",
+  "Kartik",
+  "Mangsir",
+  "Poush",
+  "Magh",
+  "Falgun",
+  "Chaitra",
+];
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Computed via the library's own conversion rather than its internal data
+// table, so it stays correct regardless of which years that table covers.
+const daysInBsMonth = (year: number, month: number) => {
+  let nextMonth = month + 1;
+  let nextYear = year;
+  if (nextMonth > 11) {
+    nextMonth = 0;
+    nextYear += 1;
+  }
+  const firstOfThis = new NepaliDate(year, month, 1).toJsDate();
+  const firstOfNext = new NepaliDate(nextYear, nextMonth, 1).toJsDate();
+  return Math.round(
+    (firstOfNext.getTime() - firstOfThis.getTime()) / 86400000,
+  );
+};
 
 type CalendarEvent = {
   id: number;
@@ -43,7 +76,41 @@ const CalendarPage: React.FC = () => {
   const [newTitle, setNewTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [calendarMode, setCalendarMode] = useState<"ad" | "bs">("ad");
+  const todayBS = NepaliDate.fromAD(new Date());
+  const [bsYear, setBsYear] = useState(todayBS.getYear());
+  const [bsMonth, setBsMonth] = useState(todayBS.getMonth());
+
   const isAdmin = user?.role === "admin";
+
+  const switchCalendarMode = (mode: "ad" | "bs") => {
+    setCalendarMode(mode);
+    if (mode === "bs") {
+      const bs = NepaliDate.fromAD(value);
+      setBsYear(bs.getYear());
+      setBsMonth(bs.getMonth());
+    }
+  };
+
+  const goBsPrevMonth = () => {
+    setBsMonth((m) => {
+      if (m === 0) {
+        setBsYear((y) => y - 1);
+        return 11;
+      }
+      return m - 1;
+    });
+  };
+
+  const goBsNextMonth = () => {
+    setBsMonth((m) => {
+      if (m === 11) {
+        setBsYear((y) => y + 1);
+        return 0;
+      }
+      return m + 1;
+    });
+  };
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -145,19 +212,45 @@ const CalendarPage: React.FC = () => {
             Company Calendar
           </h2>
         </div>
-        {isAdmin && (
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-          >
-            {showAddForm ? (
-              <X className="w-3.5 h-3.5" />
-            ) : (
-              <Plus className="w-3.5 h-3.5" />
-            )}
-            {showAddForm ? "Cancel" : "Add Event"}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="inline-flex overflow-hidden bg-white border rounded-md border-slate-200">
+            <button
+              type="button"
+              onClick={() => switchCalendarMode("ad")}
+              className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                calendarMode === "ad"
+                  ? "bg-blue-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              onClick={() => switchCalendarMode("bs")}
+              className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                calendarMode === "bs"
+                  ? "bg-blue-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Nepali (B.S.)
+            </button>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+            >
+              {showAddForm ? (
+                <X className="w-3.5 h-3.5" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              {showAddForm ? "Cancel" : "Add Event"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Add Form */}
@@ -169,7 +262,10 @@ const CalendarPage: React.FC = () => {
           >
             <div className="flex-1">
               <Eyebrow className="mb-1.5">
-                Event Title for {value.toLocaleDateString()}
+                Event Title for{" "}
+                {calendarMode === "bs"
+                  ? NepaliDate.fromAD(value).format("D MMMM, YYYY")
+                  : value.toLocaleDateString()}
               </Eyebrow>
               <input
                 required
@@ -194,17 +290,110 @@ const CalendarPage: React.FC = () => {
       <div className="grid items-start gap-6 lg:grid-cols-12">
         {/* Calendar Grid */}
         <div className="p-6 bg-white border rounded-md lg:col-span-8 border-slate-200">
-          <Calendar
-            onChange={handleChange}
-            value={value}
-            tileContent={tileContent}
-            tileClassName={tileClassName} // Added to apply custom classes to specific days
-            className="w-full custom-calendar"
-            nextLabel={<ChevronRight className="w-4 h-4" />}
-            prevLabel={<ChevronLeft className="w-4 h-4" />}
-            next2Label={null}
-            prev2Label={null}
-          />
+          {calendarMode === "ad" ? (
+            <Calendar
+              onChange={handleChange}
+              value={value}
+              tileContent={tileContent}
+              tileClassName={tileClassName} // Added to apply custom classes to specific days
+              className="w-full custom-calendar"
+              nextLabel={<ChevronRight className="w-4 h-4" />}
+              prevLabel={<ChevronLeft className="w-4 h-4" />}
+              next2Label={null}
+              prev2Label={null}
+            />
+          ) : (
+            <div className="w-full">
+              <div className="flex items-center mb-6">
+                <button
+                  type="button"
+                  onClick={goBsPrevMonth}
+                  className="flex items-center justify-center rounded min-w-[32px] h-8 text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="flex-grow pl-2 text-[15px] font-semibold text-slate-900">
+                  {BS_MONTHS[bsMonth]} {bsYear}
+                </div>
+                <button
+                  type="button"
+                  onClick={goBsNextMonth}
+                  className="flex items-center justify-center rounded min-w-[32px] h-8 text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7">
+                {WEEKDAY_LABELS.map((d) => (
+                  <div
+                    key={d}
+                    className="py-2 text-[10px] font-medium tracking-[0.05em] text-center uppercase text-slate-400"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-y-1">
+                {(() => {
+                  const firstJsDate = new NepaliDate(
+                    bsYear,
+                    bsMonth,
+                    1,
+                  ).toJsDate();
+                  const firstWeekday = firstJsDate.getDay();
+                  const totalDays = daysInBsMonth(bsYear, bsMonth);
+                  const cells = [];
+                  for (let i = 0; i < firstWeekday; i++) {
+                    cells.push(<div key={`blank-${i}`} />);
+                  }
+                  for (let d = 1; d <= totalDays; d++) {
+                    const jsDate = new NepaliDate(
+                      bsYear,
+                      bsMonth,
+                      d,
+                    ).toJsDate();
+                    const isToday =
+                      jsDate.toDateString() === new Date().toDateString();
+                    const isSelected =
+                      jsDate.toDateString() === value.toDateString();
+                    const isSaturday = jsDate.getDay() === 6;
+                    const hasEvent = getEventsForDate(jsDate).length > 0;
+                    const isHoliday = isSaturday || hasEvent;
+                    cells.push(
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setValue(jsDate)}
+                        className={`flex flex-col items-center justify-center py-3 text-[13px] font-medium transition-colors rounded ${
+                          isSelected
+                            ? "bg-blue-900 text-white"
+                            : isToday
+                              ? "bg-blue-50 text-blue-900 font-semibold"
+                              : isHoliday
+                                ? "text-red-700 hover:bg-slate-50"
+                                : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                        style={{ maxHeight: 60 }}
+                      >
+                        {d}
+                        {hasEvent && (
+                          <span
+                            className={`w-1 h-1 rounded-full mt-1 ${
+                              isSelected ? "bg-white" : "bg-blue-900"
+                            }`}
+                          />
+                        )}
+                      </button>,
+                    );
+                  }
+                  return cells;
+                })()}
+              </div>
+            </div>
+          )}
           <style>{`
             .custom-calendar.react-calendar {
               width: 100%;
@@ -312,18 +501,31 @@ const CalendarPage: React.FC = () => {
           {/* Selected Date */}
           <div className="p-5 bg-white border rounded-md border-slate-200">
             <Eyebrow>Selected Date</Eyebrow>
-            <h3 className="font-semibold mt-2 text-[22px] tracking-tight text-slate-900">
-              {value.toLocaleDateString(undefined, {
-                day: "numeric",
-                month: "long",
-              })}
-            </h3>
-            <p className="text-slate-500 text-[13px] mt-0.5">
-              {value.toLocaleDateString(undefined, {
-                weekday: "long",
-                year: "numeric",
-              })}
-            </p>
+            {calendarMode === "bs" ? (
+              <>
+                <h3 className="font-semibold mt-2 text-[22px] tracking-tight text-slate-900">
+                  {NepaliDate.fromAD(value).format("D MMMM")}
+                </h3>
+                <p className="text-slate-500 text-[13px] mt-0.5">
+                  {NepaliDate.fromAD(value).format("ddd, YYYY")} B.S.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="font-semibold mt-2 text-[22px] tracking-tight text-slate-900">
+                  {value.toLocaleDateString(undefined, {
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </h3>
+                <p className="text-slate-500 text-[13px] mt-0.5">
+                  {value.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </>
+            )}
 
             <div className="pt-4 mt-4 border-t border-slate-200">
               <div className="flex items-center gap-2 text-slate-600 text-[12px]">

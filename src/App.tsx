@@ -9,6 +9,7 @@ import ProjectDetails from "./pages/ProjectDetails";
 import CalendarPage from "./pages/Calendar";
 import LeaveRequests from "./pages/LeaveRequests";
 import Activities from "./pages/Activities";
+import Settings from "./pages/Settings";
 import DashboardLayout from "./layout/DashboardLayout";
 import { AuthProvider, useAuth } from "./context/AuthProvider";
 import TasksPage from "./pages/Tasks";
@@ -114,6 +115,14 @@ function App() {
             element={
               <DashboardLayout>
                 <Activities />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/:workspaceId/settings"
+            element={
+              <DashboardLayout>
+                <Settings />
               </DashboardLayout>
             }
           />

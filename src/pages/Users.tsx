@@ -327,6 +327,7 @@ const Users: React.FC = () => {
   const roleStyles: Record<string, { bg: string; fg: string }> = {
     admin: { bg: "#EDE9FE", fg: "#6D28D9" },
     super_admin: { bg: "#FEE2E2", fg: "#B91C1C" },
+    finance: { bg: "#FEF3C7", fg: "#B45309" },
     user: { bg: "#DBEAFE", fg: "#1E3A8A" },
   };
 
@@ -344,15 +345,15 @@ const Users: React.FC = () => {
   const avatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
 
   return (
-    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
+    <div className="w-full px-6 py-6 lg:px-8 lg:py-8">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
         <div>
           <Eyebrow>Team Management</Eyebrow>
-          <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
-            People
+          <h2 className="font-semibold text-[28px] tracking-tight text-slate-900">
+            Users
           </h2>
-          <p className="text-slate-500 text-[14px] mt-1">
+          <p className="text-slate-500 text-[14px] ">
             Manage your organization's members and hierarchy.
           </p>
         </div>

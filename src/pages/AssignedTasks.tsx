@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import {
@@ -11,11 +11,20 @@ import {
   Users as UsersIcon,
   Paperclip,
   CheckCircle2,
+  Check,
   X,
   Loader2,
   Calendar,
   ChevronDown,
   ChevronRight,
+  FolderKanban,
+  ClipboardList,
+  Folder,
+  TrendingUp,
+  FileText,
+  ListChecks,
+  PauseCircle,
+  User as UserRoundIcon,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 
@@ -57,7 +66,49 @@ type Task = {
   createdAt: string;
   subTasks: { id: number; title: string; status: string; children?: any[] }[];
   projectName?: string;
-  project?: { id: number; name: string };
+  project?: { id: number; name: string; status?: string };
+  createdBy?: { id: number; fullName: string };
+};
+
+const formatLongDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+const getStatusMeta = (status: string) => {
+  const v = status.toLowerCase().replace(/\s+/g, "_");
+  if (v === "completed")
+    return { label: "Completed", bg: "#DCFCE7", fg: "#15803D", Icon: CheckCircle2 };
+  if (v === "in_progress")
+    return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
+  if (v === "on_hold")
+    return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
+  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+};
+
+const getDueMeta = (dueDate: string, status: string) => {
+  const due = new Date(new Date(dueDate).toDateString()).getTime();
+  const today = new Date(new Date().toDateString()).getTime();
+  const diffDays = Math.round((due - today) / 86400000);
+  if (status === "completed") return { label: "Completed", bg: "#DCFCE7", fg: "#15803D" };
+  if (diffDays < 0)
+    return {
+      label: `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} overdue`,
+      bg: "#FEE2E2",
+      fg: "#B91C1C",
+    };
+  if (diffDays === 0) return { label: "Due today", bg: "#FEF3C7", fg: "#B45309" };
+  return { label: `In ${diffDays} day${diffDays === 1 ? "" : "s"}`, bg: "#DBEAFE", fg: "#1E3A8A" };
+};
+
+const getProjectStatusMeta = (status?: string) => {
+  const v = (status || "").toLowerCase();
+  if (v === "completed") return { label: "Completed Project", bg: "#DCFCE7", fg: "#15803D" };
+  if (v === "on_hold") return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C" };
+  if (v === "pending") return { label: "Planned Project", bg: "#FEF3C7", fg: "#B45309" };
+  return { label: "Active Project", bg: "#DBEAFE", fg: "#1E3A8A" };
 };
 
 const formatDate = (dateString: string) =>
@@ -73,6 +124,11 @@ const getFileUrl = (path: string) => {
   const normalizedPath = path.replace(/\\/g, "/");
   return `${API_BASE}/${normalizedPath}`;
 };
+
+const isOverdue = (dueDate: string, status: string) =>
+  status !== "completed" &&
+  new Date(dueDate).getTime() < new Date(new Date().toDateString()).getTime();
+
 
 // --- Design System Components ---
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -162,6 +218,24 @@ const AssignedTasks: React.FC = () => {
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterEmployee, setFilterEmployee] = useState("");
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  const projectFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        projectFilterRef.current &&
+        !projectFilterRef.current.contains(e.target as Node)
+      ) {
+        setProjectFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
+    new Set(),
+  );
   const [editProgress, setEditProgress] = useState(0);
 
   const [newProjectId, setNewProjectId] = useState<number | null>(null);
@@ -252,6 +326,50 @@ const AssignedTasks: React.FC = () => {
       matchesEmployee
     );
   });
+
+  type ProjectGroup = {
+    key: string;
+    name: string;
+    projectId: number | null;
+    tasks: Task[];
+  };
+
+  const projectGroups: ProjectGroup[] = (() => {
+    const map = new Map<string, ProjectGroup>();
+    filteredTasks.forEach((task) => {
+      const projectId = task.project?.id ?? null;
+      const name = task.project?.name || task.projectName || "No Project";
+      const key = projectId != null ? `p-${projectId}` : `name-${name}`;
+      if (!map.has(key)) {
+        map.set(key, { key, name, projectId, tasks: [] });
+      }
+      map.get(key)!.tasks.push(task);
+    });
+    const groups = Array.from(map.values()).sort((a, b) => {
+      if (a.name === "No Project") return 1;
+      if (b.name === "No Project") return -1;
+      return a.name.localeCompare(b.name);
+    });
+    groups.forEach((g) => {
+      g.tasks.sort(
+        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+      );
+    });
+    return groups;
+  })();
+
+  const toggleGroup = (key: string) => {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const expandAllGroups = () => setCollapsedProjects(new Set());
+  const collapseAllGroups = () =>
+    setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
 
   const convertToDetailed = (subTasks: any[]): DetailedSubTask[] =>
     subTasks.map((st) => ({
@@ -633,13 +751,13 @@ const AssignedTasks: React.FC = () => {
     await saveSubTasksToBackend(taskId, updatedSubTasks);
   };
 
-  const openAddTaskModal = () => {
+  const openAddTaskModal = (projectId?: number) => {
     setShowAddTaskForm(true);
     setShowUpdateModal(false);
     setEditingTaskId(null);
     setAddTaskError(null);
     setNewProgress(0);
-    setNewProjectId(null);
+    setNewProjectId(projectId ?? null);
     setNewSubTasks([]);
   };
 
@@ -814,7 +932,7 @@ const AssignedTasks: React.FC = () => {
           />
         </div>
         <button
-          onClick={openAddTaskModal}
+          onClick={() => openAddTaskModal()}
           className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Create Task
@@ -823,15 +941,53 @@ const AssignedTasks: React.FC = () => {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
-        <div>
+        <div ref={projectFilterRef} className="relative">
           <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-          <input
-            type="text"
-            placeholder="Search project..."
-            value={filterProjectName}
-            onChange={(e) => setFilterProjectName(e.target.value)}
-            className="px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-          />
+          <button
+            type="button"
+            onClick={() => setProjectFilterOpen((o) => !o)}
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+          >
+            <span className="truncate">{filterProjectName || "All Projects"}</span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+          </button>
+          {projectFilterOpen && (
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
+              <div className="max-h-[180px] overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterProjectName("");
+                    setProjectFilterOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-[13px] transition-colors hover:bg-slate-50 ${
+                    !filterProjectName
+                      ? "font-semibold text-blue-900 bg-blue-50"
+                      : "text-slate-700"
+                  }`}
+                >
+                  All Projects
+                </button>
+                {projects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => {
+                      setFilterProjectName(project.name);
+                      setProjectFilterOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-[13px] truncate transition-colors hover:bg-slate-50 ${
+                      filterProjectName === project.name
+                        ? "font-semibold text-blue-900 bg-blue-50"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <Eyebrow className="mb-1.5">Priority</Eyebrow>
@@ -877,191 +1033,250 @@ const AssignedTasks: React.FC = () => {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="space-y-5">
-        {tasksLoading ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-md border-slate-200">
-            <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-            <div
-              className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+      {/* Content: grouped by project */}
+      {tasksLoading ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-md border-slate-200">
+          <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+          <div
+            className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            Loading your assignments...
+          </div>
+        </div>
+      ) : tasksError ? (
+        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-100 rounded-md text-red-700 text-[13px]">
+          <AlertCircle className="flex-shrink-0 w-4 h-4" />
+          {tasksError}
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
+          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+            <CheckCircle2 className="w-6 h-6 text-slate-400" />
+          </div>
+          <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
+            No tasks found
+          </h3>
+          <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
+            Either you're all caught up or no tasks match your current search.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={expandAllGroups}
+              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
             >
-              Loading your assignments...
-            </div>
+              Expand all
+            </button>
+            <button
+              onClick={collapseAllGroups}
+              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+            >
+              Collapse all
+            </button>
           </div>
-        ) : tasksError ? (
-          <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-100 rounded-md text-red-700 text-[13px]">
-            <AlertCircle className="flex-shrink-0 w-4 h-4" />
-            {tasksError}
-          </div>
-        ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
-              <CheckCircle2 className="w-6 h-6 text-slate-400" />
-            </div>
-            <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
-              No tasks found
-            </h3>
-            <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
-              Either you're all caught up or no tasks match your current search.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-hidden bg-white border rounded-md border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead
-                  className="bg-[#EEF1F5]/30 text-left text-slate-400"
-                  style={{
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
+
+          <div className="space-y-3">
+            {projectGroups.map((group) => {
+              const isCollapsed = collapsedProjects.has(group.key);
+              const doneCount = group.tasks.filter(
+                (t) => t.status === "completed",
+              ).length;
+              const pct = group.tasks.length
+                ? Math.round((doneCount / group.tasks.length) * 100)
+                : 0;
+
+              return (
+                <div
+                  key={group.key}
+                  className="overflow-hidden bg-white border rounded-lg border-slate-200"
                 >
-                  <tr>
-                    <th className="w-10 px-5 py-2.5 font-medium" />
-                    <th className="px-5 py-2.5 font-medium">Task</th>
-                    <th className="px-5 py-2.5 font-medium">Project Name</th>
-                    <th className="px-5 py-2.5 font-medium">Assigned To</th>
-                    <th className="px-5 py-2.5 font-medium text-center">
-                      Priority
-                    </th>
-                    <th className="px-5 py-2.5 font-medium text-center">
-                      Progress & Status
-                    </th>
-                    <th className="px-5 py-2.5 font-medium text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {filteredTasks.map((task) => (
-                    <tr
-                      key={task.id}
-                      className="transition-colors hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-3">
-                        <input
-                          type="checkbox"
-                          checked={task.status === "completed"}
-                          onChange={(e) =>
-                            handleStatusChange(
-                              task.id,
-                              e.target.checked ? "completed" : "pending",
-                            )
-                          }
-                          className="w-4 h-4 rounded cursor-pointer text-blue-900 border-slate-300 focus:ring-blue-900"
-                          title="Mark as completed"
+                  <button
+                    onClick={() => toggleGroup(group.key)}
+                    className="flex items-center w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/60"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
+                    ) : (
+                      <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
+                    )}
+                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50">
+                      <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[14px] text-slate-900 truncate">
+                        {group.name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {doneCount} of {group.tasks.length} done
+                      </div>
+                    </div>
+                    <div className="items-center flex-1 hidden max-w-xs gap-2 sm:flex">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-blue-900"
+                          style={{ width: `${pct}%` }}
                         />
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="max-w-[300px]">
-                          <button
-                            onClick={() =>
-                              setExpandedTaskId(
-                                expandedTaskId === task.id ? null : task.id,
-                              )
-                            }
-                            className="text-left"
+                      </div>
+                      <span
+                        className="text-[11px] text-slate-400 w-9 text-right"
+                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                      >
+                        {pct}%
+                      </span>
+                    </div>
+                    <span
+                      className="text-[11px] text-white font-semibold bg-blue-900 px-2.5 py-1 rounded-md flex-shrink-0"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {group.tasks.length}
+                    </span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
+                      {group.tasks.map((task) => {
+                        const overdue = isOverdue(task.dueDate, task.status);
+                        const completed = task.status === "completed";
+                        return (
+                          <div
+                            key={task.id}
+                            className={`flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50 transition-colors ${
+                              completed ? "opacity-60" : ""
+                            }`}
                           >
-                            <p className="text-[13px] font-medium text-slate-900 hover:text-blue-900 transition-colors">
-                              {task.title}
-                            </p>
-                            <div className="flex items-center gap-2.5 mt-1">
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                                <Calendar className="w-3 h-3" />
-                                {formatDate(task.dueDate)}
-                              </div>
-                            </div>
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className="text-[13px] font-medium text-blue-900">
-                          {task.project?.name || task.projectName || "-"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex -space-x-1">
-                            {task.assignedUsers.slice(0, 3).map((u) => (
-                              <div
-                                key={u.id}
-                                className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
-                                title={u.fullName}
-                              >
-                                {u.fullName.charAt(0)}
-                              </div>
-                            ))}
-                          </div>
-                          <span className="text-[12px] text-slate-600 truncate max-w-[140px]">
-                            {task.assignedUsers.length === 0
-                              ? "Unassigned"
-                              : task.assignedUsers.map((u) => u.fullName).join(", ")}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        <StatusPill type="priority" value={task.priority} />
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex flex-col items-center gap-1.5 min-w-[150px]">
-                          <div className="w-full h-1 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full bg-blue-900 rounded-full"
-                              style={{ width: `${task.progress}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="text-[11px] font-medium text-slate-700"
-                              style={{
-                                fontFamily: "'JetBrains Mono', monospace",
-                              }}
-                            >
-                              {task.progress}%
-                            </span>
-                            <select
-                              value={task.status}
-                              onChange={(e) =>
-                                handleStatusChange(task.id, e.target.value)
+                            <button
+                              onClick={() =>
+                                handleStatusChange(
+                                  task.id,
+                                  completed ? "pending" : "completed",
+                                )
                               }
-                              className="appearance-none bg-transparent cursor-pointer outline-none"
+                              className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                                completed
+                                  ? "bg-slate-900 border-slate-900"
+                                  : "border-slate-300 hover:border-slate-400"
+                              }`}
+                              title="Mark as completed"
                             >
-                              <option value="pending">Pending</option>
-                              <option value="in_progress">In Progress</option>
-                              <option value="on_hold">On Hold</option>
-                              <option value="completed">Completed</option>
-                            </select>
+                              {completed && (
+                                <Check
+                                  className="w-2.5 h-2.5 text-white"
+                                  strokeWidth={3}
+                                />
+                              )}
+                            </button>
+                            <button
+                              onClick={() =>
+                                setExpandedTaskId(
+                                  expandedTaskId === task.id ? null : task.id,
+                                )
+                              }
+                              className="flex-1 min-w-0 text-left"
+                            >
+                              <p
+                                className={`text-[13px] font-medium text-slate-900 truncate ${
+                                  completed ? "line-through" : ""
+                                }`}
+                              >
+                                {task.title}
+                              </p>
+                              <p
+                                className={`flex items-center gap-1 text-[11px] mt-0.5 ${
+                                  overdue ? "text-red-600" : "text-slate-500"
+                                }`}
+                              >
+                                <Calendar className="w-3 h-3" /> Due{" "}
+                                {formatDate(task.dueDate)}
+                                {task.createdBy && (
+                                  <span className="text-slate-400">
+                                    {" "}
+                                    · Assigned by {task.createdBy.fullName}
+                                  </span>
+                                )}
+                              </p>
+                            </button>
+                            <div className="flex-shrink-0">
+                              <StatusPill type="priority" value={task.priority} />
+                            </div>
+                            <div className="items-center flex-shrink-0 hidden gap-1.5 sm:flex">
+                              <div className="h-1 overflow-hidden rounded-full bg-slate-100 w-14">
+                                <div
+                                  className="h-full rounded-full bg-blue-900"
+                                  style={{ width: `${task.progress}%` }}
+                                />
+                              </div>
+                              <select
+                                value={task.status}
+                                onChange={(e) =>
+                                  handleStatusChange(task.id, e.target.value)
+                                }
+                                className="text-[11px] text-slate-600 bg-transparent outline-none appearance-none cursor-pointer"
+                                style={{
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}
+                              >
+                                <option value="pending">Pending</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="on_hold">On Hold</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                            </div>
+                            <div className="flex-shrink-0 -space-x-1 flex">
+                              {task.assignedUsers.length === 0 ? (
+                                <span className="text-[11px] text-slate-400">
+                                  Unassigned
+                                </span>
+                              ) : (
+                                task.assignedUsers.slice(0, 3).map((u) => (
+                                  <div
+                                    key={u.id}
+                                    className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
+                                    title={u.fullName}
+                                  >
+                                    {u.fullName.charAt(0)}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                            <div className="flex items-center flex-shrink-0 gap-1">
+                              <button
+                                onClick={() => handleEditClick(task)}
+                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-blue-900 hover:bg-blue-50"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(task.id)}
+                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleEditClick(task)}
-                            className="p-1.5 transition-colors rounded text-slate-400 hover:text-blue-900 hover:bg-blue-50"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(task.id)}
-                            className="p-1.5 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        );
+                      })}
+                      <button
+                        onClick={() =>
+                          openAddTaskModal(group.projectId ?? undefined)
+                        }
+                        className="flex items-center w-full gap-1.5 px-2.5 py-2 text-[12px] text-slate-500 border border-dashed border-slate-200 rounded-md hover:text-slate-700 hover:border-slate-300 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add task to{" "}
+                        {group.name}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Task Creation Modal */}
       {showAddTaskForm && (
@@ -1603,149 +1818,214 @@ const AssignedTasks: React.FC = () => {
       )}
 
       {/* Task Details Popup */}
-      {expandedTaskId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
-          <div className="w-full max-w-2xl bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
-              <div>
-                <Eyebrow>
-                  {(() => {
-                    const t = assignedTasks.find(
-                      (task) => task.id === expandedTaskId,
-                    );
-                    return t?.project?.name || t?.projectName || "Task";
-                  })()}
-                </Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  {assignedTasks.find((t) => t.id === expandedTaskId)?.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setExpandedTaskId(null)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Project Name</Eyebrow>
-                  <p className="font-semibold text-[15px] text-slate-900 mt-1">
-                    {assignedTasks.find((t) => t.id === expandedTaskId)
-                      ?.projectName || "N/A"}
-                  </p>
-                </div>
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Due Date</Eyebrow>
-                  <p className="font-medium text-[13px] text-slate-900 mt-1">
-                    {new Date(
-                      assignedTasks.find((t) => t.id === expandedTaskId)
-                        ?.dueDate || "",
-                    ).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                </div>
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Progress</Eyebrow>
-                  <div className="flex items-baseline gap-1 mt-1">
-                    <span className="font-semibold text-[20px] tracking-tight text-blue-900">
-                      {
-                        assignedTasks.find((t) => t.id === expandedTaskId)
-                          ?.progress
-                      }
-                      %
+      {expandedTaskId &&
+        (() => {
+          const t = assignedTasks.find((task) => task.id === expandedTaskId);
+          if (!t) return null;
+          const statusMeta = getStatusMeta(t.status);
+          const dueMeta = getDueMeta(t.dueDate, t.status);
+          const projectMeta = getProjectStatusMeta(t.project?.status);
+          const StatusIcon = statusMeta.Icon;
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
+              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50">
+                      <ClipboardList className="w-3.5 h-3.5 text-blue-900" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-[15px] text-slate-900 truncate">
+                        {t.title}
+                      </h3>
+                      <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-0.5 truncate">
+                        <span className="font-medium text-blue-900">
+                          {t.project?.name || t.projectName || "No Project"}
+                        </span>
+                        <span>·</span>
+                        <span>Due {formatLongDate(t.dueDate)}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center flex-shrink-0 gap-2.5">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                      style={{ background: statusMeta.bg, color: statusMeta.fg }}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: statusMeta.fg }}
+                      />
+                      {statusMeta.label}
                     </span>
-                  </div>
-                  <div className="w-full h-1 mt-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full bg-blue-900 rounded-full"
-                      style={{
-                        width: `${assignedTasks.find((t) => t.id === expandedTaskId)?.progress || 0}%`,
-                      }}
-                    />
+                    <button
+                      onClick={() => setExpandedTaskId(null)}
+                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="p-4 border rounded border-slate-200">
-                  <Eyebrow className="mb-2">Description</Eyebrow>
-                  <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                    {assignedTasks.find((t) => t.id === expandedTaskId)
-                      ?.description || "No description provided."}
-                  </p>
-                </div>
-                <div className="p-4 border rounded border-slate-200">
-                  <Eyebrow className="mb-2">Assigned To</Eyebrow>
-                  <div className="flex flex-wrap gap-2">
-                    {assignedTasks
-                      .find((t) => t.id === expandedTaskId)
-                      ?.assignedUsers.map((u) => (
-                        <div
-                          key={u.id}
-                          className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded"
-                        >
-                          <div className="w-5 h-5 rounded-full bg-blue-900 flex items-center justify-center text-white text-[9px] font-semibold">
-                            {u.fullName.charAt(0)}
-                          </div>
-                          <span className="text-[12px] font-medium text-slate-700">
-                            {u.fullName}
-                          </span>
+                <div className="flex-1 p-5 space-y-3 overflow-y-auto">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+                          <Folder className="w-3.5 h-3.5 text-blue-900" />
                         </div>
-                      ))}
+                        <Eyebrow>Project</Eyebrow>
+                      </div>
+                      <p className="font-semibold text-[13px] text-slate-900 truncate">
+                        {t.project?.name || t.projectName || "No Project"}
+                      </p>
+                      <span
+                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{ background: projectMeta.bg, color: projectMeta.fg }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: projectMeta.fg }}
+                        />
+                        {projectMeta.label}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+                          <Calendar className="w-3.5 h-3.5 text-blue-900" />
+                        </div>
+                        <Eyebrow>Due Date</Eyebrow>
+                      </div>
+                      <p className="font-semibold text-[13px] text-slate-900">
+                        {formatLongDate(t.dueDate)}
+                      </p>
+                      <span
+                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{ background: dueMeta.bg, color: dueMeta.fg }}
+                      >
+                        {dueMeta.label}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                        </div>
+                        <Eyebrow>Progress</Eyebrow>
+                      </div>
+                      <span
+                        className="font-semibold text-[18px] tracking-tight"
+                        style={{ color: statusMeta.fg }}
+                      >
+                        {t.progress}%
+                      </span>
+                      <div className="w-full h-1.5 mt-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${t.progress}%`, background: statusMeta.fg }}
+                        />
+                      </div>
+                      <div
+                        className="flex items-center gap-1.5 mt-2 text-[11px] font-medium"
+                        style={{ color: statusMeta.fg }}
+                      >
+                        <StatusIcon className="w-3.5 h-3.5" />
+                        {statusMeta.label}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="p-4 border rounded border-slate-200">
-                <Eyebrow className="mb-3">Sub-Tasks</Eyebrow>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={newSubTaskTitle[expandedTaskId] || ""}
-                    onChange={(e) =>
-                      setNewSubTaskTitle((prev) => ({
-                        ...prev,
-                        [expandedTaskId]: e.target.value,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addSubTaskToTask(expandedTaskId);
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                    placeholder="Enter sub-task title"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => addSubTaskToTask(expandedTaskId)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {(taskSubTasks[expandedTaskId] || []).length === 0 ? (
-                    <p className="py-4 text-center text-slate-400 text-[12px]">
-                      No sub-tasks yet
-                    </p>
-                  ) : (
-                    (taskSubTasks[expandedTaskId] || []).map((st) =>
-                      renderSubTaskItem(st),
-                    )
-                  )}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                        <Eyebrow>Description</Eyebrow>
+                      </div>
+                      <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
+                        {t.description || "No description provided."}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                        <Eyebrow>Assigned To</Eyebrow>
+                      </div>
+                      <div className="space-y-2">
+                        {t.assignedUsers.length === 0 ? (
+                          <p className="text-slate-400 text-[12px]">Unassigned</p>
+                        ) : (
+                          t.assignedUsers.map((u) => (
+                            <div key={u.id} className="flex items-center gap-2">
+                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                {u.fullName.charAt(0)}
+                              </div>
+                              <span className="text-[13px] font-medium text-slate-800">
+                                {u.fullName}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      {t.createdBy && (
+                        <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
+                          Assigned by{" "}
+                          <span className="font-medium text-slate-600">
+                            {t.createdBy.fullName}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                      <Eyebrow>Sub-Tasks</Eyebrow>
+                    </div>
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        value={newSubTaskTitle[expandedTaskId] || ""}
+                        onChange={(e) =>
+                          setNewSubTaskTitle((prev) => ({
+                            ...prev,
+                            [expandedTaskId]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSubTaskToTask(expandedTaskId);
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        placeholder="Enter sub-task title"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addSubTaskToTask(expandedTaskId)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(taskSubTasks[expandedTaskId] || []).length === 0 ? (
+                        <p className="py-4 text-center text-slate-400 text-[12px]">
+                          No sub-tasks yet
+                        </p>
+                      ) : (
+                        (taskSubTasks[expandedTaskId] || []).map((st) =>
+                          renderSubTaskItem(st),
+                        )
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
 
       {/* Activity Popup */}
       {showActivityPopup && (

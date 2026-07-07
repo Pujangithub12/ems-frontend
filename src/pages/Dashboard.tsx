@@ -6,7 +6,6 @@ import { ProjectHeading, ProjectTask } from "../types";
 import { flattenProjectTasks } from "../project-components/taskUtils";
 import {
   Cloud,
-  ShieldCheck,
   Clock,
   SquarePen,
   CalendarDays,
@@ -359,7 +358,7 @@ const Dashboard: React.FC = () => {
       });
   }, [projects]);
 
-  const topProjects = ongoingProjects.slice(0, 6);
+  const topProjects = ongoingProjects.slice(0, 5);
 
   const todayStart = useMemo(() => {
     const d = new Date();
@@ -464,29 +463,28 @@ const Dashboard: React.FC = () => {
   ];
 
   return (
-    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
+    <div className="w-full px-6 py-8 lg:px-8 lg:py-6">
       {/* Header */}
-      <div className="flex flex-wrap gap-4 justify-between items-start mb-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
         <div>
           <h2 className="font-semibold text-[28px] tracking-tight text-slate-900">
             {greeting}, {firstName}
           </h2>
           <p className="text-slate-500 mt-1 text-[14px]">
-            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · Here's what's
-            happening across your workspace.
+            Here's what's happening across your workspace.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
-            <Cloud className="w-3.5 h-3.5 text-blue-500" />
+        <div className="flex flex-wrap items-center self-end gap-2 mt-2">
+          <span className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-[13px] text-slate-600">
+            <Cloud className="w-4 h-4 text-blue-500" />
             26°C · Kathmandu
           </span>
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            All systems operational
+          <span className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-[13px] text-slate-600">
+            <CalendarDays className="w-4 h-4 text-emerald-500" />
+            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </span>
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600">
-            <Clock className="w-3.5 h-3.5 text-violet-500" />
+          <span className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full text-[13px] text-slate-600">
+            <Clock className="w-4 h-4 text-violet-500" />
             {clockLabel}
           </span>
         </div>
@@ -498,9 +496,9 @@ const Dashboard: React.FC = () => {
           <button
             key={item.label}
             onClick={item.onClick}
-            className="p-4 text-left bg-white border rounded-lg border-slate-200 transition-shadow hover:shadow-md"
+            className="p-4 text-left transition-shadow bg-white border rounded-lg border-slate-200 hover:shadow-md"
           >
-            <div className="flex justify-between items-start">
+            <div className="flex items-start justify-between">
               <span className="text-[12px] font-medium text-slate-500">{item.label}</span>
               <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${item.iconBg}`}>
                 <item.icon className={`w-4 h-4 ${item.iconText}`} />
@@ -550,7 +548,7 @@ const Dashboard: React.FC = () => {
                       idx < topProjects.length - 1 ? "border-b border-slate-100" : ""
                     }`}
                   >
-                    <div className="flex gap-3 items-center min-w-0">
+                    <div className="flex items-center min-w-0 gap-3">
                       <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${meta.iconBg}`}>
                         <Building2 className={`w-4 h-4 ${meta.text}`} />
                       </div>
@@ -561,7 +559,7 @@ const Dashboard: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${p.progress}%` }} />
                       </div>
@@ -605,7 +603,7 @@ const Dashboard: React.FC = () => {
           <div className="p-5 space-y-4">
             {MOCK_SCHEDULE.map((item, idx) => (
               <div key={idx} className="flex gap-3">
-                <div className="w-12 text-right flex-shrink-0">
+                <div className="flex-shrink-0 w-12 text-right">
                   <div className="font-mono font-semibold text-[13px] text-slate-900">{item.time}</div>
                   <div className="text-slate-400 text-[10px]">{item.ampm}</div>
                 </div>
@@ -693,7 +691,7 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="divide-y divide-slate-100">
             {MOCK_SUPPLY_CHAIN.map((row) => (
-              <div key={row.label} className="flex gap-3 items-center px-5 py-2">
+              <div key={row.label} className="flex items-center gap-3 px-5 py-2">
                 <span
                   className="font-mono text-[9px] tracking-[0.08em] uppercase text-slate-400 w-24 flex-shrink-0"
                 >
@@ -719,15 +717,15 @@ const Dashboard: React.FC = () => {
               View Team
             </button>
           </div>
-          <div className="flex gap-5 items-center p-4">
+          <div className="flex items-center gap-5 p-4">
             <TeamDonut segments={MOCK_TEAM} total={teamCount ?? MOCK_TEAM_TOTAL} />
             <div className="flex-1 space-y-1.5 min-w-0">
               {MOCK_TEAM.map((seg) => (
                 <div key={seg.label} className="flex gap-2 items-center text-[12px]">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: seg.color }} />
-                  <span className="flex-1 text-slate-600 truncate">{seg.label}</span>
+                  <span className="flex-shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
+                  <span className="flex-1 truncate text-slate-600">{seg.label}</span>
                   <span className="font-semibold text-slate-900">{seg.count}</span>
-                  <span className="text-slate-400 w-10 text-right">({seg.pct}%)</span>
+                  <span className="w-10 text-right text-slate-400">({seg.pct}%)</span>
                 </div>
               ))}
             </div>
@@ -752,7 +750,7 @@ const Dashboard: React.FC = () => {
           <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-5">
             {MOCK_CONSTRUCTION.map((item) => (
               <div key={item.label} className="text-center">
-                <div className="flex items-center justify-center mx-auto mb-2 w-10 h-10 rounded-lg bg-blue-50">
+                <div className="flex items-center justify-center w-10 h-10 mx-auto mb-2 rounded-lg bg-blue-50">
                   <item.icon className="w-4.5 h-4.5 text-blue-700" />
                 </div>
                 <div className="font-bold text-[20px] text-slate-900 tracking-tight">{item.value}</div>
@@ -778,7 +776,7 @@ const Dashboard: React.FC = () => {
                 key={idx}
                 className={`flex gap-2.5 items-center px-3 py-2.5 rounded-md text-[12.5px] ${AI_TONE_CLASSES[insight.tone]}`}
               >
-                <insight.icon className="w-4 h-4 flex-shrink-0" />
+                <insight.icon className="flex-shrink-0 w-4 h-4" />
                 {insight.text}
               </div>
             ))}
