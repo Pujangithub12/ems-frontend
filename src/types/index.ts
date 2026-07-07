@@ -58,7 +58,14 @@ export type Project = {
   membersCount: number;
   dueDate?: string;
   status: string;
-  assignees?: Array<{ id: number; fullName: string }>;
+  assignees?: Array<{
+    id: number;
+    fullName: string;
+    email?: string;
+    role?: string;
+    jobPosition?: string;
+    phoneNumber?: string;
+  }>;
   headings: ProjectHeading[];
   files: ProjectFile[];
   projectTasks?: ProjectTask[];

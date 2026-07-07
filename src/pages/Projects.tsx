@@ -100,6 +100,7 @@ const ProjectsPage: React.FC = () => {
   const [dueDate, setDueDate] = useState("");
   const [status, setStatus] = useState<Project["status"]>("pending");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
+  const [assigneeSearchTerm, setAssigneeSearchTerm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Edit state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -110,6 +111,7 @@ const ProjectsPage: React.FC = () => {
   const [editSelectedAssigneeIds, setEditSelectedAssigneeIds] = useState<
     number[]
   >([]);
+  const [editAssigneeSearchTerm, setEditAssigneeSearchTerm] = useState("");
 
   const loadProjects = async () => {
     setLoading(true);
@@ -158,6 +160,7 @@ const ProjectsPage: React.FC = () => {
       setDueDate("");
       setStatus("pending");
       setSelectedAssigneeIds([]);
+      setAssigneeSearchTerm("");
       await loadProjects();
       setShowCreateForm(false);
     } catch (err: any) {
@@ -202,6 +205,7 @@ const ProjectsPage: React.FC = () => {
     setEditDueDate(project.dueDate || "");
     setEditStatus(project.status);
     setEditSelectedAssigneeIds(project.assignees?.map((a) => a.id) || []);
+    setEditAssigneeSearchTerm("");
   };
 
   const updateProject = async (event?: React.FormEvent | React.MouseEvent) => {
@@ -559,34 +563,59 @@ const ProjectsPage: React.FC = () => {
 
               <div>
                 <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                <div className="relative mb-2">
+                  <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search users by name..."
+                    value={assigneeSearchTerm}
+                    onChange={(e) => setAssigneeSearchTerm(e.target.value)}
+                    className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                  />
+                </div>
                 <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
-                  {users.map((u) => (
-                    <label
-                      key={u.id}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAssigneeIds.includes(u.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedAssigneeIds([
-                              ...selectedAssigneeIds,
-                              u.id,
-                            ]);
-                          } else {
-                            setSelectedAssigneeIds(
-                              selectedAssigneeIds.filter((id) => id !== u.id),
-                            );
-                          }
-                        }}
-                        className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                      />
-                      <span className="text-[13px] text-slate-700">
-                        {u.fullName}
-                      </span>
-                    </label>
-                  ))}
+                  {users
+                    .filter((u) =>
+                      u.fullName
+                        .toLowerCase()
+                        .includes(assigneeSearchTerm.toLowerCase()),
+                    )
+                    .map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAssigneeIds.includes(u.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAssigneeIds([
+                                ...selectedAssigneeIds,
+                                u.id,
+                              ]);
+                            } else {
+                              setSelectedAssigneeIds(
+                                selectedAssigneeIds.filter((id) => id !== u.id),
+                              );
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                        />
+                        <span className="text-[13px] text-slate-700">
+                          {u.fullName}
+                        </span>
+                      </label>
+                    ))}
+                  {users.filter((u) =>
+                    u.fullName
+                      .toLowerCase()
+                      .includes(assigneeSearchTerm.toLowerCase()),
+                  ).length === 0 && (
+                    <p className="text-[12px] text-slate-400 italic">
+                      No users match "{assigneeSearchTerm}".
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -683,36 +712,61 @@ const ProjectsPage: React.FC = () => {
 
               <div>
                 <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                <div className="relative mb-2">
+                  <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search users by name..."
+                    value={editAssigneeSearchTerm}
+                    onChange={(e) => setEditAssigneeSearchTerm(e.target.value)}
+                    className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                  />
+                </div>
                 <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
-                  {users.map((u) => (
-                    <label
-                      key={u.id}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={editSelectedAssigneeIds.includes(u.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setEditSelectedAssigneeIds([
-                              ...editSelectedAssigneeIds,
-                              u.id,
-                            ]);
-                          } else {
-                            setEditSelectedAssigneeIds(
-                              editSelectedAssigneeIds.filter(
-                                (id) => id !== u.id,
-                              ),
-                            );
-                          }
-                        }}
-                        className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                      />
-                      <span className="text-[13px] text-slate-700">
-                        {u.fullName}
-                      </span>
-                    </label>
-                  ))}
+                  {users
+                    .filter((u) =>
+                      u.fullName
+                        .toLowerCase()
+                        .includes(editAssigneeSearchTerm.toLowerCase()),
+                    )
+                    .map((u) => (
+                      <label
+                        key={u.id}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editSelectedAssigneeIds.includes(u.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditSelectedAssigneeIds([
+                                ...editSelectedAssigneeIds,
+                                u.id,
+                              ]);
+                            } else {
+                              setEditSelectedAssigneeIds(
+                                editSelectedAssigneeIds.filter(
+                                  (id) => id !== u.id,
+                                ),
+                              );
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                        />
+                        <span className="text-[13px] text-slate-700">
+                          {u.fullName}
+                        </span>
+                      </label>
+                    ))}
+                  {users.filter((u) =>
+                    u.fullName
+                      .toLowerCase()
+                      .includes(editAssigneeSearchTerm.toLowerCase()),
+                  ).length === 0 && (
+                    <p className="text-[12px] text-slate-400 italic">
+                      No users match "{editAssigneeSearchTerm}".
+                    </p>
+                  )}
                 </div>
               </div>
 

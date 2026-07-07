@@ -173,7 +173,7 @@ const ProjectDetails: React.FC = () => {
       case "procurement":
         return <ProjectProcurementTab />;
       case "team":
-        return <ProjectTeamTab project={project} />;
+        return <ProjectTeamTab project={project} onTeamUpdate={loadProject} />;
       default:
         return null;
     }

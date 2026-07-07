@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import {
@@ -16,7 +16,16 @@ import {
   Paperclip,
   Trash2,
   Calendar,
+  FolderKanban,
+  ClipboardList,
+  Folder,
+  TrendingUp,
+  FileText,
+  ListChecks,
+  PauseCircle,
+  User as UserRoundIcon,
 } from "lucide-react";
+import ConfirmationModal from "../components/ConfirmationModal";
 
 type AssignedUser = { id: number; fullName: string; email: string };
 type User = { id: number; fullName: string; email: string };
@@ -46,7 +55,49 @@ type Task = {
   createdAt: string;
   subTasks: { id: number; title: string; status: string; children?: any[] }[];
   projectName?: string;
-  project?: { id: number; name: string };
+  project?: { id: number; name: string; status?: string };
+  createdBy?: { id: number; fullName: string };
+};
+
+const formatLongDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+const getStatusMeta = (status: string) => {
+  const v = status.toLowerCase().replace(/\s+/g, "_");
+  if (v === "completed")
+    return { label: "Completed", bg: "#DCFCE7", fg: "#15803D", Icon: CheckCircle2 };
+  if (v === "in_progress")
+    return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
+  if (v === "on_hold")
+    return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
+  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+};
+
+const getDueMeta = (dueDate: string, status: string) => {
+  const due = new Date(new Date(dueDate).toDateString()).getTime();
+  const today = new Date(new Date().toDateString()).getTime();
+  const diffDays = Math.round((due - today) / 86400000);
+  if (status === "completed") return { label: "Completed", bg: "#DCFCE7", fg: "#15803D" };
+  if (diffDays < 0)
+    return {
+      label: `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} overdue`,
+      bg: "#FEE2E2",
+      fg: "#B91C1C",
+    };
+  if (diffDays === 0) return { label: "Due today", bg: "#FEF3C7", fg: "#B45309" };
+  return { label: `In ${diffDays} day${diffDays === 1 ? "" : "s"}`, bg: "#DBEAFE", fg: "#1E3A8A" };
+};
+
+const getProjectStatusMeta = (status?: string) => {
+  const v = (status || "").toLowerCase();
+  if (v === "completed") return { label: "Completed Project", bg: "#DCFCE7", fg: "#15803D" };
+  if (v === "on_hold") return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C" };
+  if (v === "pending") return { label: "Planned Project", bg: "#FEF3C7", fg: "#B45309" };
+  return { label: "Active Project", bg: "#DBEAFE", fg: "#1E3A8A" };
 };
 
 const formatDate = (dateString: string) =>
@@ -60,15 +111,6 @@ const isOverdue = (dueDate: string, status: string) =>
   status !== "completed" &&
   new Date(dueDate).getTime() < new Date(new Date().toDateString()).getTime();
 
-const PROJECT_GROUP_COLORS = [
-  "#7C6FF0",
-  "#28B8A6",
-  "#F5729A",
-  "#4FA3E3",
-  "#F5A623",
-  "#E0554C",
-  "#4B7A3B",
-];
 
 // --- Design System Components ---
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -162,11 +204,28 @@ const MyTasks: React.FC = () => {
 
   // Popup States
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
 
   // Filter state variables
   const [filterProjectName, setFilterProjectName] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false);
+  const projectFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        projectFilterRef.current &&
+        !projectFilterRef.current.contains(e.target as Node)
+      ) {
+        setProjectFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
     new Set(),
   );
@@ -367,6 +426,24 @@ const MyTasks: React.FC = () => {
     }
   };
 
+  const handleDeleteClick = (taskId: number) => {
+    setTaskToDelete(taskId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return;
+    try {
+      await api.delete(`/api/tasks/${taskToDelete}`);
+      setTasks((prev) => prev.filter((t) => t.id !== taskToDelete));
+      if (selectedTask?.id === taskToDelete) setSelectedTask(null);
+      setShowDeleteModal(false);
+      setTaskToDelete(null);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err.message || "Delete failed");
+    }
+  };
+
   const addSubTaskToTask = async (
     taskId: number,
     parentId?: string,
@@ -553,7 +630,6 @@ const MyTasks: React.FC = () => {
     key: string;
     name: string;
     projectId: number | null;
-    color: string;
     tasks: Task[];
   };
 
@@ -564,7 +640,7 @@ const MyTasks: React.FC = () => {
       const name = task.project?.name || task.projectName || "No Project";
       const key = projectId != null ? `p-${projectId}` : `name-${name}`;
       if (!map.has(key)) {
-        map.set(key, { key, name, projectId, color: "", tasks: [] });
+        map.set(key, { key, name, projectId, tasks: [] });
       }
       map.get(key)!.tasks.push(task);
     });
@@ -573,8 +649,7 @@ const MyTasks: React.FC = () => {
       if (b.name === "No Project") return -1;
       return a.name.localeCompare(b.name);
     });
-    groups.forEach((g, i) => {
-      g.color = PROJECT_GROUP_COLORS[i % PROJECT_GROUP_COLORS.length];
+    groups.forEach((g) => {
       g.tasks.sort(
         (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
       );
@@ -619,15 +694,53 @@ const MyTasks: React.FC = () => {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
-        <div>
+        <div ref={projectFilterRef} className="relative">
           <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-          <input
-            type="text"
-            placeholder="Search project..."
-            value={filterProjectName}
-            onChange={(e) => setFilterProjectName(e.target.value)}
-            className="px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-          />
+          <button
+            type="button"
+            onClick={() => setProjectFilterOpen((o) => !o)}
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+          >
+            <span className="truncate">{filterProjectName || "All Projects"}</span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+          </button>
+          {projectFilterOpen && (
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
+              <div className="max-h-[180px] overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterProjectName("");
+                    setProjectFilterOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-[13px] transition-colors hover:bg-slate-50 ${
+                    !filterProjectName
+                      ? "font-semibold text-blue-900 bg-blue-50"
+                      : "text-slate-700"
+                  }`}
+                >
+                  All Projects
+                </button>
+                {projects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => {
+                      setFilterProjectName(project.name);
+                      setProjectFilterOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-[13px] truncate transition-colors hover:bg-slate-50 ${
+                      filterProjectName === project.name
+                        ? "font-semibold text-blue-900 bg-blue-50"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <Eyebrow className="mb-1.5">Priority</Eyebrow>
@@ -727,10 +840,9 @@ const MyTasks: React.FC = () => {
                     ) : (
                       <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
                     )}
-                    <span
-                      className="flex-shrink-0 rounded-full w-2.5 h-2.5"
-                      style={{ background: group.color }}
-                    />
+                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50">
+                      <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
+                    </span>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[14px] text-slate-900 truncate">
                         {group.name}
@@ -739,11 +851,11 @@ const MyTasks: React.FC = () => {
                         {doneCount} of {group.tasks.length} done
                       </div>
                     </div>
-                    <div className="items-center flex-shrink-0 hidden gap-2 sm:flex">
-                      <div className="w-[90px] h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="items-center flex-1 hidden max-w-xs gap-2 sm:flex">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                         <div
-                          className="h-full rounded-full"
-                          style={{ width: `${pct}%`, background: group.color }}
+                          className="h-full rounded-full bg-blue-900"
+                          style={{ width: `${pct}%` }}
                         />
                       </div>
                       <span
@@ -754,7 +866,7 @@ const MyTasks: React.FC = () => {
                       </span>
                     </div>
                     <span
-                      className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full flex-shrink-0"
+                      className="text-[11px] text-white font-semibold bg-blue-900 px-2.5 py-1 rounded-md flex-shrink-0"
                       style={{ fontFamily: "'JetBrains Mono', monospace" }}
                     >
                       {group.tasks.length}
@@ -812,6 +924,12 @@ const MyTasks: React.FC = () => {
                               >
                                 <Clock className="w-3 h-3" /> Due{" "}
                                 {formatDate(task.dueDate)}
+                                {task.createdBy && (
+                                  <span className="text-slate-400">
+                                    {" "}
+                                    · Assigned by {task.createdBy.fullName}
+                                  </span>
+                                )}
                               </p>
                             </button>
                             <div className="flex-shrink-0">
@@ -857,6 +975,13 @@ const MyTasks: React.FC = () => {
                                 ))
                               )}
                             </div>
+                            <button
+                              onClick={() => handleDeleteClick(task.id)}
+                              className="flex-shrink-0 p-1.5 transition-colors rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
+                              title="Delete task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         );
                       })}
@@ -879,130 +1004,211 @@ const MyTasks: React.FC = () => {
       )}
 
       {/* Task Details Popup */}
-      {selectedTask && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-2xl bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
-              <div>
-                <Eyebrow>
-                  {selectedTask.project?.name || selectedTask.projectName || "Task"}
-                </Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  {selectedTask.title}
-                </h3>
-              </div>
-              <button
-                onClick={closePopup}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Project Name</Eyebrow>
-                  <p className="font-semibold text-[15px] text-slate-900 mt-1">
-                    {selectedTask.projectName || "N/A"}
-                  </p>
-                </div>
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Due Date</Eyebrow>
-                  <p className="font-medium text-[13px] text-slate-900 mt-1">
-                    {new Date(selectedTask.dueDate || "").toLocaleDateString(
-                      "en-US",
-                      { year: "numeric", month: "long", day: "numeric" },
-                    )}
-                  </p>
-                </div>
-                <div className="p-3 border rounded border-slate-200">
-                  <Eyebrow>Progress</Eyebrow>
-                  <div className="flex items-baseline gap-1 mt-1">
-                    <span className="font-semibold text-[20px] tracking-tight text-blue-900">
-                      {selectedTask.progress}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1 mt-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full bg-blue-900 rounded-full"
-                      style={{ width: `${selectedTask.progress || 0}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="p-4 border rounded border-slate-200">
-                  <Eyebrow className="mb-2">Description</Eyebrow>
-                  <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                    {selectedTask.description || "No description provided."}
-                  </p>
-                </div>
-                <div className="p-4 border rounded border-slate-200">
-                  <Eyebrow className="mb-2">Assigned To</Eyebrow>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedTask.assignedUsers.map((u) => (
-                      <div
-                        key={u.id}
-                        className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded"
-                      >
-                        <div className="w-5 h-5 rounded-full bg-blue-900 flex items-center justify-center text-white text-[9px] font-semibold">
-                          {u.fullName.charAt(0)}
-                        </div>
-                        <span className="text-[12px] font-medium text-slate-700">
-                          {u.fullName}
+      {selectedTask &&
+        (() => {
+          const t = selectedTask;
+          const statusMeta = getStatusMeta(t.status);
+          const dueMeta = getDueMeta(t.dueDate, t.status);
+          const projectMeta = getProjectStatusMeta(t.project?.status);
+          const StatusIcon = statusMeta.Icon;
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
+              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50">
+                      <ClipboardList className="w-3.5 h-3.5 text-blue-900" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-[15px] text-slate-900 truncate">
+                        {t.title}
+                      </h3>
+                      <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-0.5 truncate">
+                        <span className="font-medium text-blue-900">
+                          {t.project?.name || t.projectName || "No Project"}
                         </span>
+                        <span>·</span>
+                        <span>Due {formatLongDate(t.dueDate)}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center flex-shrink-0 gap-2.5">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                      style={{ background: statusMeta.bg, color: statusMeta.fg }}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: statusMeta.fg }}
+                      />
+                      {statusMeta.label}
+                    </span>
+                    <button
+                      onClick={closePopup}
+                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 p-5 space-y-3 overflow-y-auto">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+                          <Folder className="w-3.5 h-3.5 text-blue-900" />
+                        </div>
+                        <Eyebrow>Project</Eyebrow>
                       </div>
-                    ))}
+                      <p className="font-semibold text-[13px] text-slate-900 truncate">
+                        {t.project?.name || t.projectName || "No Project"}
+                      </p>
+                      <span
+                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{ background: projectMeta.bg, color: projectMeta.fg }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: projectMeta.fg }}
+                        />
+                        {projectMeta.label}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+                          <Calendar className="w-3.5 h-3.5 text-blue-900" />
+                        </div>
+                        <Eyebrow>Due Date</Eyebrow>
+                      </div>
+                      <p className="font-semibold text-[13px] text-slate-900">
+                        {formatLongDate(t.dueDate)}
+                      </p>
+                      <span
+                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{ background: dueMeta.bg, color: dueMeta.fg }}
+                      >
+                        {dueMeta.label}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                        </div>
+                        <Eyebrow>Progress</Eyebrow>
+                      </div>
+                      <span
+                        className="font-semibold text-[18px] tracking-tight"
+                        style={{ color: statusMeta.fg }}
+                      >
+                        {t.progress}%
+                      </span>
+                      <div className="w-full h-1.5 mt-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${t.progress}%`, background: statusMeta.fg }}
+                        />
+                      </div>
+                      <div
+                        className="flex items-center gap-1.5 mt-2 text-[11px] font-medium"
+                        style={{ color: statusMeta.fg }}
+                      >
+                        <StatusIcon className="w-3.5 h-3.5" />
+                        {statusMeta.label}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                        <Eyebrow>Description</Eyebrow>
+                      </div>
+                      <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
+                        {t.description || "No description provided."}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                      <div className="flex items-center gap-2 mb-2">
+                        <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                        <Eyebrow>Assigned To</Eyebrow>
+                      </div>
+                      <div className="space-y-2">
+                        {t.assignedUsers.length === 0 ? (
+                          <p className="text-slate-400 text-[12px]">Unassigned</p>
+                        ) : (
+                          t.assignedUsers.map((u) => (
+                            <div key={u.id} className="flex items-center gap-2">
+                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                {u.fullName.charAt(0)}
+                              </div>
+                              <span className="text-[13px] font-medium text-slate-800">
+                                {u.fullName}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      {t.createdBy && (
+                        <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
+                          Assigned by{" "}
+                          <span className="font-medium text-slate-600">
+                            {t.createdBy.fullName}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                      <Eyebrow>Sub-Tasks</Eyebrow>
+                    </div>
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        value={newSubTaskTitle[t.id] || ""}
+                        onChange={(e) =>
+                          setNewSubTaskTitle((prev) => ({
+                            ...prev,
+                            [t.id]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSubTaskToTask(t.id);
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        placeholder="Enter sub-task title"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addSubTaskToTask(t.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(taskSubTasks[t.id] || []).length === 0 ? (
+                        <p className="py-4 text-center text-slate-400 text-[12px]">
+                          No sub-tasks yet
+                        </p>
+                      ) : (
+                        (taskSubTasks[t.id] || []).map((st) => renderSubTaskItem(st))
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div className="p-4 border rounded border-slate-200">
-                <Eyebrow className="mb-3">Sub-Tasks</Eyebrow>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={newSubTaskTitle[selectedTask.id] || ""}
-                    onChange={(e) =>
-                      setNewSubTaskTitle((prev) => ({
-                        ...prev,
-                        [selectedTask.id]: e.target.value,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addSubTaskToTask(selectedTask.id);
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                    placeholder="Enter sub-task title"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => addSubTaskToTask(selectedTask.id)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {(taskSubTasks[selectedTask.id] || []).length === 0 ? (
-                    <p className="py-4 text-center text-slate-400 text-[12px]">
-                      No sub-tasks yet
-                    </p>
-                  ) : (
-                    (taskSubTasks[selectedTask.id] || []).map((st) =>
-                      renderSubTaskItem(st),
-                    )
-                  )}
-                </div>
-              </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
 
       {/* Sub-task Update Popup */}
       {showSubTaskUpdatePopup && editingSubTask && selectedTask && (
@@ -1563,6 +1769,17 @@ const MyTasks: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setTaskToDelete(null);
+        }}
+        onConfirm={confirmDeleteTask}
+        message="Are you sure you want to delete this task?"
+      />
     </div>
   );
 };

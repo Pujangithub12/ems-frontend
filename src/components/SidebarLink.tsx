@@ -23,7 +23,7 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
       `w-full flex items-center gap-2.5 pl-2.5 pr-2.5 py-2 rounded text-left text-[14.5px] transition-colors ${
         isActive
           ? "bg-slate-800 text-white font-medium"
-          : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+          : "text-slate-200 hover:bg-slate-800/70 hover:text-white"
       }`
     }
   >

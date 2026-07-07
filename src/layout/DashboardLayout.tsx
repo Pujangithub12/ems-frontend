@@ -15,6 +15,7 @@ import {
   History,
   Bell,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
@@ -174,13 +175,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     },
   ];
 
+  const system = [
+    {
+      path: `${prefix}/settings`,
+      label: "Settings",
+      icon: Settings,
+      id: "settings",
+    },
+  ];
+
   const activeSection =
     navItems.find((item) => item.path === location.pathname)?.id ||
     reports.find((item) => item.path === location.pathname)?.id ||
+    system.find((item) => item.path === location.pathname)?.id ||
     "overview";
   const currentTitle =
     navItems.find((item) => item.path === location.pathname)?.label ||
     reports.find((item) => item.path === location.pathname)?.label ||
+    system.find((item) => item.path === location.pathname)?.label ||
     "Dashboard";
   // Nested project details route (/:workspaceId/project/:id/details) has no
   // exact navItems match, so it falls through to a breadcrumb instead of a title.
@@ -211,6 +223,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <Eyebrow>Reports</Eyebrow>
           <div className="h-1.5" />
           {reports.map((it) => (
+            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
+          ))}
+          <div className="h-3" />
+          <Eyebrow>System</Eyebrow>
+          <div className="h-1.5" />
+          {system.map((it) => (
             <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
           ))}
         </nav>
@@ -269,6 +287,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Reports</Eyebrow>
               <div className="h-1.5" />
               {reports.map((it) => (
+                <SidebarLink
+                  key={it.id}
+                  to={it.path}
+                  icon={it.icon}
+                  label={it.label}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
+              ))}
+              <div className="h-3" />
+              <Eyebrow>System</Eyebrow>
+              <div className="h-1.5" />
+              {system.map((it) => (
                 <SidebarLink
                   key={it.id}
                   to={it.path}
@@ -382,7 +412,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         </div>
 
         {/* Page content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto no-scrollbar">
           <div
             key={paramWorkspaceId ?? "default"}
             className="duration-300 animate-in fade-in slide-in-from-bottom-2"
