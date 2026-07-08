@@ -123,7 +123,9 @@ const Announcements: React.FC = () => {
     setUsersLoading(true);
     try {
       const response = await api.get<User[]>("/api/users");
-      setUsers(response.data);
+      setUsers(
+        [...response.data].sort((a, b) => a.fullName.localeCompare(b.fullName)),
+      );
     } catch (err: any) {
       console.error("Failed to load users", err);
     } finally {

@@ -12,6 +12,8 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Edit2,
   Paperclip,
   Trash2,
@@ -24,6 +26,8 @@ import {
   ListChecks,
   PauseCircle,
   User as UserRoundIcon,
+  UserPlus,
+  MessageSquare,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 
@@ -90,14 +94,6 @@ const getDueMeta = (dueDate: string, status: string) => {
     };
   if (diffDays === 0) return { label: "Due today", bg: "#FEF3C7", fg: "#B45309" };
   return { label: `In ${diffDays} day${diffDays === 1 ? "" : "s"}`, bg: "#DBEAFE", fg: "#1E3A8A" };
-};
-
-const getProjectStatusMeta = (status?: string) => {
-  const v = (status || "").toLowerCase();
-  if (v === "completed") return { label: "Completed Project", bg: "#DCFCE7", fg: "#15803D" };
-  if (v === "on_hold") return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C" };
-  if (v === "pending") return { label: "Planned Project", bg: "#FEF3C7", fg: "#B45309" };
-  return { label: "Active Project", bg: "#DBEAFE", fg: "#1E3A8A" };
 };
 
 const formatDate = (dateString: string) =>
@@ -207,6 +203,14 @@ const MyTasks: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
 
+  const [showAddMemberPopover, setShowAddMemberPopover] = useState(false);
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
+  const [pendingMemberIds, setPendingMemberIds] = useState<number[]>([]);
+  const [savingMembers, setSavingMembers] = useState(false);
+  const addMemberRef = useRef<HTMLDivElement>(null);
+  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
+
   // Filter state variables
   const [filterProjectName, setFilterProjectName] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
@@ -221,6 +225,12 @@ const MyTasks: React.FC = () => {
         !projectFilterRef.current.contains(e.target as Node)
       ) {
         setProjectFilterOpen(false);
+      }
+      if (
+        addMemberRef.current &&
+        !addMemberRef.current.contains(e.target as Node)
+      ) {
+        setShowAddMemberPopover(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -260,6 +270,19 @@ const MyTasks: React.FC = () => {
   );
   const [showSubTaskActivityPopup, setShowSubTaskActivityPopup] =
     useState(false);
+
+  type SubTaskFeedbackItem = {
+    subTaskTitle: string;
+    commentText: string;
+    feedback: string;
+    authorName?: string;
+    date: string;
+  };
+  const [showTaskFeedbackPopup, setShowTaskFeedbackPopup] = useState(false);
+  const [taskFeedbackList, setTaskFeedbackList] = useState<
+    SubTaskFeedbackItem[]
+  >([]);
+  const [loadingTaskFeedback, setLoadingTaskFeedback] = useState(false);
   const [subTaskComments, setSubTaskComments] = useState<any[]>([]);
   const [newCommentText, setNewCommentText] = useState("");
   const [feedbackTexts, setFeedbackTexts] = useState<Record<number, string>>(
@@ -348,7 +371,10 @@ const MyTasks: React.FC = () => {
   }, [workspace?.id]);
 
   const openPopup = (task: Task) => setSelectedTask(task);
-  const closePopup = () => setSelectedTask(null);
+  const closePopup = () => {
+    setSelectedTask(null);
+    setShowAllMembers(false);
+  };
 
   const openAddTaskModal = (projectId?: number) => {
     if (user) setNewUserIds([Number(user.id)]);
@@ -426,6 +452,56 @@ const MyTasks: React.FC = () => {
     }
   };
 
+  const handleAddMembers = async (taskId: number) => {
+    if (pendingMemberIds.length === 0 || !selectedTask) return;
+    setSavingMembers(true);
+    try {
+      const nextIds = Array.from(
+        new Set([
+          ...selectedTask.assignedUsers.map((u) => u.id),
+          ...pendingMemberIds,
+        ]),
+      );
+      const formData = new FormData();
+      formData.append("userIds", nextIds.join(","));
+      const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
+      const updated: Task = res.data.task || res.data;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+      setPendingMemberIds([]);
+      setMemberSearchTerm("");
+      setShowAddMemberPopover(false);
+    } catch (err: any) {
+      alert(
+        err?.response?.data?.message || err.message || "Unable to add members",
+      );
+    } finally {
+      setSavingMembers(false);
+    }
+  };
+
+  const handleRemoveMember = async (taskId: number, userId: number) => {
+    if (!selectedTask) return;
+    setRemovingMemberId(userId);
+    try {
+      const nextIds = selectedTask.assignedUsers
+        .filter((u) => u.id !== userId)
+        .map((u) => u.id);
+      const formData = new FormData();
+      formData.append("userIds", nextIds.join(","));
+      const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
+      const updated: Task = res.data.task || res.data;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+    } catch (err: any) {
+      alert(
+        err?.response?.data?.message || err.message || "Unable to remove member",
+      );
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
   const handleDeleteClick = (taskId: number) => {
     setTaskToDelete(taskId);
     setShowDeleteModal(true);
@@ -490,6 +566,42 @@ const MyTasks: React.FC = () => {
       }
     } catch (err: any) {
       alert(err?.response?.data?.message || "Failed to save sub-task.");
+    }
+  };
+
+  const flattenSubTasks = (list: DetailedSubTask[]): DetailedSubTask[] =>
+    list.flatMap((st) => [st, ...flattenSubTasks(st.subTasks || [])]);
+
+  const handleShowTaskFeedback = async (taskId: number) => {
+    setShowTaskFeedbackPopup(true);
+    setLoadingTaskFeedback(true);
+    try {
+      const flatSubTasks = flattenSubTasks(taskSubTasks[taskId] || []);
+      const results = await Promise.all(
+        flatSubTasks.map(async (st) => {
+          try {
+            const res = await api.get<any[]>(
+              `/api/tasks/${taskId}/subtasks/${st.id}/comments`,
+            );
+            return (res.data || [])
+              .filter((c) => c.feedback)
+              .map((c) => ({
+                subTaskTitle: st.title,
+                commentText: c.commentText,
+                feedback: c.feedback,
+                authorName: c.author?.fullName,
+                date: c.createdAt,
+              }));
+          } catch {
+            return [];
+          }
+        }),
+      );
+      setTaskFeedbackList(results.flat());
+    } catch {
+      setTaskFeedbackList([]);
+    } finally {
+      setLoadingTaskFeedback(false);
     }
   };
 
@@ -669,12 +781,17 @@ const MyTasks: React.FC = () => {
   const expandAllGroups = () => setCollapsedProjects(new Set());
   const collapseAllGroups = () =>
     setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
+  const allGroupsCollapsed =
+    projectGroups.length > 0 &&
+    projectGroups.every((g) => collapsedProjects.has(g.key));
+  const toggleAllGroups = () =>
+    allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
 
   return (
     <div className="p-6 space-y-6">
-      {/* Top Controls */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1 max-w-md">
+      {/* Search + Filters + Expand/Collapse toggle + Add Task */}
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-white border rounded-lg shadow-sm border-slate-200">
+        <div className="relative flex-1 min-w-[140px] max-w-[220px]">
           <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
           <input
             type="text"
@@ -684,18 +801,7 @@ const MyTasks: React.FC = () => {
             className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
           />
         </div>
-        <button
-          onClick={() => openAddTaskModal()}
-          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" /> Add My Own Task
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4">
         <div ref={projectFilterRef} className="relative">
-          <Eyebrow className="mb-1.5">Project Name</Eyebrow>
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
@@ -742,33 +848,44 @@ const MyTasks: React.FC = () => {
             </div>
           )}
         </div>
-        <div>
-          <Eyebrow className="mb-1.5">Priority</Eyebrow>
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-          >
-            <option value="">All</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </div>
-        <div>
-          <Eyebrow className="mb-1.5">Status</Eyebrow>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-          >
-            <option value="">All</option>
-            <option value="pending">Pending</option>
-            <option value="inprogress">In Progress</option>
-            <option value="on_hold">On Hold</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
+        <select
+          value={filterPriority}
+          onChange={(e) => setFilterPriority(e.target.value)}
+          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+        >
+          <option value="">All Priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+        >
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="inprogress">In Progress</option>
+          <option value="on_hold">On Hold</option>
+          <option value="completed">Completed</option>
+        </select>
+        <button
+          onClick={toggleAllGroups}
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+        >
+          {allGroupsCollapsed ? (
+            <ChevronsUpDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronsDownUp className="w-3.5 h-3.5" />
+          )}
+          {allGroupsCollapsed ? "Expand all" : "Collapse all"}
+        </button>
+        <button
+          onClick={() => openAddTaskModal()}
+          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add My Own Task
+        </button>
       </div>
 
       {/* Content: grouped by project */}
@@ -801,21 +918,6 @@ const MyTasks: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={expandAllGroups}
-              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
-            >
-              Expand all
-            </button>
-            <button
-              onClick={collapseAllGroups}
-              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
-            >
-              Collapse all
-            </button>
-          </div>
-
           <div className="space-y-3">
             {projectGroups.map((group) => {
               const isCollapsed = collapsedProjects.has(group.key);
@@ -829,7 +931,7 @@ const MyTasks: React.FC = () => {
               return (
                 <div
                   key={group.key}
-                  className="overflow-hidden bg-white border rounded-lg border-slate-200"
+                  className="overflow-hidden transition-shadow bg-white border rounded-lg shadow-sm border-slate-200 hover:shadow-md"
                 >
                   <button
                     onClick={() => toggleGroup(group.key)}
@@ -976,6 +1078,13 @@ const MyTasks: React.FC = () => {
                               )}
                             </div>
                             <button
+                              onClick={() => handleShowTaskFeedback(task.id)}
+                              className="flex-shrink-0 p-1.5 transition-colors rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
+                              title="Show Feedback"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => handleDeleteClick(task.id)}
                               className="flex-shrink-0 p-1.5 transition-colors rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
                               title="Delete task"
@@ -1009,7 +1118,6 @@ const MyTasks: React.FC = () => {
           const t = selectedTask;
           const statusMeta = getStatusMeta(t.status);
           const dueMeta = getDueMeta(t.dueDate, t.status);
-          const projectMeta = getProjectStatusMeta(t.project?.status);
           const StatusIcon = statusMeta.Icon;
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
@@ -1063,16 +1171,6 @@ const MyTasks: React.FC = () => {
                       <p className="font-semibold text-[13px] text-slate-900 truncate">
                         {t.project?.name || t.projectName || "No Project"}
                       </p>
-                      <span
-                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                        style={{ background: projectMeta.bg, color: projectMeta.fg }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: projectMeta.fg }}
-                        />
-                        {projectMeta.label}
-                      </span>
                     </div>
                     <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
                       <div className="flex items-center gap-2 mb-2">
@@ -1098,10 +1196,7 @@ const MyTasks: React.FC = () => {
                         </div>
                         <Eyebrow>Progress</Eyebrow>
                       </div>
-                      <span
-                        className="font-semibold text-[18px] tracking-tight"
-                        style={{ color: statusMeta.fg }}
-                      >
+                      <span className="font-semibold text-[18px] tracking-tight text-slate-900">
                         {t.progress}%
                       </span>
                       <div className="w-full h-1.5 mt-2 overflow-hidden rounded-full bg-slate-100">
@@ -1131,24 +1226,132 @@ const MyTasks: React.FC = () => {
                       </p>
                     </div>
                     <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                      <div className="flex items-center gap-2 mb-2">
-                        <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <Eyebrow>Assigned To</Eyebrow>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                          <Eyebrow>Assigned To</Eyebrow>
+                        </div>
+                        <div ref={addMemberRef} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingMemberIds([]);
+                              setMemberSearchTerm("");
+                              setShowAddMemberPopover((o) => !o);
+                            }}
+                            className="flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50 transition-colors"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" /> Add
+                          </button>
+                          {showAddMemberPopover && (
+                            <div className="absolute right-0 z-30 mt-1 bg-white border rounded-md shadow-lg w-60 border-slate-200">
+                              <div className="p-2 border-b border-slate-100">
+                                <div className="relative">
+                                  <Search className="absolute w-3 h-3 -translate-y-1/2 left-2.5 top-1/2 text-slate-400" />
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Search users..."
+                                    value={memberSearchTerm}
+                                    onChange={(e) =>
+                                      setMemberSearchTerm(e.target.value)
+                                    }
+                                    className="w-full py-1.5 pr-2 text-[12px] border rounded outline-none pl-7 border-slate-200 focus:border-blue-900"
+                                  />
+                                </div>
+                              </div>
+                              <div className="overflow-y-auto max-h-40">
+                                {users
+                                  .filter(
+                                    (u) =>
+                                      !t.assignedUsers.some((a) => a.id === u.id) &&
+                                      u.fullName
+                                        .toLowerCase()
+                                        .includes(memberSearchTerm.toLowerCase()),
+                                  )
+                                  .map((u) => (
+                                    <label
+                                      key={u.id}
+                                      className="flex items-center gap-2 px-3 py-1.5 text-[12px] cursor-pointer text-slate-700 hover:bg-slate-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={pendingMemberIds.includes(u.id)}
+                                        onChange={(e) => {
+                                          if (e.target.checked)
+                                            setPendingMemberIds((prev) => [
+                                              ...prev,
+                                              u.id,
+                                            ]);
+                                          else
+                                            setPendingMemberIds((prev) =>
+                                              prev.filter((id) => id !== u.id),
+                                            );
+                                        }}
+                                        className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                                      />
+                                      {u.fullName}
+                                    </label>
+                                  ))}
+                                {users.filter(
+                                  (u) =>
+                                    !t.assignedUsers.some((a) => a.id === u.id) &&
+                                    u.fullName
+                                      .toLowerCase()
+                                      .includes(memberSearchTerm.toLowerCase()),
+                                ).length === 0 && (
+                                  <p className="px-3 py-2 text-[11px] italic text-slate-400">
+                                    No users to add.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="p-2 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    pendingMemberIds.length === 0 || savingMembers
+                                  }
+                                  onClick={() => handleAddMembers(t.id)}
+                                  className="flex items-center justify-center w-full gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white transition-colors rounded bg-blue-900 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {savingMembers && (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  )}
+                                  Add{" "}
+                                  {pendingMemberIds.length > 0
+                                    ? `(${pendingMemberIds.length})`
+                                    : ""}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {t.assignedUsers.length === 0 ? (
                           <p className="text-slate-400 text-[12px]">Unassigned</p>
                         ) : (
-                          t.assignedUsers.map((u) => (
-                            <div key={u.id} className="flex items-center gap-2">
-                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                                {u.fullName.charAt(0)}
+                          <>
+                            {t.assignedUsers.slice(0, 2).map((u) => (
+                              <div key={u.id} className="flex items-center gap-2">
+                                <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                  {u.fullName.charAt(0)}
+                                </div>
+                                <span className="text-[13px] font-medium text-slate-800 truncate">
+                                  {u.fullName}
+                                </span>
                               </div>
-                              <span className="text-[13px] font-medium text-slate-800">
-                                {u.fullName}
-                              </span>
-                            </div>
-                          ))
+                            ))}
+                            {t.assignedUsers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllMembers(true)}
+                                className="text-[12px] font-medium text-blue-900 hover:underline"
+                              >
+                                View all ({t.assignedUsers.length})
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                       {t.createdBy && (
@@ -1210,64 +1413,176 @@ const MyTasks: React.FC = () => {
           );
         })()}
 
-      {/* Sub-task Update Popup */}
-      {showSubTaskUpdatePopup && editingSubTask && selectedTask && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
-              <div>
-                <Eyebrow>Update Sub-Task</Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  {selectedTask.title}
-                </h3>
-              </div>
+      {/* View All Assigned Members Popup */}
+      {showAllMembers && selectedTask && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
+          <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
+            <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+              <Eyebrow>Assigned Members ({selectedTask.assignedUsers.length})</Eyebrow>
               <button
-                onClick={() => setShowSubTaskUpdatePopup(false)}
+                onClick={() => setShowAllMembers(false)}
                 className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 p-6 space-y-5 overflow-y-auto">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-10">
-                <div className="md:col-span-7">
-                  <Eyebrow className="mb-1.5">New Sub-Task Update</Eyebrow>
-                  <input
-                    type="text"
-                    value={newSubTaskUpdateTitle}
-                    onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                    placeholder="Enter new sub-task title"
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <Eyebrow className="mb-1.5">Attachment</Eyebrow>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      multiple
-                      onChange={(e) => setSubTaskUpdateFiles(e.target.files)}
-                      className="hidden"
-                      id="subtask-attachment"
-                    />
-                    <label
-                      htmlFor="subtask-attachment"
-                      className="flex flex-col items-center justify-center w-full gap-1 px-3 py-2 text-[11px] transition-all border-2 border-dashed cursor-pointer rounded bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-900 hover:text-blue-900 group"
+            <div className="flex-1 p-3 space-y-1 overflow-y-auto">
+              {selectedTask.assignedUsers.length === 0 ? (
+                <p className="py-4 text-center text-slate-400 text-[12px]">
+                  No members assigned.
+                </p>
+              ) : (
+                selectedTask.assignedUsers.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center gap-2.5 px-2 py-2 rounded hover:bg-slate-50"
+                  >
+                    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-semibold text-white rounded-full bg-blue-900">
+                      {u.fullName.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium text-slate-800 truncate">
+                        {u.fullName}
+                      </p>
+                      {u.email && (
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {u.email}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMember(selectedTask.id, u.id)}
+                      disabled={removingMemberId === u.id}
+                      className="flex-shrink-0 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                      title="Remove member"
                     >
-                      <Paperclip className="w-3.5 h-3.5" />
-                      {subTaskUpdateFiles?.length
-                        ? `${subTaskUpdateFiles.length} file(s)`
-                        : "Select"}
-                    </label>
+                      {removingMemberId === u.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <X className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Sub-Task Feedback Popup */}
+      {showTaskFeedbackPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
+          <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+              <div>
+                <Eyebrow>Sub-Task Feedback</Eyebrow>
+                <h3 className="font-semibold text-[15px] text-slate-900 mt-0.5">
+                  Feedback received on this task's sub-tasks
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowTaskFeedbackPopup(false)}
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 p-5 space-y-3 overflow-y-auto">
+              {loadingTaskFeedback ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+                </div>
+              ) : taskFeedbackList.length === 0 ? (
+                <p className="py-8 text-center text-slate-400 text-[12px]">
+                  No feedback has been given on this task's sub-tasks yet.
+                </p>
+              ) : (
+                taskFeedbackList.map((fb, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 border rounded-lg border-slate-200 bg-slate-50/50"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="text-[11px] font-semibold text-blue-900 truncate">
+                        {fb.subTaskTitle}
+                      </span>
+                      <span
+                        className="flex-shrink-0 text-[10px] text-slate-400"
+                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                      >
+                        {new Date(fb.date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-slate-500 italic">
+                      "{fb.commentText}"
+                    </p>
+                    <div className="flex items-start gap-2 p-2 mt-2 border rounded bg-white border-slate-200">
+                      <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
+                      <p className="text-[12px] text-slate-800">
+                        {fb.feedback}
+                        {fb.authorName && (
+                          <span className="block mt-1 text-[11px] font-medium text-slate-400">
+                            — {fb.authorName}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-task Update Popup */}
+      {showSubTaskUpdatePopup && editingSubTask && selectedTask && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-6 bg-slate-900/45">
+          <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50">
+                  <Edit2 className="w-4 h-4 text-blue-900" />
+                </div>
+                <div className="min-w-0">
+                  <Eyebrow>Update Sub-Task</Eyebrow>
+                  <h3 className="font-semibold text-[15px] text-slate-900 truncate mt-0.5">
+                    {editingSubTask.title}
+                  </h3>
                 </div>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <Eyebrow>Progress</Eyebrow>
+              <div className="flex items-center flex-shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSubTaskUpdatePopup(false);
+                    setShowSubTaskActivityPopup(true);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-blue-900 rounded hover:bg-blue-50 transition-colors"
+                >
+                  <Clock className="w-3.5 h-3.5" /> Activity
+                </button>
+                <button
+                  onClick={() => setShowSubTaskUpdatePopup(false)}
+                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-5 space-y-3 overflow-y-auto">
+              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                    </div>
+                    <Eyebrow>Progress</Eyebrow>
+                  </div>
                   <span
-                    className="text-[12px] font-medium text-slate-600"
+                    className="font-semibold text-[16px] text-slate-900"
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   >
                     {subTaskProgress}%
@@ -1283,65 +1598,90 @@ const MyTasks: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <Eyebrow className="mb-1.5">Previous Updates</Eyebrow>
-                <div className="p-3 rounded border border-slate-200 bg-slate-50/50 min-h-[60px] max-h-[120px] overflow-y-auto space-y-2">
+              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                  <Eyebrow>Update Description</Eyebrow>
+                </div>
+                <textarea
+                  value={newSubTaskUpdateTitle}
+                  onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                  rows={3}
+                  placeholder="Describe your update..."
+                />
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => setSubTaskUpdateFiles(e.target.files)}
+                  className="hidden"
+                  id="subtask-attachment"
+                />
+                <label
+                  htmlFor="subtask-attachment"
+                  className="inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors border rounded cursor-pointer border-slate-200 text-slate-600 hover:border-blue-900 hover:text-blue-900"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  {subTaskUpdateFiles?.length
+                    ? `${subTaskUpdateFiles.length} file(s) attached`
+                    : "Attach files"}
+                </label>
+              </div>
+
+              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                  <Eyebrow>Previous Updates</Eyebrow>
+                </div>
+                <div className="space-y-2 max-h-[120px] overflow-y-auto">
                   {editingSubTask.history &&
                   editingSubTask.history.length > 0 ? (
-                    editingSubTask.history.slice(0, 2).map((hist) => (
+                    editingSubTask.history.slice(0, 3).map((hist) => (
                       <div
                         key={hist.id}
-                        className="text-[12px] text-slate-600 border-b border-slate-200 pb-1.5 last:border-0"
+                        className="flex items-start justify-between gap-2 pb-2 text-[12px] border-b border-slate-100 last:border-0 last:pb-0"
                       >
-                        <p className="font-medium text-slate-800">
-                          {hist.title}{" "}
-                          <span className="font-normal text-slate-500">
-                            ({hist.progress}%)
-                          </span>
-                        </p>
-                        <p
-                          className="text-[10px] text-slate-400 mt-0.5"
-                          style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                        >
-                          {new Date(hist.date).toLocaleString()}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-800 truncate">
+                            {hist.title}
+                          </p>
+                          <p
+                            className="text-[10px] text-slate-400 mt-0.5"
+                            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                          >
+                            {new Date(hist.date).toLocaleString()}
+                          </p>
+                        </div>
+                        <span className="flex-shrink-0 text-[11px] font-semibold text-slate-600">
+                          {hist.progress}%
+                        </span>
                       </div>
                     ))
                   ) : (
-                    <p className="py-2 text-[12px] italic text-center text-slate-500">
+                    <p className="py-2 text-[12px] italic text-center text-slate-400">
                       No previous updates available
                     </p>
                   )}
                 </div>
               </div>
             </div>
-            <div className="flex flex-shrink-0 gap-2 px-6 py-4 border-t border-slate-200 bg-slate-50/50">
+            <div className="flex flex-shrink-0 justify-end gap-3 px-6 py-4 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => {
                   setShowSubTaskUpdatePopup(false);
                   setEditingSubTask(null);
                 }}
-                className="flex-1 px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-white transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSubTaskUpdate}
-                className="flex-1 px-4 py-2 text-[13px] font-medium text-white bg-emerald-700 rounded hover:bg-emerald-800 transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
               >
-                Update
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSubTaskUpdatePopup(false);
-                  setShowSubTaskActivityPopup(true);
-                }}
-                className="flex-1 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-              >
-                Activity
+                Save Update
               </button>
             </div>
           </div>
