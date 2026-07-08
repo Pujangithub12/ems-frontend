@@ -1,6 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
+import CreateAccount from "./pages/CreateAccount";
 import Dashboard from "./pages/Dashboard";
 import Announcements from "./pages/Announcements";
 import Users from "./pages/Users";
@@ -36,6 +37,7 @@ function App() {
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<CreateAccount />} />
           <Route path="/login/user" element={<Navigate replace to="/login" />} />
           <Route path="/login/admin" element={<Navigate replace to="/login" />} />
 

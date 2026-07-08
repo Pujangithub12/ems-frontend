@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import { Eye, EyeOff, Loader2, ShieldCheck, ArrowRight } from "lucide-react";
 
@@ -29,7 +29,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     email: "Work email",
     password: "Password",
     signin: "Sign in",
-    note: "New to this workspace? Ask your administrator for an invitation.",
+    note: "New here?",
+    noteLink: "Create an account",
     privacy: "Privacy",
     terms: "Terms",
     status: "Status",
@@ -55,7 +56,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     email: "कार्य इमेल",
     password: "पासवर्ड",
     signin: "साइन इन गर्नुहोस्",
-    note: "यो कार्यक्षेत्रमा नयाँ हुनुहुन्छ? निमन्त्रणाका लागि प्रशासकलाई सोध्नुहोस्।",
+    note: "नयाँ हुनुहुन्छ?",
+    noteLink: "खाता सिर्जना गर्नुहोस्",
     privacy: "गोपनीयता",
     terms: "सर्तहरू",
     status: "स्थिति",
@@ -138,7 +140,7 @@ const Login: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen flex text-[#10141F]"
+      className="h-screen flex text-[#10141F] overflow-hidden"
       style={{ background: "#F8F9FB" }}
     >
       <style>{`
@@ -157,7 +159,7 @@ const Login: React.FC = () => {
 
       {/* LEFT: Operations board (hidden on mobile) */}
       <aside
-        className="hidden lg:flex w-[43%] min-w-[440px] relative overflow-hidden text-[#E8EDF7] flex-col justify-between p-14"
+        className="hidden lg:flex w-[43%] min-w-[440px] relative overflow-hidden text-[#E8EDF7] flex-col justify-between p-10"
         style={{
           background:
             "linear-gradient(172deg, #0B111F 0%, #0F1829 58%, #131F35 100%)",
@@ -193,7 +195,7 @@ const Login: React.FC = () => {
           </div>
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-center py-11">
+        <div className="relative z-10 flex-1 flex flex-col justify-center py-6 min-h-0">
           <div
             className="flex items-center gap-2.5 text-[10px] uppercase tracking-[0.2em] mb-4"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#6E7FA3" }}
@@ -222,7 +224,7 @@ const Login: React.FC = () => {
           </p>
 
           <div
-            className="mt-9 rounded-xl p-5 pt-[18px] pb-4"
+            className="mt-5 rounded-xl p-4 pt-3 pb-3"
             style={{
               background: "rgba(5,10,20,0.5)",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -269,9 +271,9 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            <div className="relative mt-3">
+            <div className="relative mt-2">
               <svg
-                className="block w-full h-[52px]"
+                className="block w-full h-[36px]"
                 viewBox="0 0 440 52"
                 preserveAspectRatio="none"
                 aria-hidden="true"
@@ -314,7 +316,7 @@ const Login: React.FC = () => {
             </div>
 
             <div
-              className="flex gap-5 mt-3 pt-3 text-[10px] uppercase tracking-[0.08em]"
+              className="flex gap-5 mt-2 pt-2 text-[10px] uppercase tracking-[0.08em]"
               style={{
                 fontFamily: "'IBM Plex Mono', monospace",
                 color: "#6E7FA3",
@@ -354,7 +356,7 @@ const Login: React.FC = () => {
       </aside>
 
       {/* RIGHT: Sign-in panel */}
-      <main className="flex-1 flex flex-col relative px-6 py-7 sm:px-10">
+      <main className="flex-1 flex flex-col relative px-6 py-4 sm:px-10 overflow-hidden">
         <div className="flex justify-end items-center gap-4">
           <div
             className="inline-flex rounded-lg overflow-hidden bg-white"
@@ -391,9 +393,9 @@ const Login: React.FC = () => {
           </a>
         </div>
 
-        <div className="flex-1 flex items-center justify-center py-6">
+        <div className="flex-1 flex items-center justify-center py-2 min-h-0">
           <div
-            className="w-full bg-white rounded-2xl p-8 pb-7"
+            className="w-full bg-white rounded-2xl p-6 pb-5"
             style={{
               maxWidth: 416,
               border: "1px solid #DDE2EB",
@@ -402,7 +404,7 @@ const Login: React.FC = () => {
             }}
           >
             <div
-              className="inline-flex items-center gap-2.5 rounded-[10px] px-3.5 py-2 mb-7"
+              className="inline-flex items-center gap-2.5 rounded-[10px] px-3.5 py-2 mb-4"
               style={{
                 border: "1px solid #E4E7ED",
                 background: "#F6F8FB",
@@ -427,11 +429,11 @@ const Login: React.FC = () => {
             >
               {t.title}
             </h2>
-            <p className="text-[#7A8499] text-[13.5px] mt-1.5 mb-7 leading-relaxed">
+            <p className="text-[#7A8499] text-[13.5px] mt-1 mb-4 leading-relaxed">
               {t.sub}
             </p>
 
-            <form onSubmit={submit} className="space-y-[18px]">
+            <form onSubmit={submit} className="space-y-3">
               {error && (
                 <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex items-start gap-2 text-[#B91C1C] text-[13px]">
                   <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -440,7 +442,7 @@ const Login: React.FC = () => {
               )}
 
               <div>
-                <label className="block mb-[7px] text-[12.5px] font-semibold text-[#454F63]">
+                <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
                   {t.email}
                 </label>
                 <input
@@ -449,7 +451,7 @@ const Login: React.FC = () => {
                   required
                   type="email"
                   autoComplete="email"
-                  className="w-full h-11 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
+                  className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
                   style={{ border: "1px solid #C6CCD8" }}
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = "#1E3A8A";
@@ -464,7 +466,7 @@ const Login: React.FC = () => {
               </div>
 
               <div>
-                <label className="block mb-[7px] text-[12.5px] font-semibold text-[#454F63]">
+                <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
                   {t.password}
                 </label>
                 <div className="relative">
@@ -474,7 +476,7 @@ const Login: React.FC = () => {
                     required
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
-                    className="w-full h-11 pl-3.5 pr-11 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
+                    className="w-full h-10 pl-3.5 pr-11 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
                     style={{ border: "1px solid #C6CCD8" }}
                     onFocus={(e) => {
                       e.currentTarget.style.borderColor = "#1E3A8A";
@@ -502,7 +504,7 @@ const Login: React.FC = () => {
 
               <button
                 disabled={loading}
-                className="w-full h-11 flex items-center justify-center gap-2 text-[14px] font-semibold text-white bg-[#1E3A8A] rounded-[10px] hover:bg-[#19306F] active:translate-y-px disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+                className="w-full h-10 flex items-center justify-center gap-2 text-[14px] font-semibold text-white bg-[#1E3A8A] rounded-[10px] hover:bg-[#19306F] active:translate-y-px disabled:opacity-70 disabled:cursor-not-allowed transition-all"
                 style={{ boxShadow: "0 1px 2px rgba(16,20,31,0.2)" }}
               >
                 {loading ? (
@@ -516,8 +518,14 @@ const Login: React.FC = () => {
               </button>
             </form>
 
-            <p className="mt-[26px] text-[12.5px] text-[#7A8499] text-center leading-relaxed">
-              {t.note}
+            <p className="mt-4 text-[12.5px] text-[#7A8499] text-center leading-relaxed">
+              {t.note}{" "}
+              <Link
+                to="/register"
+                className="font-semibold text-[#1E3A8A] hover:underline"
+              >
+                {t.noteLink}
+              </Link>
             </p>
           </div>
         </div>

@@ -31,6 +31,14 @@ type AuthContextType = {
   workspace: Workspace | null;
   workspaces: Workspace[];
   login: (credentials: { email: string; password: string }) => Promise<void>;
+  /** Self-service signup step 1: sends a 6-digit OTP to the given email. No account is created yet. */
+  registerStart: (details: {
+    fullName: string;
+    email: string;
+    password: string;
+  }) => Promise<void>;
+  /** Self-service signup step 2: confirms the OTP, creating the account (as super_admin) plus a brand-new workspace it owns, then logs it in. */
+  registerVerify: (details: { email: string; otp: string }) => Promise<Workspace>;
   logout: () => void;
   /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
   selectWorkspace: (workspaceId: number) => Workspace | null;
@@ -167,6 +175,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(false);
   };
 
+  const registerStart = async (details: {
+    fullName: string;
+    email: string;
+    password: string;
+  }) => {
+    await api.post("/api/register/start", details);
+  };
+
+  const registerVerify = async (details: {
+    email: string;
+    otp: string;
+  }): Promise<Workspace> => {
+    didLoginRef.current = true;
+    const res = await api.post("/api/register/verify", details);
+    const { user: u, workspace: ws } = res.data;
+    setUser(u || null);
+    await fetchWorkspacesAndCurrent();
+    setLoading(false);
+    return ws;
+  };
+
   const logout = async () => {
     didLoginRef.current = false;
     try {
@@ -248,6 +277,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         workspace,
         workspaces,
         login,
+        registerStart,
+        registerVerify,
         logout,
         selectWorkspace,
         createWorkspace,
