@@ -28,6 +28,7 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [newWorkspaceDescription, setNewWorkspaceDescription] = useState("");
   const [creating, setCreating] = useState(false);
+  const [switchingId, setSwitchingId] = useState<number | null>(null);
   const navigate = useNavigate();
   const { workspace, workspaces, createWorkspace } = useAuth();
 
@@ -37,14 +38,21 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
     setShowCreateForm(false);
     setNewWorkspaceName("");
     setNewWorkspaceDescription("");
+    setSwitchingId(null);
     onClose();
   };
 
   const handleSwitch = (workspaceId: number) => {
-    handleClose();
+    if (switchingId !== null) return;
+    setSwitchingId(workspaceId);
     // The route change is what actually drives the switch — DashboardLayout
-    // picks up the new :workspaceId param and syncs everything else.
+    // picks up the new :workspaceId param and syncs everything else. Keep the
+    // modal open with a spinner for a beat so a slow connection doesn't look
+    // like a dead click, instead of closing before anything's visibly done.
     navigate(`/${workspaceId}/dashboard`);
+    window.setTimeout(() => {
+      handleClose();
+    }, 450);
   };
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
@@ -90,28 +98,39 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                 .filter((w): w is Workspace => w !== null && w !== undefined)
                 .map((ws) => {
                   const isCurrent = workspace?.id === ws.id;
+                  const isSwitchingTo = switchingId === ws.id;
+                  const disabled = switchingId !== null;
                   return (
                     <button
                       key={ws.id}
-                      onClick={() => !isCurrent && handleSwitch(ws.id)}
+                      onClick={() => !isCurrent && !disabled && handleSwitch(ws.id)}
+                      disabled={disabled}
                       className={`flex items-center w-full gap-3 px-3 py-2.5 rounded-md text-left transition-colors ${
                         isCurrent ? "bg-blue-50" : "hover:bg-slate-50"
-                      }`}
+                      } ${disabled && !isSwitchingTo ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-bold text-white rounded bg-blue-900">
-                        {ws.name.charAt(0).toUpperCase()}
+                        {isSwitchingTo ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          ws.name.charAt(0).toUpperCase()
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[13px] font-medium text-slate-900 truncate">
                           {ws.name}
                         </div>
-                        {isCurrent && (
-                          <div className="text-[11px] text-slate-500">
-                            Current workspace
-                          </div>
+                        {isSwitchingTo ? (
+                          <div className="text-[11px] text-blue-700">Switching…</div>
+                        ) : (
+                          isCurrent && (
+                            <div className="text-[11px] text-slate-500">
+                              Current workspace
+                            </div>
+                          )
                         )}
                       </div>
-                      {isCurrent && (
+                      {isCurrent && !isSwitchingTo && (
                         <Check className="flex-shrink-0 w-4 h-4 text-emerald-600" />
                       )}
                     </button>
@@ -121,7 +140,8 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
             <div className="p-3 border-t border-slate-200">
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="flex items-center w-full gap-3 px-3 py-2.5 text-left transition-colors rounded-md hover:bg-slate-50"
+                disabled={switchingId !== null}
+                className="flex items-center w-full gap-3 px-3 py-2.5 text-left transition-colors rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded bg-slate-100 text-slate-500">
                   <Plus className="w-4 h-4" />

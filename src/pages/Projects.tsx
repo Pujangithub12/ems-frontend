@@ -501,11 +501,11 @@ const ProjectsPage: React.FC = () => {
       {/* Create Modal */}
       {showCreateForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-xl overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-md shadow-lg border-slate-200 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-3.5 border-b border-slate-200">
               <div>
                 <Eyebrow>New Project</Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
+                <h3 className="font-semibold text-[16px] text-slate-900 mt-0.5">
                   Launch New Project
                 </h3>
               </div>
@@ -516,114 +516,119 @@ const ProjectsPage: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={createProject} className="p-6 space-y-5">
-              <div>
-                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  placeholder="e.g. Website Redesign"
-                />
-              </div>
-              <div>
-                <Eyebrow className="mb-1.5">Description</Eyebrow>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
-                  rows={3}
-                  placeholder="Describe the project goals..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            <form
+              onSubmit={createProject}
+              className="flex flex-col flex-1 min-h-0"
+            >
+              <div className="flex-1 min-h-0 px-6 py-4 space-y-4 overflow-y-auto">
                 <div>
-                  <Eyebrow className="mb-1.5">Status</Eyebrow>
-                  <div className="relative">
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as any)}
-                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">Active</option>
-                      <option value="on_hold">On Hold</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                  <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    placeholder="e.g. Website Redesign"
+                  />
+                </div>
+                <div>
+                  <Eyebrow className="mb-1.5">Description</Eyebrow>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                    rows={2}
+                    placeholder="Describe the project goals..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Eyebrow className="mb-1.5">Status</Eyebrow>
+                    <div className="relative">
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as any)}
+                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <Eyebrow className="mb-1.5">Deadline</Eyebrow>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    />
                   </div>
                 </div>
-                <div>
-                  <Eyebrow className="mb-1.5">Deadline</Eyebrow>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
-                <div className="relative mb-2">
-                  <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search users by name..."
-                    value={assigneeSearchTerm}
-                    onChange={(e) => setAssigneeSearchTerm(e.target.value)}
-                    className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
-                  />
-                </div>
-                <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
-                  {users
-                    .filter((u) =>
+                <div>
+                  <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                  <div className="relative mb-2">
+                    <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search users by name..."
+                      value={assigneeSearchTerm}
+                      onChange={(e) => setAssigneeSearchTerm(e.target.value)}
+                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                    />
+                  </div>
+                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                    {users
+                      .filter((u) =>
+                        u.fullName
+                          .toLowerCase()
+                          .includes(assigneeSearchTerm.toLowerCase()),
+                      )
+                      .map((u) => (
+                        <label
+                          key={u.id}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedAssigneeIds.includes(u.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedAssigneeIds([
+                                  ...selectedAssigneeIds,
+                                  u.id,
+                                ]);
+                              } else {
+                                setSelectedAssigneeIds(
+                                  selectedAssigneeIds.filter((id) => id !== u.id),
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                          />
+                          <span className="text-[13px] text-slate-700">
+                            {u.fullName}
+                          </span>
+                        </label>
+                      ))}
+                    {users.filter((u) =>
                       u.fullName
                         .toLowerCase()
                         .includes(assigneeSearchTerm.toLowerCase()),
-                    )
-                    .map((u) => (
-                      <label
-                        key={u.id}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAssigneeIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedAssigneeIds([
-                                ...selectedAssigneeIds,
-                                u.id,
-                              ]);
-                            } else {
-                              setSelectedAssigneeIds(
-                                selectedAssigneeIds.filter((id) => id !== u.id),
-                              );
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                        />
-                        <span className="text-[13px] text-slate-700">
-                          {u.fullName}
-                        </span>
-                      </label>
-                    ))}
-                  {users.filter((u) =>
-                    u.fullName
-                      .toLowerCase()
-                      .includes(assigneeSearchTerm.toLowerCase()),
-                  ).length === 0 && (
-                    <p className="text-[12px] text-slate-400 italic">
-                      No users match "{assigneeSearchTerm}".
-                    </p>
-                  )}
+                    ).length === 0 && (
+                      <p className="text-[12px] text-slate-400 italic">
+                        No users match "{assigneeSearchTerm}".
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+              <div className="flex justify-end flex-shrink-0 gap-2 px-6 py-3.5 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
@@ -650,11 +655,11 @@ const ProjectsPage: React.FC = () => {
       {/* Edit Modal */}
       {editingProject && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-xl overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-md shadow-lg border-slate-200 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-3.5 border-b border-slate-200">
               <div>
                 <Eyebrow>Edit Project</Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
+                <h3 className="font-semibold text-[16px] text-slate-900 mt-0.5">
                   Update Project
                 </h3>
               </div>
@@ -665,116 +670,121 @@ const ProjectsPage: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={updateProject} className="p-6 space-y-5">
-              <div>
-                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  placeholder="e.g. Website Redesign"
-                />
-              </div>
-              <div>
-                <Eyebrow className="mb-1.5">Description</Eyebrow>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
-                  rows={3}
-                  placeholder="Describe the project goals..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            <form
+              onSubmit={updateProject}
+              className="flex flex-col flex-1 min-h-0"
+            >
+              <div className="flex-1 min-h-0 px-6 py-4 space-y-4 overflow-y-auto">
                 <div>
-                  <Eyebrow className="mb-1.5">Status</Eyebrow>
-                  <div className="relative">
-                    <select
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value as any)}
-                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">Active</option>
-                      <option value="on_hold">On Hold</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                  <Eyebrow className="mb-1.5">Project Name</Eyebrow>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    placeholder="e.g. Website Redesign"
+                  />
+                </div>
+                <div>
+                  <Eyebrow className="mb-1.5">Description</Eyebrow>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                    rows={2}
+                    placeholder="Describe the project goals..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Eyebrow className="mb-1.5">Status</Eyebrow>
+                    <div className="relative">
+                      <select
+                        value={editStatus}
+                        onChange={(e) => setEditStatus(e.target.value as any)}
+                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <Eyebrow className="mb-1.5">Deadline</Eyebrow>
+                    <input
+                      type="date"
+                      value={editDueDate}
+                      onChange={(e) => setEditDueDate(e.target.value)}
+                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    />
                   </div>
                 </div>
-                <div>
-                  <Eyebrow className="mb-1.5">Deadline</Eyebrow>
-                  <input
-                    type="date"
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
-                <div className="relative mb-2">
-                  <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search users by name..."
-                    value={editAssigneeSearchTerm}
-                    onChange={(e) => setEditAssigneeSearchTerm(e.target.value)}
-                    className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
-                  />
-                </div>
-                <div className="max-h-40 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
-                  {users
-                    .filter((u) =>
+                <div>
+                  <Eyebrow className="mb-1.5">Assign to Users</Eyebrow>
+                  <div className="relative mb-2">
+                    <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search users by name..."
+                      value={editAssigneeSearchTerm}
+                      onChange={(e) => setEditAssigneeSearchTerm(e.target.value)}
+                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                    />
+                  </div>
+                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                    {users
+                      .filter((u) =>
+                        u.fullName
+                          .toLowerCase()
+                          .includes(editAssigneeSearchTerm.toLowerCase()),
+                      )
+                      .map((u) => (
+                        <label
+                          key={u.id}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={editSelectedAssigneeIds.includes(u.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditSelectedAssigneeIds([
+                                  ...editSelectedAssigneeIds,
+                                  u.id,
+                                ]);
+                              } else {
+                                setEditSelectedAssigneeIds(
+                                  editSelectedAssigneeIds.filter(
+                                    (id) => id !== u.id,
+                                  ),
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                          />
+                          <span className="text-[13px] text-slate-700">
+                            {u.fullName}
+                          </span>
+                        </label>
+                      ))}
+                    {users.filter((u) =>
                       u.fullName
                         .toLowerCase()
                         .includes(editAssigneeSearchTerm.toLowerCase()),
-                    )
-                    .map((u) => (
-                      <label
-                        key={u.id}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={editSelectedAssigneeIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEditSelectedAssigneeIds([
-                                ...editSelectedAssigneeIds,
-                                u.id,
-                              ]);
-                            } else {
-                              setEditSelectedAssigneeIds(
-                                editSelectedAssigneeIds.filter(
-                                  (id) => id !== u.id,
-                                ),
-                              );
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                        />
-                        <span className="text-[13px] text-slate-700">
-                          {u.fullName}
-                        </span>
-                      </label>
-                    ))}
-                  {users.filter((u) =>
-                    u.fullName
-                      .toLowerCase()
-                      .includes(editAssigneeSearchTerm.toLowerCase()),
-                  ).length === 0 && (
-                    <p className="text-[12px] text-slate-400 italic">
-                      No users match "{editAssigneeSearchTerm}".
-                    </p>
-                  )}
+                    ).length === 0 && (
+                      <p className="text-[12px] text-slate-400 italic">
+                        No users match "{editAssigneeSearchTerm}".
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+              <div className="flex justify-end flex-shrink-0 gap-2 px-6 py-3.5 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setEditingProject(null)}
