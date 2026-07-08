@@ -7,6 +7,8 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Loader2,
   AlertCircle,
   Calendar,
@@ -89,14 +91,6 @@ const getDueMeta = (dueDate: string, status: string) => {
   return { label: `In ${diffDays} day${diffDays === 1 ? "" : "s"}`, bg: "#DBEAFE", fg: "#1E3A8A" };
 };
 
-const getProjectStatusMeta = (status?: string) => {
-  const v = (status || "").toLowerCase();
-  if (v === "completed") return { label: "Completed Project", bg: "#DCFCE7", fg: "#15803D" };
-  if (v === "on_hold") return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C" };
-  if (v === "pending") return { label: "Planned Project", bg: "#FEF3C7", fg: "#B45309" };
-  return { label: "Active Project", bg: "#DBEAFE", fg: "#1E3A8A" };
-};
-
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = "",
@@ -148,6 +142,7 @@ const CompletedTasks: React.FC = () => {
 
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+  const [showAllMembers, setShowAllMembers] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -244,12 +239,17 @@ const CompletedTasks: React.FC = () => {
   const expandAllGroups = () => setCollapsedProjects(new Set());
   const collapseAllGroups = () =>
     setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
+  const allGroupsCollapsed =
+    projectGroups.length > 0 &&
+    projectGroups.every((g) => collapsedProjects.has(g.key));
+  const toggleAllGroups = () =>
+    allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
 
   return (
     <div className="p-6 space-y-6">
-      {/* Top Controls */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1 max-w-md">
+      {/* Search + Filters + Expand/Collapse toggle */}
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-white border rounded-lg shadow-sm border-slate-200">
+        <div className="relative flex-1 min-w-[180px] max-w-md">
           <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
           <input
             type="text"
@@ -259,12 +259,7 @@ const CompletedTasks: React.FC = () => {
             className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
           />
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4">
         <div ref={projectFilterRef} className="relative">
-          <Eyebrow className="mb-1.5">Project Name</Eyebrow>
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
@@ -309,6 +304,17 @@ const CompletedTasks: React.FC = () => {
             </div>
           )}
         </div>
+        <button
+          onClick={toggleAllGroups}
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+        >
+          {allGroupsCollapsed ? (
+            <ChevronsUpDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronsDownUp className="w-3.5 h-3.5" />
+          )}
+          {allGroupsCollapsed ? "Expand all" : "Collapse all"}
+        </button>
       </div>
 
       {/* Content: grouped by project */}
@@ -341,28 +347,13 @@ const CompletedTasks: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={expandAllGroups}
-              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
-            >
-              Expand all
-            </button>
-            <button
-              onClick={collapseAllGroups}
-              className="px-3 py-1.5 text-[12px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
-            >
-              Collapse all
-            </button>
-          </div>
-
           <div className="space-y-3">
             {projectGroups.map((group) => {
               const isCollapsed = collapsedProjects.has(group.key);
               return (
                 <div
                   key={group.key}
-                  className="overflow-hidden bg-white border rounded-lg border-slate-200"
+                  className="overflow-hidden transition-shadow bg-white border rounded-lg shadow-sm border-slate-200 hover:shadow-md"
                 >
                   <button
                     onClick={() => toggleGroup(group.key)}
@@ -461,7 +452,6 @@ const CompletedTasks: React.FC = () => {
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
           const dueMeta = getDueMeta(t.dueDate, t.status);
-          const projectMeta = getProjectStatusMeta(t.project?.status);
           const StatusIcon = statusMeta.Icon;
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
@@ -496,7 +486,10 @@ const CompletedTasks: React.FC = () => {
                       {statusMeta.label}
                     </span>
                     <button
-                      onClick={() => setExpandedTaskId(null)}
+                      onClick={() => {
+                        setExpandedTaskId(null);
+                        setShowAllMembers(false);
+                      }}
                       className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
                     >
                       <X className="w-4 h-4" />
@@ -515,16 +508,6 @@ const CompletedTasks: React.FC = () => {
                       <p className="font-semibold text-[13px] text-slate-900 truncate">
                         {t.project?.name || t.projectName || "No Project"}
                       </p>
-                      <span
-                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                        style={{ background: projectMeta.bg, color: projectMeta.fg }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: projectMeta.fg }}
-                        />
-                        {projectMeta.label}
-                      </span>
                     </div>
                     <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
                       <div className="flex items-center gap-2 mb-2">
@@ -550,10 +533,7 @@ const CompletedTasks: React.FC = () => {
                         </div>
                         <Eyebrow>Progress</Eyebrow>
                       </div>
-                      <span
-                        className="font-semibold text-[18px] tracking-tight"
-                        style={{ color: statusMeta.fg }}
-                      >
+                      <span className="font-semibold text-[18px] tracking-tight text-slate-900">
                         {t.progress}%
                       </span>
                       <div className="w-full h-1.5 mt-2 overflow-hidden rounded-full bg-slate-100">
@@ -591,16 +571,27 @@ const CompletedTasks: React.FC = () => {
                         {t.assignedUsers.length === 0 ? (
                           <p className="text-slate-400 text-[12px]">Unassigned</p>
                         ) : (
-                          t.assignedUsers.map((u) => (
-                            <div key={u.id} className="flex items-center gap-2">
-                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                                {u.fullName.charAt(0)}
+                          <>
+                            {t.assignedUsers.slice(0, 2).map((u) => (
+                              <div key={u.id} className="flex items-center gap-2">
+                                <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                  {u.fullName.charAt(0)}
+                                </div>
+                                <span className="text-[13px] font-medium text-slate-800 truncate">
+                                  {u.fullName}
+                                </span>
                               </div>
-                              <span className="text-[13px] font-medium text-slate-800">
-                                {u.fullName}
-                              </span>
-                            </div>
-                          ))
+                            ))}
+                            {t.assignedUsers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllMembers(true)}
+                                className="text-[12px] font-medium text-blue-900 hover:underline"
+                              >
+                                View all ({t.assignedUsers.length})
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                       {t.createdBy && (
@@ -642,6 +633,57 @@ const CompletedTasks: React.FC = () => {
                         ))}
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* View All Assigned Members Popup */}
+      {showAllMembers &&
+        expandedTaskId &&
+        (() => {
+          const t = completedTasks.find((task) => task.id === expandedTaskId);
+          if (!t) return null;
+          return (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
+              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
+                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+                  <Eyebrow>Assigned Members ({t.assignedUsers.length})</Eyebrow>
+                  <button
+                    onClick={() => setShowAllMembers(false)}
+                    className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 p-3 space-y-1 overflow-y-auto">
+                  {t.assignedUsers.length === 0 ? (
+                    <p className="py-4 text-center text-slate-400 text-[12px]">
+                      No members assigned.
+                    </p>
+                  ) : (
+                    t.assignedUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="flex items-center gap-2.5 px-2 py-2 rounded hover:bg-slate-50"
+                      >
+                        <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-semibold text-white rounded-full bg-blue-900">
+                          {u.fullName.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium text-slate-800 truncate">
+                            {u.fullName}
+                          </p>
+                          {u.email && (
+                            <p className="text-[11px] text-slate-400 truncate">
+                              {u.email}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>

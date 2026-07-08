@@ -761,7 +761,9 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
       {addTaskStatus && (
         <AddTaskModal
           status={addTaskStatus}
-          assignees={project.assignees || []}
+          assignees={[...(project.assignees || [])].sort((a, b) =>
+            a.fullName.localeCompare(b.fullName),
+          )}
           onClose={() => setAddTaskStatus(null)}
           onCreate={handleCreateTask}
         />
@@ -770,7 +772,9 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
       {editTarget && (
         <EditTaskModal
           task={editTarget}
-          assignees={project.assignees || []}
+          assignees={[...(project.assignees || [])].sort((a, b) =>
+            a.fullName.localeCompare(b.fullName),
+          )}
           onClose={() => setEditTarget(null)}
           onSave={handleSaveEdit}
         />

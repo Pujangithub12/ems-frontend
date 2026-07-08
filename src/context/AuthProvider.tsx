@@ -12,6 +12,11 @@ export type User = {
   fullName?: string;
   email?: string;
   role?: string;
+  phoneNumber?: string;
+  address?: string;
+  jobPosition?: string;
+  joinDate?: string;
+  createdAt?: string;
 } | null;
 
 export type Workspace = {
@@ -40,6 +45,8 @@ type AuthContextType = {
     confirmName: string,
   ) => Promise<Workspace | null>;
   loading: boolean;
+  /** Merges fresh fields (e.g. after a profile edit) into the local user state without a refetch. */
+  updateUser: (user: User) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,7 +67,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   //   3. checkAuth() finishes → GET /api/me returns 401 (cookie race) → setUser(null)  ← kicks user out
   const didLoginRef = useRef(false);
   const inactivityTimerRef = useRef<number | null>(null);
-  const INACTIVITY_TIMEOUT = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
+  const INACTIVITY_TIMEOUT = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
   const resetInactivityTimer = () => {
     if (inactivityTimerRef.current) {
@@ -247,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         updateWorkspace,
         deleteWorkspace,
         loading,
+        updateUser: setUser,
       }}
     >
       {children}

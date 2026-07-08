@@ -132,7 +132,11 @@ const ProjectsPage: React.FC = () => {
   const loadUsers = async () => {
     try {
       const response = await api.get("/api/users");
-      setUsers(response.data);
+      setUsers(
+        [...response.data].sort((a: any, b: any) =>
+          a.fullName.localeCompare(b.fullName),
+        ),
+      );
     } catch (err) {
       console.error("Failed to load users", err);
     }

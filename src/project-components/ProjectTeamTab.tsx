@@ -86,7 +86,9 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
     setUsersError(null);
     try {
       const res = await api.get<WorkspaceUser[]>("/api/users");
-      setAllUsers(res.data);
+      setAllUsers(
+        [...res.data].sort((a, b) => a.fullName.localeCompare(b.fullName)),
+      );
     } catch (err: any) {
       setUsersError(
         err?.response?.data?.message || err.message || "Unable to load members.",

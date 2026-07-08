@@ -16,9 +16,11 @@ import {
   Bell,
   ChevronDown,
   Settings,
+  RefreshCcw,
+  User as UserRoundIcon,
 } from "lucide-react";
 
-import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
+import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
 import SidebarLink from "../components/SidebarLink";
 
 type DashboardLayoutProps = {
@@ -67,6 +69,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const { workspaceId: workspaceIdParam } = useParams<{ workspaceId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [showSwitchWorkspaceModal, setShowSwitchWorkspaceModal] =
+    React.useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   const paramWorkspaceId = workspaceIdParam ? Number(workspaceIdParam) : null;
@@ -206,10 +210,25 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   return (
     <div className="flex min-h-screen bg-[#F6F7F9]">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-56 bg-slate-900 border-r border-slate-800 flex-col h-screen sticky top-0 flex-shrink-0">
-        {/* Brand / Workspace Switcher */}
+      <aside className="sticky top-0 flex-col flex-shrink-0 hidden w-56 h-screen border-r lg:flex bg-slate-900 border-slate-800">
+        {/* Brand / Current Workspace */}
         <div className="p-3">
-          <WorkspaceSwitcher />
+          <div className="flex items-center w-full gap-2.5 px-2.5 py-2.5">
+            <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
+              {workspace?.name.charAt(0).toUpperCase() || "EM"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold tracking-tight leading-tight truncate text-[14px] text-white">
+                {workspace?.name || "EMS Workspace"}
+              </div>
+              <div
+                className="text-[10px] text-slate-400 tracking-[0.08em] uppercase"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              >
+                Management
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Nav */}
@@ -254,7 +273,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             onClick={() => setIsMobileMenuOpen(false)}
             className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
           />
-          <aside className="fixed inset-y-0 left-0 w-60 bg-slate-900 border-r border-slate-800 flex flex-col z-50 lg:hidden shadow-xl">
+          <aside className="fixed inset-y-0 left-0 z-50 flex flex-col border-r shadow-xl w-60 bg-slate-900 border-slate-800 lg:hidden">
             <div className="flex items-center justify-between p-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px]">
@@ -339,7 +358,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <h1 className="flex gap-1.5 items-center font-semibold leading-tight truncate text-[17px] text-slate-900">
                 <Link
                   to={`${prefix}/project`}
-                  className="text-slate-500 hover:text-slate-700 transition-colors"
+                  className="transition-colors text-slate-500 hover:text-slate-700"
                 >
                   Projects
                 </Link>
@@ -399,6 +418,26 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 </div>
                 <div className="py-1">
                   <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate(`${prefix}/profile`);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <UserRoundIcon className="w-3.5 h-3.5 opacity-70" />
+                    My Profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setShowSwitchWorkspaceModal(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <RefreshCcw className="w-3.5 h-3.5 opacity-70" />
+                    Switch workspace
+                  </button>
+                  <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-red-700 hover:bg-red-50"
                   >
@@ -421,6 +460,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           </div>
         </div>
       </main>
+
+      <SwitchWorkspaceModal
+        isOpen={showSwitchWorkspaceModal}
+        onClose={() => setShowSwitchWorkspaceModal(false)}
+      />
     </div>
   );
 };
