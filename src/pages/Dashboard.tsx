@@ -1,9 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
-import { ProjectHeading, ProjectTask } from "../types";
+import { Project } from "../types";
 import { flattenProjectTasks } from "../project-components/taskUtils";
+import { getErrorMessage } from "../lib/errors";
+import ErrorBanner from "../components/ErrorBanner";
+import { useProjects } from "../hooks/useProjects";
+import { useUsers } from "../hooks/useUsers";
+import { useTasks } from "../hooks/useTasks";
+import { useLeaveRequests } from "../hooks/useLeaveRequests";
+import { useActivities } from "../hooks/useActivities";
+import { useDashboard } from "../hooks/useDashboard";
 import {
   Cloud,
   Clock,
@@ -33,60 +40,12 @@ import {
 
 // ---- Types ---------------------------------------------------------------
 
-type AssignedUser = { id: number; fullName: string; email: string };
-
-type Task = {
-  id: number;
-  title: string;
-  description: string;
-  priority: string;
-  status: string;
-  dueDate: string;
-  assignedUsers: AssignedUser[];
-  createdAt: string;
-};
-
-type DashboardData = {
-  total: number;
-  pending: number;
-  inProgress: number;
-  completed: number;
-  highPriorityTasks: Task[];
-  pendingLeaveRequests: number;
-};
-
-type ProjectSummary = {
-  id: number;
-  name: string;
-  description?: string;
-  status: string;
-  dueDate?: string;
-  createdAt?: string;
-  headings?: ProjectHeading[];
-  projectTasks?: ProjectTask[];
-};
-
 type ScheduleHealth = "on_track" | "at_risk" | "delayed";
 
-type OngoingProject = ProjectSummary & {
+type OngoingProject = Project & {
   progress: number;
   health: ScheduleHealth;
   scheduleLabel: string;
-};
-
-type LeaveRequest = {
-  id: number;
-  title: string;
-  status: string;
-  createdAt: string;
-  user: { id: number; fullName: string };
-};
-
-type ActivityEntry = {
-  id: number;
-  type: string;
-  description: string;
-  createdAt: string;
 };
 
 // ---- Helpers --------------------------------------------------------------
@@ -272,17 +231,26 @@ const Dashboard: React.FC = () => {
   const { user, workspace } = useAuth();
   const navigate = useNavigate();
 
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const {
+    data: dashboardData,
+    isLoading: dashboardLoading,
+    isError: dashboardIsError,
+    error: dashboardQueryError,
+  } = useDashboard();
+  const dashboardError = dashboardIsError
+    ? getErrorMessage(dashboardQueryError, "Unable to load dashboard.")
+    : null;
 
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const [teamCount, setTeamCount] = useState<number | null>(null);
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: usersData = [] } = useUsers();
+  const teamCount = usersData.length;
+  const { data: allTasks = [] } = useTasks();
+  // Non-critical widgets: a failed fetch here degrades to "no data" rather
+  // than blocking the rest of the dashboard, matching the previous
+  // catch-to-empty-array behavior.
+  const { data: leaveRequests = [] } = useLeaveRequests();
+  const { data: activities = [] } = useActivities();
 
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [notifTab, setNotifTab] = useState<"notifications" | "activity">("notifications");
 
   const [now, setNow] = useState(new Date());
@@ -292,53 +260,6 @@ const Dashboard: React.FC = () => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const loadDashboard = async () => {
-      if (!user) return;
-      setDashboardLoading(true);
-      setDashboardError(null);
-      try {
-        const response = await api.get<DashboardData>("/api/dashboard");
-        setDashboardData(response.data);
-      } catch (err: any) {
-        setDashboardError(
-          err?.response?.data?.message || err.message || "Unable to load dashboard.",
-        );
-      } finally {
-        setDashboardLoading(false);
-      }
-    };
-
-    loadDashboard();
-  }, [user, workspace?.id]);
-
-  useEffect(() => {
-    const loadExtras = async () => {
-      if (!user) return;
-      setProjectsLoading(true);
-      try {
-        const [projectsRes, usersRes, tasksRes, leaveRes, activityRes] = await Promise.all([
-          api.get<ProjectSummary[]>("/api/projects"),
-          api.get<any[]>("/api/users"),
-          api.get<Task[]>("/api/tasks"),
-          api.get<LeaveRequest[]>("/api/leaverequest").catch(() => ({ data: [] })),
-          api.get<ActivityEntry[]>("/api/activities").catch(() => ({ data: [] })),
-        ]);
-        setProjects(projectsRes.data);
-        setTeamCount(usersRes.data.length);
-        setAllTasks(tasksRes.data);
-        setLeaveRequests(leaveRes.data ?? []);
-        setActivities(activityRes.data ?? []);
-      } catch (err) {
-        console.error("Failed to load dashboard extras", err);
-      } finally {
-        setProjectsLoading(false);
-      }
-    };
-
-    loadExtras();
-  }, [user, workspace?.id]);
 
   const ongoingProjects: OngoingProject[] = useMemo(() => {
     return projects
@@ -489,6 +410,8 @@ const Dashboard: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {dashboardError && <ErrorBanner message={dashboardError} className="mb-4" />}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-3 lg:grid-cols-6">
@@ -652,7 +575,7 @@ const Dashboard: React.FC = () => {
                     <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
                     <div className="min-w-0">
                       <div className="text-[13px] text-slate-700">
-                        <span className="font-semibold text-slate-900">Leave request from {lr.user.fullName}</span>{" "}
+                        <span className="font-semibold text-slate-900">Leave request from {lr.user?.fullName || "a team member"}</span>{" "}
                         needs your approval
                       </div>
                       <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(lr.createdAt)}</div>

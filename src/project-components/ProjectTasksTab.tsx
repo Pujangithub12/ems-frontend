@@ -23,11 +23,17 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import { Project, ProjectTask } from "../types";
 import { flattenProjectTasks } from "./taskUtils";
 import ConfirmationModal from "../components/ConfirmationModal";
+import {
+  useUpdateTaskStatus,
+  useCreateProjectTask,
+  useUpdateTask,
+  useDeleteTask,
+} from "../hooks/useTasks";
+import { getErrorMessage } from "../lib/errors";
 
 interface ProjectTasksTabProps {
   project: Project;
@@ -594,6 +600,11 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
   const [deleting, setDeleting] = useState(false);
   const taskMenuRef = useRef<HTMLDivElement>(null);
 
+  const updateTaskStatusMutation = useUpdateTaskStatus();
+  const createProjectTaskMutation = useCreateProjectTask();
+  const updateTaskMutation = useUpdateTask();
+  const deleteTaskMutation = useDeleteTask();
+
   useEffect(() => {
     setTasks(flattenProjectTasks(project));
   }, [project]);
@@ -632,13 +643,13 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
     );
 
     try {
-      await api.put(`/api/tasks/${taskId}/status`, { status: newStatus });
+      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: newStatus });
       onTaskUpdate?.();
-    } catch (err: any) {
+    } catch (err) {
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: previousStatus } : t)),
       );
-      setError(err?.response?.data?.message || "Failed to update task status.");
+      setError(getErrorMessage(err, "Failed to update task status."));
     }
   };
 
@@ -650,7 +661,7 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
     assignedUserIds: number[];
     status: TaskStatus;
   }) => {
-    await api.post(`/api/projects/${project.id}/tasks`, payload);
+    await createProjectTaskMutation.mutateAsync({ projectId: project.id, payload });
     setAddTaskStatus(null);
     onTaskUpdate?.();
   };
@@ -678,16 +689,18 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
     assignedUserIds: number[];
   }) => {
     if (!editTarget) return;
-    const res = await api.put(`/api/tasks/${editTarget.id}`, {
-      title: payload.title,
-      description: payload.description,
-      dueDate: payload.dueDate,
-      priority: payload.priority,
-      status: payload.status,
-      userIds: payload.assignedUserIds,
+    const updated = await updateTaskMutation.mutateAsync({
+      id: editTarget.id,
+      payload: {
+        title: payload.title,
+        description: payload.description,
+        dueDate: payload.dueDate,
+        priority: payload.priority,
+        status: payload.status,
+        userIds: payload.assignedUserIds,
+      },
     });
-    const updated = res.data.task;
-    setTasks((prev) => prev.map((t) => (t.id === editTarget.id ? updated : t)));
+    setTasks((prev) => prev.map((t) => (t.id === editTarget.id ? (updated as any) : t)));
     setEditTarget(null);
     onTaskUpdate?.();
   };
@@ -696,12 +709,12 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.delete(`/api/tasks/${deleteTarget.id}`);
+      await deleteTaskMutation.mutateAsync(deleteTarget.id);
       setTasks((prev) => prev.filter((t) => t.id !== deleteTarget.id));
       setDeleteTarget(null);
       onTaskUpdate?.();
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to delete task.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to delete task."));
     } finally {
       setDeleting(false);
     }

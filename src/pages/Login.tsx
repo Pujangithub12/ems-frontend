@@ -3,8 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import { Eye, EyeOff, Loader2, ShieldCheck, ArrowRight } from "lucide-react";
 
-// Translations are scoped to this login page only — the dashboard and every
-// other authenticated page stay English-only regardless of this toggle.
 type Lang = "en" | "ne";
 
 const STRINGS: Record<Lang, Record<string, string>> = {
@@ -195,7 +193,7 @@ const Login: React.FC = () => {
           </div>
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-center py-6 min-h-0">
+        <div className="relative z-10 flex flex-col justify-center flex-1 min-h-0 py-6">
           <div
             className="flex items-center gap-2.5 text-[10px] uppercase tracking-[0.2em] mb-4"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#6E7FA3" }}
@@ -224,7 +222,7 @@ const Login: React.FC = () => {
           </p>
 
           <div
-            className="mt-5 rounded-xl p-4 pt-3 pb-3"
+            className="p-4 pt-3 pb-3 mt-5 rounded-xl"
             style={{
               background: "rgba(5,10,20,0.5)",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -356,10 +354,10 @@ const Login: React.FC = () => {
       </aside>
 
       {/* RIGHT: Sign-in panel */}
-      <main className="flex-1 flex flex-col relative px-6 py-4 sm:px-10 overflow-hidden">
-        <div className="flex justify-end items-center gap-4">
+      <main className="relative flex flex-col flex-1 px-6 py-4 overflow-hidden sm:px-10">
+        <div className="flex items-center justify-end gap-4">
           <div
-            className="inline-flex rounded-lg overflow-hidden bg-white"
+            className="inline-flex overflow-hidden bg-white rounded-lg"
             style={{ border: "1px solid #D8DDE7", boxShadow: "0 1px 2px rgba(16,20,31,0.04)" }}
             role="group"
             aria-label="Language"
@@ -393,9 +391,9 @@ const Login: React.FC = () => {
           </a>
         </div>
 
-        <div className="flex-1 flex items-center justify-center py-2 min-h-0">
+        <div className="flex items-center justify-center flex-1 min-h-0 py-2">
           <div
-            className="w-full bg-white rounded-2xl p-6 pb-5"
+            className="w-full p-6 pb-5 bg-white rounded-2xl"
             style={{
               maxWidth: 416,
               border: "1px solid #DDE2EB",

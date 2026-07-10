@@ -1,19 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Upload, X, AlertCircle, Info, Plus, Pencil, CloudUpload, Check } from "lucide-react";
+import {
+  Upload,
+  X,
+  AlertCircle,
+  Info,
+  Pencil,
+  CloudUpload,
+  Check,
+  LayoutGrid,
+  Rows3,
+  Filter,
+  ZoomIn,
+  ZoomOut,
+  Download,
+  Plus,
+} from "lucide-react";
 import * as XLSX from "xlsx";
-import { Gantt, Willow } from "@svar-ui/react-gantt";
-import "@svar-ui/react-gantt/all.css";
 
 import { ScheduleRow } from "./schema/Scheduletypes";
-import { dtoToRows, fetchSchedule, rowsToDto, saveSchedule } from "./scheduleApi";
+import { GanttLink, GanttTask, ScheduleStatus, STATUS_META } from "./schema/Scheduletypes";
+import { dtoToRows, rowsToDto } from "./scheduleApi";
+import { useScheduleQuery, useSaveScheduleMutation } from "../hooks/useSchedule";
 import AddScheduleModal from "./modal/AddScheduleModal";
+import GanttChartView, { ScheduleColumnDef, ScheduleScale } from "./GanttChartView";
 
 /**
  * ProjectScheduleTab
  * ------------------
- * Renders an interactive, hierarchical Gantt chart (@svar-ui/react-gantt)
- * built from a single source of truth — `scheduleRows` — which can be
- * populated three ways:
+ * Renders an interactive, hierarchical Gantt chart (dhtmlx-gantt) built from
+ * a single source of truth — `scheduleRows` — which can be populated three ways:
  *   1. Uploading an Excel/CSV sheet
  *   2. Typing directly into the "Add / Edit Schedule" modal
  *   3. Loading whatever was last saved for this project from the backend
@@ -31,17 +46,12 @@ import AddScheduleModal from "./modal/AddScheduleModal";
  *   Predecessor ID  optional, comma separated list of ID(s) this task depends on
  *
  * A row is a "summary" bar only when it has no Start Date/Duration AND at
- * least one other row references it via Parent ID — @svar-ui/react-gantt
- * crashes on a childless summary-type task, so a childless one is instead
- * rendered as a normal 1-day placeholder task. A row with Duration = 0 (and a
- * Start Date) is rendered as a milestone (diamond marker) instead.
+ * least one other row references it via Parent ID. A row with Duration = 0
+ * (and a Start Date) is rendered as a milestone (diamond marker) instead.
  *
  * Status (Completed / In Progress / Delayed / Not Started) is derived from
  * Progress + dates relative to today, and drives both the "Status" column
- * pill and the chart bar color. Bar colors are applied via a dynamically
- * generated `data-task-id` CSS block (see `buildStatusCss`) rather than the
- * library's `type` field, so the library's own summary-bracket / milestone-
- * diamond rendering is left completely untouched.
+ * pill and the chart bar color (see GanttChartView's task_class template).
  */
 
 // ---- Types -----------------------------------------------------------
@@ -63,8 +73,6 @@ interface NormalizedRow {
   progress?: number | string;
 }
 
-type ScheduleStatus = "completed" | "in_progress" | "delayed" | "not_started";
-
 interface ParsedRow {
   id: string;
   name: string;
@@ -75,31 +83,6 @@ interface ParsedRow {
   isSummary: boolean;
   isMilestone: boolean;
   progress: number | null;
-}
-
-interface GanttTask {
-  id: string;
-  text: string;
-  start: Date;
-  end: Date;
-  duration: number;
-  progress: number;
-  type: "task" | "summary" | "milestone";
-  parent: string | number;
-  open?: boolean;
-  status: ScheduleStatus;
-  wbs: string;
-  durationLabel: string;
-  startLabel: string;
-  finishLabel: string;
-  progressLabel: string;
-}
-
-interface GanttLink {
-  id: string;
-  source: string;
-  target: string;
-  type: "e2s" | "s2s" | "e2e" | "s2e";
 }
 
 interface ProjectScheduleTabProps {
@@ -139,9 +122,11 @@ const REQUIRED_COLUMN_LABELS: Record<string, string> = {
   taskName: "Task Name",
 };
 
-type ViewMode = "day" | "week" | "month";
+type ZoomLevel = "day" | "week" | "month";
+const ZOOM_LEVELS: ZoomLevel[] = ["day", "week", "month"];
+const ZOOM_LABELS: Record<ZoomLevel, string> = { day: "Day", week: "Week", month: "Month" };
 
-const SCALES: Record<ViewMode, { unit: string; step: number; format: string }[]> = {
+const SCALES: Record<ZoomLevel, ScheduleScale[]> = {
   day: [
     { unit: "month", step: 1, format: "%F %Y" },
     { unit: "day", step: 1, format: "%j" },
@@ -156,45 +141,8 @@ const SCALES: Record<ViewMode, { unit: string; step: number; format: string }[]>
   ],
 };
 
-/** Colors + labels for each derived status — shared by the Status column, the
- * legend, and the dynamically generated chart-bar CSS. */
-const STATUS_META: Record<
-  ScheduleStatus,
-  { label: string; bar: string; barBorder: string; pillBg: string; pillText: string; dot: string }
-> = {
-  completed: {
-    label: "Completed",
-    bar: "#10b981",
-    barBorder: "#059669",
-    pillBg: "#d1fae5",
-    pillText: "#047857",
-    dot: "#10b981",
-  },
-  in_progress: {
-    label: "In Progress",
-    bar: "#3b82f6",
-    barBorder: "#2563eb",
-    pillBg: "#dbeafe",
-    pillText: "#1d4ed8",
-    dot: "#3b82f6",
-  },
-  delayed: {
-    label: "Delayed",
-    bar: "#f43f5e",
-    barBorder: "#e11d48",
-    pillBg: "#ffe4e6",
-    pillText: "#be123c",
-    dot: "#f43f5e",
-  },
-  not_started: {
-    label: "Not Started",
-    bar: "#cbd5e1",
-    barBorder: "#94a3b8",
-    pillBg: "#f1f5f9",
-    pillText: "#475569",
-    dot: "#94a3b8",
-  },
-};
+type ViewTab = "gantt" | "list";
+type StatusFilter = "all" | ScheduleStatus;
 
 // ---- Helpers -------------------------------------------------------------
 
@@ -425,7 +373,7 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
 
   parsedRows.forEach((r) => computeWbs(r));
 
-  // --- Step 3: build @svar-ui/react-gantt task objects ---
+  // --- Step 3: build Gantt task objects ---
   const today = startOfDay(new Date());
   const tasks: GanttTask[] = [];
 
@@ -453,9 +401,8 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       }
     } else {
       // Either a normal task, or a row that looked like a summary (no
-      // Start Date / Duration) but has no subtasks to roll up from.
-      // @svar-ui/react-gantt crashes on a "summary" task with no children,
-      // so treat it as a regular placeholder task instead.
+      // Start Date / Duration) but has no subtasks to roll up from — treat
+      // it as a regular placeholder task instead.
       if (row.isSummary && !hasChildren) {
         warnings.push(`Task "${row.id}" (${row.name}) has no Start Date/Duration and no subtasks; using a 1-day placeholder.`);
       } else if (!row.start) {
@@ -488,16 +435,12 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       progress,
       type,
       parent,
-      // A summary task with no children triggers a known crash in
-      // @svar-ui/react-gantt, so only ever mark it "open" when it truly is
-      // a summary (which by construction always has children here).
       open: type === "summary",
       status,
       wbs: wbsById.get(row.id) ?? "",
       durationLabel: type === "milestone" ? "—" : `${row.duration ?? dayDiff(end, start)} day${(row.duration ?? 0) === 1 ? "" : "s"}`,
       startLabel: formatDateLabel(start),
-      finishLabel: type === "milestone" ? formatDateLabel(start) : formatDateLabel(end),
-      progressLabel: `${progress}%`,
+      colorIndex: tasks.length % 4,
     });
   });
 
@@ -533,55 +476,40 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
   return { tasks, links, warnings: Array.from(new Set(warnings)) };
 }
 
-/** Generates a `data-task-id`-scoped CSS block that colors each bar/diamond
- * by its derived status, without touching the library's own `type`-driven
- * structural rendering (summary brackets, milestone diamonds stay intact). */
-function buildStatusCss(tasks: GanttTask[]): string {
-  return tasks
-    .map((t) => {
-      const meta = STATUS_META[t.status];
-      const selector = `[data-task-id="${t.id}"]`;
-      return `${selector} .wx-bar, ${selector} .wx-segment, ${selector} .wx-content { background-color: ${meta.bar} !important; border-color: ${meta.barBorder} !important; }`;
-    })
-    .join("\n");
-}
-
 // ---- Component -------------------------------------------------------------
 
 const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) => {
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("week");
+  const [viewTab, setViewTab] = useState<ViewTab>("gantt");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const [loadingInitial, setLoadingInitial] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [backendError, setBackendError] = useState<string | null>(null);
 
   // Load whatever was last saved for this project.
+  const scheduleQuery = useScheduleQuery(projectId);
+  const loadingInitial = scheduleQuery.isLoading;
+  const saveScheduleMutation = useSaveScheduleMutation(projectId);
+
   useEffect(() => {
-    if (!projectId) {
-      setLoadingInitial(false);
-      return;
+    if (scheduleQuery.data && scheduleQuery.data.length > 0) {
+      setScheduleRows(dtoToRows(scheduleQuery.data));
     }
-    let cancelled = false;
-    setLoadingInitial(true);
-    fetchSchedule(projectId)
-      .then((dtos) => {
-        if (cancelled) return;
-        if (dtos.length > 0) setScheduleRows(dtoToRows(dtos));
-      })
-      .catch((err) => {
-        if (!cancelled) setBackendError(err instanceof Error ? err.message : "Failed to load saved schedule.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingInitial(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  }, [scheduleQuery.data]);
+
+  useEffect(() => {
+    if (scheduleQuery.isError) {
+      setBackendError(
+        scheduleQuery.error instanceof Error
+          ? scheduleQuery.error.message
+          : "Failed to load saved schedule.",
+      );
+    }
+  }, [scheduleQuery.isError, scheduleQuery.error]);
 
   // Derive the Gantt chart from scheduleRows — the single source of truth,
   // whether it came from an Excel upload, the modal, or the backend.
@@ -590,36 +518,35 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     [scheduleRows],
   );
 
-  const statusCss = useMemo(() => buildStatusCss(ganttTasks), [ganttTasks]);
+  // Summary rows always stay visible (so the hierarchy stays navigable);
+  // the status filter only hides non-matching leaf tasks/milestones.
+  const visibleTasks = useMemo(() => {
+    if (statusFilter === "all") return ganttTasks;
+    return ganttTasks.filter((t) => t.type === "summary" || t.status === statusFilter);
+  }, [ganttTasks, statusFilter]);
 
-  const columns = useMemo(
+  // `width` here is a relative weight, not a pixel value — GanttChartView
+  // scales these proportionally to fill the 25%-of-container grid area it
+  // reserves for the table (the remaining 75% is the chart).
+  const columns: ScheduleColumnDef[] = useMemo(
     () => [
-      { id: "wbs", header: "#", width: 52, align: "center" as const },
-      { id: "text", header: "Task Name", flexgrow: 2 },
-      { id: "durationLabel", header: "Duration", width: 90 },
-      { id: "startLabel", header: "Start", width: 84 },
-      { id: "finishLabel", header: "Finish", width: 84 },
-      { id: "progressLabel", header: "Progress", width: 80, align: "center" as const },
-      {
-        id: "status",
-        header: "Status",
-        width: 130,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        template: (value: any) => {
-          const meta = STATUS_META[value as ScheduleStatus] ?? STATUS_META.not_started;
-          return `<span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;background:${meta.pillBg};color:${meta.pillText}"><span style="width:6px;height:6px;border-radius:9999px;background:${meta.dot};display:inline-block"></span>${meta.label}</span>`;
-        },
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ] as any[],
+      { id: "wbs", header: "#", width: 52, align: "center" },
+      { id: "text", header: "Task Name", width: 260, tree: true, align: "center" },
+      { id: "durationLabel", header: "Duration", width: 90, align: "center" },
+      { id: "startLabel", header: "Start", width: 84, align: "center" },
+    ],
     [],
   );
 
-  const today = useMemo(() => startOfDay(new Date()), []);
-  const highlightTime = useCallback(
-    (date: Date, unit: string) => (unit === "day" && startOfDay(date).getTime() === today.getTime() ? "wx-today-column" : ""),
-    [today],
-  );
+  const scales = useMemo(() => SCALES[zoomLevel], [zoomLevel]);
+
+  const cycleZoom = (direction: 1 | -1) => {
+    setZoomLevel((current) => {
+      const idx = ZOOM_LEVELS.indexOf(current);
+      const next = ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, Math.max(0, idx + direction))];
+      return next;
+    });
+  };
 
   const persistSchedule = useCallback(
     async (rows: ScheduleRow[]) => {
@@ -631,7 +558,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       setSaveStatus("saving");
       setBackendError(null);
       try {
-        const saved = await saveSchedule(projectId, rowsToDto(rows));
+        const saved = await saveScheduleMutation.mutateAsync(rowsToDto(rows));
         setScheduleRows(dtoToRows(saved));
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2500);
@@ -642,7 +569,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         throw new Error(message);
       }
     },
-    [projectId],
+    [projectId, saveScheduleMutation],
   );
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -732,7 +659,18 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setFileName(null);
   };
 
-  const scales = useMemo(() => SCALES[viewMode], [viewMode]);
+  const handleExportCsv = () => {
+    const sheetRows = ganttTasks.map((t) => ({
+      "#": t.wbs,
+      "Task Name": t.text,
+      Duration: t.durationLabel,
+      Start: t.startLabel,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(sheetRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Schedule");
+    XLSX.writeFile(workbook, `schedule-${projectId}.xlsx`);
+  };
 
   return (
     <div className="space-y-6">
@@ -745,7 +683,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             {loadingInitial ? "Loading schedule..." : "Add a Schedule"}
           </h3>
           <p className="text-slate-500 text-[12px] max-w-sm mx-auto mb-4">
-            Upload an Excel file, or add tasks manually, to generate an interactive Gantt chart.
+            Upload an Excel file to generate an interactive Gantt chart.
           </p>
 
           <div className="flex relative gap-2 items-center">
@@ -763,13 +701,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               <Upload className="w-4 h-4" />
               Upload Excel Sheet
             </label>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 text-slate-700 border border-slate-200 rounded text-[12px] font-medium hover:bg-slate-50"
-            >
-              <Plus className="w-4 h-4" />
-              Add Schedule
-            </button>
           </div>
 
           {uploadError && (
@@ -805,44 +736,112 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-4 justify-between items-center">
+          {/* Toolbar */}
+          <div className="flex flex-wrap gap-3 justify-between items-center">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <ViewTabButton icon={<LayoutGrid className="w-3.5 h-3.5" />} label="Gantt" active={viewTab === "gantt"} onClick={() => setViewTab("gantt")} />
+              <ViewTabButton icon={<Rows3 className="w-3.5 h-3.5" />} label="List" active={viewTab === "list"} onClick={() => setViewTab("list")} />
+            </div>
+
             <div className="flex flex-wrap gap-2 items-center">
-              <select
-                value={viewMode}
-                onChange={(e) => setViewMode(e.target.value as ViewMode)}
-                className="px-3 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:border-blue-900"
+              <div className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-slate-600 border border-slate-200 rounded">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  className="bg-transparent text-sm focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  {(Object.keys(STATUS_META) as ScheduleStatus[]).map((key) => (
+                    <option key={key} value={key}>{STATUS_META[key].label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="excel-upload-toolbar"
+              />
+              <label
+                htmlFor="excel-upload-toolbar"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded hover:bg-slate-50 cursor-pointer"
               >
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-              </select>
+                <Upload className="w-4 h-4" />
+                Upload Excel Sheet
+              </label>
+
+              {viewTab === "gantt" && (
+                <div className="flex items-center gap-1 px-1 py-1 border border-slate-200 rounded">
+                  <button
+                    onClick={() => cycleZoom(-1)}
+                    disabled={zoomLevel === ZOOM_LEVELS[0]}
+                    className="p-1.5 text-slate-500 rounded hover:bg-slate-50 disabled:opacity-30"
+                    title="Zoom in (more detail)"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                  <span className="px-1 text-xs font-medium text-slate-600 min-w-[46px] text-center">{ZOOM_LABELS[zoomLevel]}</span>
+                  <button
+                    onClick={() => cycleZoom(1)}
+                    disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+                    className="p-1.5 text-slate-500 rounded hover:bg-slate-50 disabled:opacity-30"
+                    title="Zoom out (less detail)"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={handleExportCsv}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </button>
 
               <button
                 onClick={() => setModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-blue-900 rounded hover:bg-blue-800"
               >
-                <Pencil className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
+                Add Task
+              </button>
+            </div>
+          </div>
+
+          {/* Secondary actions: upload / save / clear */}
+          <div className="flex flex-wrap gap-3 justify-between items-center -mt-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                onClick={() => setModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+              >
+                <Pencil className="w-3.5 h-3.5" />
                 Edit Schedule
               </button>
 
               <button
                 onClick={() => persistSchedule(scheduleRows).catch(() => {})}
                 disabled={saveStatus === "saving"}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
               >
                 {saveStatus === "saving" ? (
                   <>
-                    <CloudUpload className="w-4 h-4 animate-pulse" />
+                    <CloudUpload className="w-3.5 h-3.5 animate-pulse" />
                     Saving...
                   </>
                 ) : saveStatus === "saved" ? (
                   <>
-                    <Check className="w-4 h-4" />
+                    <Check className="w-3.5 h-3.5" />
                     Saved
                   </>
                 ) : (
                   <>
-                    <CloudUpload className="w-4 h-4" />
+                    <CloudUpload className="w-3.5 h-3.5" />
                     Save to Backend
                   </>
                 )}
@@ -852,9 +851,9 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             </div>
             <button
               onClick={clearGantt}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
               Clear Chart
             </button>
           </div>
@@ -881,46 +880,15 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             </div>
           )}
 
-          {/* Per-task status colors + a soft highlight over today's column. */}
-          <style>{`
-            ${statusCss}
-            .wx-today-column { background-color: rgba(37, 99, 235, 0.06) !important; }
-            .wx-willow-theme .wx-gantt { --wx-gantt-task-border-radius: 6px; }
-          `}</style>
-
-          {/* Scrollable, responsive Gantt panel */}
-          <div className="overflow-x-auto bg-white rounded-lg border border-slate-200" style={{ height: 520 }}>
+          <div className="overflow-x-auto bg-white rounded-lg border border-slate-200" style={{ height: 560 }}>
             <div className="min-w-[600px] h-full">
-              <Willow>
-                <Gantt
-                  tasks={ganttTasks}
-                  links={ganttLinks}
-                  scales={scales}
-                  columns={columns}
-                  highlightTime={highlightTime}
-                  cellWidth={viewMode === "month" ? 90 : 55}
-                />
-              </Willow>
-            </div>
-          </div>
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-x-6 gap-y-2 items-center px-1 text-[12px] text-slate-600">
-            {(Object.keys(STATUS_META) as ScheduleStatus[]).map((key) => (
-              <div key={key} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: STATUS_META[key].dot }}
-                />
-                {STATUS_META[key].label}
-              </div>
-            ))}
-            <div className="flex items-center gap-1.5">
-              <span
-                className="inline-block w-2 h-2 bg-slate-500"
-                style={{ transform: "rotate(45deg)" }}
+              <GanttChartView
+                tasks={visibleTasks}
+                links={ganttLinks}
+                scales={scales}
+                columns={columns}
+                showChart={viewTab === "gantt"}
               />
-              Milestone
             </div>
           </div>
         </>
@@ -939,5 +907,24 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     </div>
   );
 };
+
+// ---- Small presentational helpers -----------------------------------------
+
+const ViewTabButton: React.FC<{ icon: React.ReactNode; label: string; active: boolean; onClick: () => void }> = ({
+  icon,
+  label,
+  active,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+      active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+    }`}
+  >
+    {icon}
+    {label}
+  </button>
+);
 
 export default ProjectScheduleTab;

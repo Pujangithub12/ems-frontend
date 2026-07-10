@@ -11,7 +11,9 @@ import {
   Paperclip,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import api from "../api/axios";
+import { useUpdateTaskStatus } from "../hooks/useTasks";
+import { getErrorMessage } from "../lib/errors";
+import ErrorBanner from "../components/ErrorBanner";
 
 type ProjectTask = {
   id: number;
@@ -84,17 +86,28 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ project, onUpdate }) => {
     },
   };
 
+  const updateTaskStatusMutation = useUpdateTaskStatus();
+  const [statusError, setStatusError] = useState<string | null>(null);
+
   const updateTaskStatus = async (taskId: number, newStatus: string) => {
     try {
-      await api.put(`/api/tasks/${taskId}/status`, { status: newStatus });
+      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: newStatus });
       onUpdate();
     } catch (err) {
-      alert("Failed to update task status");
+      setStatusError(getErrorMessage(err, "Failed to update task status"));
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full min-h-[500px]">
+    <>
+      {statusError && (
+        <ErrorBanner
+          message={statusError}
+          onDismiss={() => setStatusError(null)}
+          className="mb-4"
+        />
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full min-h-[500px]">
       {(Object.entries(columns) as [keyof typeof columns, any][]).map(
         ([status, config]) => {
           const columnTasks = tasks.filter((t) => t.status === status);
@@ -211,7 +224,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ project, onUpdate }) => {
           );
         },
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

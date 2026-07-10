@@ -1,7 +1,4 @@
-import React, { useEffect, useState } from "react";
-import api from "../api/axios";
-import { useAuth } from "../context/AuthProvider";
-import { User } from "../types";
+import React, { useState } from "react";
 import { ShieldCheck, Users as UsersIcon, Building2, Lock } from "lucide-react";
 import WorkspaceTab from "../setting-components/WorkspaceTab";
 import MembersTab from "../setting-components/MembersTab";
@@ -18,33 +15,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 const Settings: React.FC = () => {
-  const { workspace } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("roles");
-
-  // Shared across the Members and Roles & Permissions tabs so switching
-  // between them doesn't refetch or go out of sync with each other.
-  const [members, setMembers] = useState<User[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [membersError, setMembersError] = useState<string | null>(null);
-
-  const loadMembers = async () => {
-    setMembersLoading(true);
-    setMembersError(null);
-    try {
-      const res = await api.get<User[]>("/api/users");
-      setMembers(res.data.sort((a, b) => a.fullName.localeCompare(b.fullName)));
-    } catch (err: any) {
-      setMembersError(
-        err?.response?.data?.message || err.message || "Unable to load members.",
-      );
-    } finally {
-      setMembersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMembers();
-  }, [workspace?.id]);
 
   return (
     <div className="w-full px-6 py-8 lg:px-8 lg:py-4">
@@ -79,26 +50,9 @@ const Settings: React.FC = () => {
 
       {activeTab === "workspace" && <WorkspaceTab />}
 
-      {activeTab === "members" && (
-        <MembersTab
-          members={members}
-          membersLoading={membersLoading}
-          membersError={membersError}
-          setMembers={setMembers}
-          setMembersError={setMembersError}
-          reloadMembers={loadMembers}
-        />
-      )}
+      {activeTab === "members" && <MembersTab />}
 
-      {activeTab === "roles" && (
-        <RolesPermissionsTab
-          members={members}
-          membersLoading={membersLoading}
-          membersError={membersError}
-          setMembers={setMembers}
-          setMembersError={setMembersError}
-        />
-      )}
+      {activeTab === "roles" && <RolesPermissionsTab />}
 
       {activeTab === "security" && <SecurityTab />}
     </div>

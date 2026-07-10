@@ -39,7 +39,8 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
     (t) => (t.status || "pending") === "in_progress",
   );
   const deadline = dueDateInfo(project.dueDate);
-  const isComplete = project.progress >= 100;
+  const progress = project.progress ?? 0;
+  const isComplete = progress >= 100;
 
   const statCards = [
     {
@@ -73,8 +74,8 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
           <div className="flex items-center gap-5 p-6 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 lg:col-span-2">
             <div className="relative w-28 h-28 shrink-0">
               <CircularProgressbar
-                value={project.progress}
-                text={`${project.progress}%`}
+                value={progress}
+                text={`${progress}%`}
                 styles={buildStyles({
                   pathColor: isComplete ? "#059669" : "#1e3a8a",
                   trailColor: "#e2e8f0",
@@ -91,7 +92,7 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project }) => {
                 <span className="font-bold text-[16px] text-slate-900">
                   {isComplete
                     ? "Complete"
-                    : project.progress >= 50
+                    : progress >= 50
                       ? "On track"
                       : "Getting started"}
                 </span>

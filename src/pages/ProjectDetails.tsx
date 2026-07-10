@@ -1,9 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import api from "../api/axios";
-import { useAuth } from "../context/AuthProvider";
 import {
-  ArrowLeft,
   LayoutDashboard,
   CheckSquare,
   FolderOpen,
@@ -13,7 +10,8 @@ import {
   Plus,
   Calendar,
 } from "lucide-react";
-import { Project, ProjectTask } from "../types";
+import { getErrorMessage } from "../lib/errors";
+import { useProject } from "../hooks/useProjects";
 import {
   ProjectOverviewTab,
   ProjectScheduleTab,
@@ -39,88 +37,19 @@ const tabs = [
 const ProjectDetails: React.FC = () => {
   const { workspaceId, id } = useParams<{ workspaceId: string; id: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
+  const {
+    data: project,
+    isLoading: loading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useProject(id);
+  const error = isError ? getErrorMessage(queryError, "Unable to load project.") : null;
   const loadProject = async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const response = await api.get<any>(`/api/projects/${id}`);
-      const data = response.data;
-      console.log("Project data loaded:", data);
-      console.log("projectTasks:", data.projectTasks);
-      console.log("headings:", data.headings);
-
-      const allTasks: ProjectTask[] = [];
-      const taskIds = new Set<number>();
-
-      const flattenTasks = (headings: any[]) => {
-        if (!Array.isArray(headings)) return;
-        headings.forEach((h) => {
-          // Add tasks from this heading
-          if (h.tasks && Array.isArray(h.tasks)) {
-            h.tasks.forEach((t: ProjectTask) => {
-              if (!taskIds.has(t.id)) {
-                console.log(
-                  "Adding task from heading/subheading:",
-                  t.id,
-                  t.title,
-                );
-                taskIds.add(t.id);
-                allTasks.push(t);
-              }
-            });
-          }
-          // Recursively process subheadings
-          if (h.subHeadings) flattenTasks(h.subHeadings);
-        });
-      };
-      if (data.headings) flattenTasks(data.headings);
-      // Also add all projectTasks that are associated directly (without heading)
-      if (data.projectTasks && Array.isArray(data.projectTasks)) {
-        console.log("Adding projectTasks:", data.projectTasks.length);
-        data.projectTasks.forEach((t: ProjectTask) => {
-          if (!taskIds.has(t.id)) {
-            console.log("Adding projectTask:", t.id, t.title);
-            taskIds.add(t.id);
-            allTasks.push(t);
-          }
-        });
-      } else {
-        console.log("No projectTasks found");
-      }
-
-      const completedTasks = allTasks.filter(
-        (t) => t.status === "completed",
-      ).length;
-      const progress =
-        allTasks.length > 0
-          ? Math.round((completedTasks / allTasks.length) * 100)
-          : 0;
-
-      setProject({
-        ...data,
-        progress: data.progress ?? progress,
-        tasksCount: data.tasksCount ?? allTasks.length,
-        membersCount: data.membersCount ?? (data.assignees?.length || 0),
-      });
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to load project.",
-      );
-    } finally {
-      setLoading(false);
-    }
+    await refetch();
   };
-
-  useEffect(() => {
-    loadProject();
-  }, [id]);
 
   if (loading) {
     return (
@@ -180,18 +109,11 @@ const ProjectDetails: React.FC = () => {
   };
 
   return (
-    <div className="px-6 py-8 w-full lg:px-8 lg:py-10">
-      {/* Back link — sits above and to the corner, separate from the title row */}
-      <button
-        onClick={() => navigate(`/${workspaceId}/project`)}
-        className="flex gap-1.5 items-center mb-4 text-[13px] font-medium transition-colors text-slate-500 hover:text-slate-700"
-      >
-        <ArrowLeft size={14} />
-        Back to Projects
-      </button>
-
+    // No outer padding/margin — this box is the entire page area (below the
+    // top bar), edge to edge in both directions.
+    <div className="flex flex-col w-full min-h-[calc(100vh-4rem)] bg-white">
       {/* Header */}
-      <div className="flex gap-4 items-center mb-6">
+      <div className="flex flex-shrink-0 gap-4 items-center px-6 py-4 border-b border-slate-200 lg:px-8">
         <div className="flex-1 min-w-0">
           <Eyebrow>Project Details</Eyebrow>
           <div className="flex gap-3 items-center mt-1">
@@ -203,9 +125,9 @@ const ProjectDetails: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs & Content */}
-      <div className="overflow-hidden w-full bg-white rounded-md border border-slate-200">
-        <div className="flex overflow-x-auto gap-1 px-2 border-b border-slate-200">
+      {/* Tabs & Content — fills the remaining page height */}
+      <div className="flex overflow-hidden flex-col flex-1 w-full">
+        <div className="flex overflow-x-auto gap-1 px-2 border-b border-slate-200 flex-shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -225,7 +147,7 @@ const ProjectDetails: React.FC = () => {
             );
           })}
         </div>
-        <div className="p-6 min-h-[400px]">{renderTabContent()}</div>
+        <div className="overflow-auto flex-1 p-6">{renderTabContent()}</div>
       </div>
     </div>
   );

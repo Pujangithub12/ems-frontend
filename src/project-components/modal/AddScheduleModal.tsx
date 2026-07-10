@@ -19,7 +19,7 @@ const COLUMNS: {
   width: string;
   placeholder?: string;
 }[] = [
-  { field: "id", label: "ID", type: "text", width: "w-20", placeholder: "1.1" },
+  { field: "id", label: "ID", type: "text", width: "w-20", placeholder: "Auto" },
   {
     field: "taskName",
     label: "Task Name",
@@ -106,7 +106,22 @@ const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
       setError("Every row needs a Task Name.");
       return;
     }
-    const ids = meaningfulRows.map((r) => r.id.trim()).filter(Boolean);
+
+    // Auto-assign a sequential ID (1, 2, 3, ...) to any row left blank,
+    // skipping over whatever explicit IDs are already in use so it never
+    // collides with an ID someone typed by hand.
+    const usedIds = new Set(
+      meaningfulRows.map((r) => r.id.trim()).filter(Boolean),
+    );
+    let nextId = 1;
+    const idFilledRows = meaningfulRows.map((r) => {
+      if (r.id.trim() !== "") return r;
+      while (usedIds.has(String(nextId))) nextId++;
+      usedIds.add(String(nextId));
+      return { ...r, id: String(nextId++) };
+    });
+
+    const ids = idFilledRows.map((r) => r.id.trim());
     const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (dupes.length > 0) {
       setError(
@@ -114,14 +129,14 @@ const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
       );
       return;
     }
-    const badDuration = meaningfulRows.find(
+    const badDuration = idFilledRows.find(
       (r) => r.duration.trim() !== "" && Number.isNaN(Number(r.duration)),
     );
     if (badDuration) {
       setError(`Duration for "${badDuration.taskName}" must be a number.`);
       return;
     }
-    const badProgress = meaningfulRows.find((r) => {
+    const badProgress = idFilledRows.find((r) => {
       if (r.progress.trim() === "") return false;
       const n = Number(r.progress);
       return Number.isNaN(n) || n < 0 || n > 100;
@@ -133,7 +148,7 @@ const AddScheduleModal: React.FC<AddScheduleModalProps> = ({
 
     setSaving(true);
     try {
-      await onSave(meaningfulRows);
+      await onSave(idFilledRows);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to save the schedule.",

@@ -10,12 +10,17 @@ export type User = {
   createdAt: string;
 };
 
-export type TreeNode = {
-  id: string;
-  dbId?: number;
-  label: string;
-  userId?: number;
-  children: TreeNode[];
+/** One entry per workspace member — a flat org chart, not a nested tree. */
+export type HierarchyPerson = {
+  id: number;
+  userId: number;
+  fullName: string;
+  email: string;
+  jobPosition: string;
+  role: string;
+  joinDate: string;
+  primaryManagerId: number | null;
+  secondaryManagerIds: number[];
 };
 
 export type ProjectTask = {
@@ -49,15 +54,23 @@ export type ProjectFile = {
   createdAt: string;
 };
 
+/**
+ * Covers both the list view (GET /api/projects, which omits headings/files
+ * and includes priority) and the detail view (GET /api/projects/:id) — most
+ * fields are optional because which ones are populated depends on which
+ * endpoint returned this object.
+ */
 export type Project = {
   id: number;
   name: string;
   description?: string;
-  progress: number;
-  tasksCount: number;
-  membersCount: number;
+  progress?: number;
+  tasksCount?: number;
+  membersCount?: number;
   dueDate?: string;
   status: string;
+  priority?: "high" | "medium" | "low";
+  createdAt?: string;
   assignees?: Array<{
     id: number;
     fullName: string;
@@ -66,7 +79,7 @@ export type Project = {
     jobPosition?: string;
     phoneNumber?: string;
   }>;
-  headings: ProjectHeading[];
-  files: ProjectFile[];
+  headings?: ProjectHeading[];
+  files?: ProjectFile[];
   projectTasks?: ProjectTask[];
 };

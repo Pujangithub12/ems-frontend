@@ -1,25 +1,10 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
-import api from "../api/axios";
-import { useAuth } from "../context/AuthProvider";
-import { AlertCircle, Loader2, History, RefreshCw } from "lucide-react";
-
-type ActivityItem = {
-  id: number;
-  type: string;
-  description: string;
-  taskId?: number;
-  userId?: number;
-  user?: {
-    id: number;
-    fullName: string;
-    email: string;
-  };
-  task?: {
-    id: number;
-    title: string;
-  };
-  createdAt: string;
-};
+import React, { useMemo, useState } from "react";
+import { History, RefreshCw } from "lucide-react";
+import { useActivities } from "../hooks/useActivities";
+import { getErrorMessage } from "../lib/errors";
+import LoadingState from "../components/LoadingState";
+import ErrorBanner from "../components/ErrorBanner";
+import type { ActivityItem } from "../services/activities.service";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -76,56 +61,17 @@ const formatDateGroup = (dateString: string) => {
 };
 
 const Activities: React.FC = () => {
-  const { user, workspace } = useAuth();
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activitiesError, setActivitiesError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadActivities = async (showLoading = true) => {
-    if (showLoading) {
-      setActivitiesLoading(true);
-    } else {
-      setIsRefreshing(true);
-    }
-    setActivitiesError(null);
-
-    try {
-      const response = await api.get<any>("/api/activities");
-      if (Array.isArray(response.data)) {
-        setActivities(response.data);
-      } else {
-        setActivities([]);
-      }
-    } catch (err: any) {
-      setActivitiesError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to load activities.",
-      );
-    } finally {
-      if (showLoading) {
-        setActivitiesLoading(false);
-      } else {
-        setIsRefreshing(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    loadActivities();
-    pollIntervalRef.current = setInterval(() => {
-      loadActivities(false);
-    }, 5000);
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
-  }, [workspace?.id]);
+  const {
+    data: activities = [],
+    isLoading: activitiesLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useActivities({ poll: true });
+  const isRefreshing = isFetching && !activitiesLoading;
 
   const categories = [
     { id: "all", label: "All events" },
@@ -172,7 +118,7 @@ const Activities: React.FC = () => {
 
         <div className="flex items-center gap-3 ml-auto">
           <button
-            onClick={() => loadActivities(false)}
+            onClick={() => refetch()}
             disabled={isRefreshing || activitiesLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
@@ -187,21 +133,10 @@ const Activities: React.FC = () => {
       {/* Content Area */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-3xl px-8 py-8 mx-auto">
-          {activitiesLoading && activities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20">
-              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-              <div
-                className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                Fetching activity log
-              </div>
-            </div>
-          ) : activitiesError ? (
-            <div className="p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
-              <AlertCircle className="flex-shrink-0 w-4 h-4" />
-              <span>{activitiesError}</span>
-            </div>
+          {activitiesLoading ? (
+            <LoadingState label="Fetching activity log" className="py-20" />
+          ) : isError ? (
+            <ErrorBanner message={getErrorMessage(error, "Unable to load activities.")} />
           ) : Object.keys(grouped).length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">

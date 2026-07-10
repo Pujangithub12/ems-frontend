@@ -1,15 +1,16 @@
 import React, { useState } from "react";
-import api from "../api/axios";
 import { Lock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Eyebrow } from "./SettingsShared";
+import { getErrorMessage } from "../lib/errors";
+import { useChangeMyPassword } from "../hooks/useUsers";
 
 const SecurityTab: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState<string | null>(null);
+  const changePasswordMutation = useChangeMyPassword();
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,19 +24,14 @@ const SecurityTab: React.FC = () => {
       setPwError("New password must be at least 6 characters.");
       return;
     }
-    setPwSaving(true);
     try {
-      await api.put("/api/me/password", { currentPassword, newPassword });
+      await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
       setPwSuccess("Password updated successfully.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
-      setPwError(
-        err?.response?.data?.message || err.message || "Failed to update password.",
-      );
-    } finally {
-      setPwSaving(false);
+    } catch (err) {
+      setPwError(getErrorMessage(err, "Failed to update password."));
     }
   };
 
@@ -94,10 +90,10 @@ const SecurityTab: React.FC = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            disabled={pwSaving}
+            disabled={changePasswordMutation.isPending}
             className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors disabled:opacity-70"
           >
-            {pwSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {changePasswordMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Update Password
           </button>
         </div>

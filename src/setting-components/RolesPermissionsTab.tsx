@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
-import api from "../api/axios";
+import React, { useState } from "react";
 import { useAuth } from "../context/AuthProvider";
-import { User } from "../types";
 import { ShieldCheck, AlertCircle, Loader2, Check, Settings2, X } from "lucide-react";
+import { getErrorMessage } from "../lib/errors";
+import { useUsers, useUpdateUser } from "../hooks/useUsers";
+import { usePermissions, useUpdatePermissions } from "../hooks/usePermissions";
 import {
   Eyebrow,
   getInitials,
@@ -19,27 +20,25 @@ import {
   PermissionMatrix,
 } from "./SettingsShared";
 
-type RolesPermissionsTabProps = {
-  members: User[];
-  membersLoading: boolean;
-  membersError: string | null;
-  setMembers: React.Dispatch<React.SetStateAction<User[]>>;
-  setMembersError: React.Dispatch<React.SetStateAction<string | null>>;
-};
-
-const RolesPermissionsTab: React.FC<RolesPermissionsTabProps> = ({
-  members,
-  membersLoading,
-  membersError,
-  setMembers,
-  setMembersError,
-}) => {
+const RolesPermissionsTab: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
 
+  const {
+    data: members = [],
+    isLoading: membersLoading,
+    isError: membersIsError,
+    error: membersQueryError,
+  } = useUsers();
+  const membersError = membersIsError
+    ? getErrorMessage(membersQueryError, "Unable to load members.")
+    : null;
+  const updateUserMutation = useUpdateUser();
+
   const [selectedRole, setSelectedRole] = useState<RoleKey>("admin");
   const [roleSavingId, setRoleSavingId] = useState<number | null>(null);
+  const [roleChangeError, setRoleChangeError] = useState<string | null>(null);
 
   const roleCounts: Record<RoleKey, number> = {
     super_admin: members.filter((m) => m.role === "super_admin").length,
@@ -51,32 +50,20 @@ const RolesPermissionsTab: React.FC<RolesPermissionsTabProps> = ({
   // ---------------------------------------------------------------------
   // Live permission matrix
   // ---------------------------------------------------------------------
-  const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
-  const [matrixLoading, setMatrixLoading] = useState(false);
-  const [matrixError, setMatrixError] = useState<string | null>(null);
-
-  const loadMatrix = async () => {
-    setMatrixLoading(true);
-    setMatrixError(null);
-    try {
-      const res = await api.get<{ permissions: PermissionMatrix }>("/api/permissions");
-      setMatrix(res.data.permissions);
-    } catch (err: any) {
-      setMatrixError(
-        err?.response?.data?.message || err.message || "Unable to load permissions.",
-      );
-    } finally {
-      setMatrixLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMatrix();
-  }, []);
+  const {
+    data: rawMatrix,
+    isLoading: matrixLoading,
+    isError: matrixIsError,
+    error: matrixQueryError,
+  } = usePermissions();
+  const matrix = rawMatrix ?? null;
+  const matrixError = matrixIsError
+    ? getErrorMessage(matrixQueryError, "Unable to load permissions.")
+    : null;
+  const updatePermissionsMutation = useUpdatePermissions();
 
   const [editMode, setEditMode] = useState(false);
   const [draftMatrix, setDraftMatrix] = useState<PermissionMatrix | null>(null);
-  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const startEditing = () => {
@@ -104,7 +91,6 @@ const RolesPermissionsTab: React.FC<RolesPermissionsTabProps> = ({
 
   const handleSaveMatrix = async () => {
     if (!draftMatrix) return;
-    setSaving(true);
     setSaveError(null);
     try {
       const updates: { role: string; permissionKey: string; granted: boolean }[] = [];
@@ -120,35 +106,24 @@ const RolesPermissionsTab: React.FC<RolesPermissionsTabProps> = ({
           }
         }
       }
-      const res = await api.put<{ permissions: PermissionMatrix }>("/api/permissions", {
-        updates,
-      });
-      setMatrix(res.data.permissions);
+      await updatePermissionsMutation.mutateAsync(updates);
       setEditMode(false);
       setDraftMatrix(null);
-    } catch (err: any) {
-      setSaveError(
-        err?.response?.data?.message || err.message || "Failed to save permissions.",
-      );
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      setSaveError(getErrorMessage(err, "Failed to save permissions."));
     }
   };
 
   const activeMatrix = editMode ? draftMatrix : matrix;
+  const saving = updatePermissionsMutation.isPending;
 
   const handleRoleChange = async (memberId: number, role: string) => {
     setRoleSavingId(memberId);
-    setMembersError(null);
+    setRoleChangeError(null);
     try {
-      await api.put(`/api/users/${memberId}`, { role });
-      setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role } : m)),
-      );
-    } catch (err: any) {
-      setMembersError(
-        err?.response?.data?.message || err.message || "Unable to update role.",
-      );
+      await updateUserMutation.mutateAsync({ id: memberId, payload: { role } });
+    } catch (err) {
+      setRoleChangeError(getErrorMessage(err, "Unable to update role."));
     } finally {
       setRoleSavingId(null);
     }
@@ -429,10 +404,10 @@ const RolesPermissionsTab: React.FC<RolesPermissionsTabProps> = ({
           </div>
         </div>
 
-        {membersError && (
+        {(membersError || roleChangeError) && (
           <div className="m-5 p-3 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100 flex items-center gap-2">
             <AlertCircle className="flex-shrink-0 w-4 h-4" />
-            {membersError}
+            {membersError || roleChangeError}
           </div>
         )}
 

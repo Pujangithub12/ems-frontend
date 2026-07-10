@@ -6,6 +6,14 @@ import React, {
   useRef,
 } from "react";
 import api, { setActiveWorkspaceId } from "../api/axios";
+import {
+  getWorkspaces,
+  getCurrentWorkspace,
+  switchWorkspace,
+  createWorkspace as createWorkspaceService,
+  updateWorkspace as updateWorkspaceService,
+  deleteWorkspace as deleteWorkspaceService,
+} from "../services/workspaces.service";
 
 export type User = {
   id: string;
@@ -39,6 +47,8 @@ type AuthContextType = {
   }) => Promise<void>;
   /** Self-service signup step 2: confirms the OTP, creating the account (as super_admin) plus a brand-new workspace it owns, then logs it in. */
   registerVerify: (details: { email: string; otp: string }) => Promise<Workspace>;
+  /** Accepts a workspace invite: sets a password, creates the account with the invite's details/role, joins the workspace, and logs it in. */
+  acceptInvite: (token: string, password: string) => Promise<Workspace>;
   logout: () => void;
   /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
   selectWorkspace: (workspaceId: number) => Workspace | null;
@@ -94,17 +104,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fetchWorkspacesAndCurrent = async () => {
     try {
-      const [workspacesRes, currentRes] = await Promise.all([
-        api.get("/api/workspaces"),
-        api.get("/api/workspaces/current"),
+      const [validWorkspaces, current] = await Promise.all([
+        getWorkspaces(),
+        getCurrentWorkspace(),
       ]);
-      // Filter out any null/undefined workspaces from the response
-      const validWorkspaces = workspacesRes.data.workspaces.filter(
-        (w: any): w is Workspace => w !== null && w !== undefined,
-      );
       setWorkspaces(validWorkspaces);
-      setWorkspace(currentRes.data.workspace);
-      setActiveWorkspaceId(currentRes.data.workspace?.id ?? null);
+      setWorkspace(current);
+      setActiveWorkspaceId(current?.id ?? null);
     } catch (err) {
       console.error("Failed to fetch workspaces", err);
     }
@@ -196,6 +202,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return ws;
   };
 
+  const acceptInvite = async (token: string, password: string): Promise<Workspace> => {
+    didLoginRef.current = true;
+    const res = await api.post(`/api/invites/${token}/accept`, { password });
+    const { user: u, workspace: ws } = res.data;
+    setUser(u || null);
+    await fetchWorkspacesAndCurrent();
+    setLoading(false);
+    return ws;
+  };
+
   const logout = async () => {
     didLoginRef.current = false;
     try {
@@ -219,7 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setWorkspace(target);
     setActiveWorkspaceId(target.id);
-    api.post("/api/workspaces/switch", { workspaceId: target.id }).catch((err) => {
+    switchWorkspace(target.id).catch((err) => {
       console.error("Failed to persist workspace switch", err);
     });
 
@@ -231,8 +247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     description?: string,
   ): Promise<Workspace | null> => {
     try {
-      const res = await api.post("/api/workspaces", { name, description });
-      const newWorkspace: Workspace = res.data.workspace;
+      const newWorkspace = await createWorkspaceService(name, description);
       setWorkspaces((prev) => [...prev, newWorkspace]);
       return newWorkspace;
     } catch (err) {
@@ -246,11 +261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     name: string,
     description?: string,
   ) => {
-    const res = await api.put(`/api/workspaces/${workspaceId}`, {
-      name,
-      description,
-    });
-    const updated: Workspace = res.data.workspace;
+    const updated = await updateWorkspaceService(workspaceId, name, description);
     setWorkspaces((prev) => prev.map((w) => (w.id === workspaceId ? updated : w)));
     if (workspace?.id === workspaceId) {
       setWorkspace(updated);
@@ -261,13 +272,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     workspaceId: number,
     confirmName: string,
   ): Promise<Workspace | null> => {
-    const res = await api.delete(`/api/workspaces/${workspaceId}`, {
-      data: { confirmName },
-    });
+    const result = await deleteWorkspaceService(workspaceId, confirmName);
     await fetchWorkspacesAndCurrent();
     // The workspace the caller should be moved to (backend only returns this
     // when the deleted workspace was the caller's active one).
-    return res.data.workspace ?? null;
+    return result;
   };
 
   return (
@@ -279,6 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         login,
         registerStart,
         registerVerify,
+        acceptInvite,
         logout,
         selectWorkspace,
         createWorkspace,
@@ -299,72 +309,3 @@ export const useAuth = () => {
   return ctx;
 };
 
-// import React, { createContext, useContext, useState, useEffect } from "react";
-// import api from "../api/axios";
-
-// type User = { id: string; fullName?: string; email?: string; role?: string } | null;
-
-// type AuthContextType = {
-//   user: User;
-//   login: (credentials: {
-//     email: string;
-//     password: string;
-//     role?: string;
-//   }) => Promise<void>;
-//   logout: () => void;
-//   loading: boolean;
-// };
-
-// const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-//   children,
-// }) => {
-//   const [user, setUser] = useState<User>(null);
-//   const [loading, setLoading] = useState(true);
-
-//   useEffect(() => {
-//     const checkAuth = async () => {
-//       try {
-//         const res = await api.get("/api/me");
-//         setUser(res.data.user);
-//       } catch (e) {
-//         setUser(null);
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-//     checkAuth();
-//   }, []);
-
-//   const login = async (credentials: {
-//     email: string;
-//     password: string;
-//     role?: string;
-//   }) => {
-//     const res = await api.post("/api/login", credentials);
-//     const { user: u } = res.data;
-//     setUser(u || null);
-//   };
-
-//   const logout = async () => {
-//     try {
-//       await api.post("/api/logout");
-//     } catch (e) {
-//       console.error("Logout failed", e);
-//     }
-//     setUser(null);
-//   };
-
-//   return (
-//     <AuthContext.Provider value={{ user, login, logout, loading }}>
-//       {children}
-//     </AuthContext.Provider>
-//   );
-// };
-
-// export const useAuth = () => {
-//   const ctx = useContext(AuthContext);
-//   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-//   return ctx;
-// };

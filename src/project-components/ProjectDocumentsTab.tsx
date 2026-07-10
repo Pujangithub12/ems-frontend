@@ -18,15 +18,15 @@ import {
   X,
 } from "lucide-react";
 import { ProjectFile } from "../types";
+import { downloadUrl, formatFileSize } from "./documentsApi";
 import {
-  createFolder,
-  deleteFile,
-  downloadUrl,
-  fetchProjectFiles,
-  formatFileSize,
-  renameFile,
-  uploadFile,
-} from "./documentsApi";
+  useProjectFilesQuery,
+  useUploadFileMutation,
+  useCreateFolderMutation,
+  useDeleteFileMutation,
+  useRenameFileMutation,
+} from "../hooks/useProjectFiles";
+import { getErrorMessage } from "../lib/errors";
 import ConfirmationModal from "../components/ConfirmationModal";
 
 interface ProjectDocumentsTabProps {
@@ -194,10 +194,17 @@ const FolderTree: React.FC<{
 };
 
 const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) => {
-  const [files, setFiles] = useState<ProjectFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const filesQuery = useProjectFilesQuery(projectId);
+  const files = filesQuery.data ?? [];
+  const loading = filesQuery.isLoading;
+  const error = filesQuery.isError
+    ? getErrorMessage(filesQuery.error, "Failed to load documents.")
+    : null;
   const [refreshing, setRefreshing] = useState(false);
+  const uploadFileMutation = useUploadFileMutation();
+  const createFolderMutation = useCreateFolderMutation();
+  const deleteFileMutation = useDeleteFileMutation();
+  const renameFileMutation = useRenameFileMutation();
 
   const [selectedFolderId, setSelectedFolderId] = useState<number | typeof ALL_DOCUMENTS>(
     ALL_DOCUMENTS,
@@ -232,25 +239,9 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
     return () => document.removeEventListener("mousedown", handler);
   }, [openMenuId]);
 
-  const load = async () => {
-    try {
-      setError(null);
-      const data = await fetchProjectFiles(projectId);
-      setFiles(data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to load documents.");
-    }
-  };
-
-  useEffect(() => {
-    setLoading(true);
-    load().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
   const refresh = async () => {
     setRefreshing(true);
-    await load();
+    await filesQuery.refetch();
     setRefreshing(false);
   };
 
@@ -301,11 +292,11 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
     setUploading(true);
     try {
       for (const file of Array.from(chosen)) {
-        await uploadFile(projectId, file, currentParentId);
+        await uploadFileMutation.mutateAsync({ projectId, file, parentId: currentParentId });
       }
-      await load();
-    } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Failed to upload file.");
+      await filesQuery.refetch();
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to upload file."));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -332,14 +323,12 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
     setCreatingFolder(true);
     setFolderError(null);
     try {
-      await createFolder(projectId, trimmedName, currentParentId);
-      await load();
+      await createFolderMutation.mutateAsync({ projectId, name: trimmedName, parentId: currentParentId });
+      await filesQuery.refetch();
       setShowNewFolder(false);
       setNewFolderName("");
-    } catch (err: any) {
-      setFolderError(
-        err?.response?.data?.message || "Failed to create folder.",
-      );
+    } catch (err) {
+      setFolderError(getErrorMessage(err, "Failed to create folder."));
     } finally {
       setCreatingFolder(false);
     }
@@ -349,14 +338,14 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteFile(deleteTarget.id);
+      await deleteFileMutation.mutateAsync(deleteTarget.id);
       if (deleteTarget.isFolder && selectedFolderId === deleteTarget.id) {
         setSelectedFolderId(ALL_DOCUMENTS);
       }
-      await load();
+      await filesQuery.refetch();
       setDeleteTarget(null);
-    } catch (err: any) {
-      setActionError(err?.response?.data?.message || "Failed to delete.");
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete."));
     } finally {
       setDeleting(false);
     }
@@ -403,11 +392,11 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
     setRenaming(true);
     setRenameError(null);
     try {
-      await renameFile(renameTarget.id, trimmed);
-      await load();
+      await renameFileMutation.mutateAsync({ fileId: renameTarget.id, name: trimmed });
+      await filesQuery.refetch();
       setRenameTarget(null);
-    } catch (err: any) {
-      setRenameError(err?.response?.data?.message || "Failed to rename.");
+    } catch (err) {
+      setRenameError(getErrorMessage(err, "Failed to rename."));
     } finally {
       setRenaming(false);
     }

@@ -18,6 +18,7 @@ import {
   Settings,
   RefreshCcw,
   User as UserRoundIcon,
+  UserPlus,
 } from "lucide-react";
 
 import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
@@ -427,6 +428,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     <UserRoundIcon className="w-3.5 h-3.5 opacity-70" />
                     My Profile
                   </button>
+                  {(user?.role === "admin" || user?.role === "super_admin") && (
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        navigate(`${prefix}/users`, { state: { openInvite: true } });
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    >
+                      <UserPlus className="w-3.5 h-3.5 opacity-70" />
+                      Invite Members
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setUserMenuOpen(false);
