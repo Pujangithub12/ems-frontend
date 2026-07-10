@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import {
   Plus,
@@ -17,23 +16,17 @@ import {
   TrendingUp,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
-import { ProjectHeading, ProjectTask } from "../types";
+import ErrorBanner from "../components/ErrorBanner";
+import { getErrorMessage } from "../lib/errors";
+import { Project } from "../types";
 import { flattenProjectTasks } from "../project-components/taskUtils";
-
-type Project = {
-  id: number;
-  name: string;
-  description?: string;
-  dueDate?: string;
-  status: "pending" | "in_progress" | "completed" | "on_hold" | string;
-  priority: "high" | "medium" | "low";
-  assignees?: Array<{ id: number; fullName: string }>;
-  createdAt: string;
-  progress?: number;
-  tasksCount?: number;
-  headings?: ProjectHeading[];
-  projectTasks?: ProjectTask[];
-};
+import { useUsers } from "../hooks/useUsers";
+import {
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+} from "../hooks/useProjects";
 
 const PROJECT_ICON_STYLES: Record<string, { bg: string; text: string }> = {
   pending: { bg: "bg-amber-50", text: "text-amber-700" },
@@ -82,16 +75,25 @@ const ProjectsPage: React.FC = () => {
   const { user, workspace } = useAuth();
   const isAdmin = user?.role === "admin";
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: projects = [],
+    isLoading: loading,
+    isError: projectsIsError,
+    error: projectsQueryError,
+  } = useProjects();
+  const { data: usersData = [] } = useUsers();
+  const users = useMemo(
+    () => [...usersData].sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [usersData],
+  );
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const error = projectsIsError
+    ? getErrorMessage(projectsQueryError, "Unable to load projects.")
+    : mutationError;
+
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
-    null,
-  );
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<number | null>(null);
 
@@ -101,7 +103,6 @@ const ProjectsPage: React.FC = () => {
   const [status, setStatus] = useState<Project["status"]>("pending");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const [assigneeSearchTerm, setAssigneeSearchTerm] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   // Edit state
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editName, setEditName] = useState("");
@@ -113,46 +114,20 @@ const ProjectsPage: React.FC = () => {
   >([]);
   const [editAssigneeSearchTerm, setEditAssigneeSearchTerm] = useState("");
 
-  const loadProjects = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get<Project[]>("/api/projects");
-      setProjects(response.data);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to load projects.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadUsers = async () => {
-    try {
-      const response = await api.get("/api/users");
-      setUsers(
-        [...response.data].sort((a: any, b: any) =>
-          a.fullName.localeCompare(b.fullName),
-        ),
-      );
-    } catch (err) {
-      console.error("Failed to load users", err);
-    }
-  };
-
-  useEffect(() => {
-    loadProjects();
-    loadUsers();
-  }, [workspace?.id]);
+  const createProjectMutation = useCreateProject();
+  const updateProjectMutation = useUpdateProject();
+  const deleteProjectMutation = useDeleteProject();
+  const submitting = createProjectMutation.isPending || updateProjectMutation.isPending;
+  const deletingProjectId = deleteProjectMutation.isPending
+    ? projectToDelete
+    : null;
 
   const createProject = async (event?: React.FormEvent | React.MouseEvent) => {
     if (event) event.preventDefault();
     if (!name.trim()) return;
-    setSubmitting(true);
+    setMutationError(null);
     try {
-      await api.post("/api/projects", {
+      await createProjectMutation.mutateAsync({
         name,
         description,
         dueDate: dueDate || undefined,
@@ -165,16 +140,9 @@ const ProjectsPage: React.FC = () => {
       setStatus("pending");
       setSelectedAssigneeIds([]);
       setAssigneeSearchTerm("");
-      await loadProjects();
       setShowCreateForm(false);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to create project.",
-      );
-    } finally {
-      setSubmitting(false);
+    } catch (err) {
+      setMutationError(getErrorMessage(err, "Unable to create project."));
     }
   };
 
@@ -185,20 +153,13 @@ const ProjectsPage: React.FC = () => {
 
   const confirmDeleteProject = async () => {
     if (!projectToDelete) return;
-    setDeletingProjectId(projectToDelete);
+    setMutationError(null);
     try {
-      await api.delete(`/api/projects/${projectToDelete}`);
-      await loadProjects();
+      await deleteProjectMutation.mutateAsync(projectToDelete);
       setShowDeleteModal(false);
       setProjectToDelete(null);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to delete project.",
-      );
-    } finally {
-      setDeletingProjectId(null);
+    } catch (err) {
+      setMutationError(getErrorMessage(err, "Unable to delete project."));
     }
   };
 
@@ -215,25 +176,21 @@ const ProjectsPage: React.FC = () => {
   const updateProject = async (event?: React.FormEvent | React.MouseEvent) => {
     if (event) event.preventDefault();
     if (!editingProject || !editName.trim()) return;
-    setSubmitting(true);
+    setMutationError(null);
     try {
-      await api.put(`/api/projects/${editingProject.id}`, {
-        name: editName,
-        description: editDescription,
-        dueDate: editDueDate || undefined,
-        status: editStatus,
-        assigneeIds: editSelectedAssigneeIds,
+      await updateProjectMutation.mutateAsync({
+        id: editingProject.id,
+        payload: {
+          name: editName,
+          description: editDescription,
+          dueDate: editDueDate || undefined,
+          status: editStatus,
+          assigneeIds: editSelectedAssigneeIds,
+        },
       });
-      await loadProjects();
       setEditingProject(null);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to update project.",
-      );
-    } finally {
-      setSubmitting(false);
+    } catch (err) {
+      setMutationError(getErrorMessage(err, "Unable to update project."));
     }
   };
 
@@ -309,6 +266,14 @@ const ProjectsPage: React.FC = () => {
           <ChevronDown className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none right-3 top-1/2 text-slate-400" />
         </div>
       </div>
+
+      {error && (
+        <ErrorBanner
+          message={error}
+          onDismiss={!projectsIsError ? () => setMutationError(null) : undefined}
+          className="mb-4"
+        />
+      )}
 
       {/* List */}
       {loading ? (
@@ -823,418 +788,3 @@ const ProjectsPage: React.FC = () => {
 };
 
 export default ProjectsPage;
-
-// import React, { useEffect, useState, useMemo } from "react";
-// import { useNavigate } from "react-router-dom";
-// import api from "../api/axios";
-// import { useAuth } from "../context/AuthProvider";
-// import {
-//   Plus,
-//   Search,
-//   ChevronDown,
-//   X,
-//   Loader2,
-//   Briefcase,
-//   Calendar,
-//   Users as UsersIcon,
-//   Filter,
-//   Trash2,
-//   ArrowRight,
-// } from "lucide-react";
-
-// type Project = {
-//   id: number;
-//   name: string;
-//   description?: string;
-//   dueDate?: string;
-//   status: "pending" | "in_progress" | "completed" | "on_hold" | string;
-//   priority: "high" | "medium" | "low";
-//   assignees?: Array<{ id: number; fullName: string }>;
-//   createdAt: string;
-//   progress?: number;
-//   tasksCount?: number;
-// };
-
-// const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
-//   children,
-//   className = "",
-// }) => (
-//   <div
-//     className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
-//     style={{ fontFamily: "'JetBrains Mono', monospace" }}
-//   >
-//     {children}
-//   </div>
-// );
-
-// const StatusPill: React.FC<{ status: string }> = ({ status }) => {
-//   const styles: Record<string, { bg: string; fg: string; label: string }> = {
-//     pending: { bg: "#FEF3C7", fg: "#B45309", label: "Pending" },
-//     in_progress: { bg: "#DBEAFE", fg: "#1E3A8A", label: "Active" },
-//     on_hold: { bg: "#FEE2E2", fg: "#B91C1C", label: "On Hold" },
-//     completed: { bg: "#DCFCE7", fg: "#15803D", label: "Completed" },
-//   };
-//   const s = styles[status] || { bg: "#EEF1F5", fg: "#475569", label: status };
-//   return (
-//     <span
-//       className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
-//       style={{
-//         fontFamily: "'JetBrains Mono', monospace",
-//         background: s.bg,
-//         color: s.fg,
-//       }}
-//     >
-//       <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.fg }} />
-//       {s.label}
-//     </span>
-//   );
-// };
-
-// const ProjectsPage: React.FC = () => {
-//   const navigate = useNavigate();
-//   const { user } = useAuth();
-//   const isAdmin = user?.role === "admin";
-
-//   const [projects, setProjects] = useState<Project[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState<string | null>(null);
-//   const [showCreateForm, setShowCreateForm] = useState(false);
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [statusFilter, setStatusFilter] = useState<string>("all");
-//   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(
-//     null,
-//   );
-
-//   const [name, setName] = useState("");
-//   const [description, setDescription] = useState("");
-//   const [dueDate, setDueDate] = useState("");
-//   const [status, setStatus] = useState<Project["status"]>("pending");
-//   const [submitting, setSubmitting] = useState(false);
-
-//   const loadProjects = async () => {
-//     setLoading(true);
-//     try {
-//       const response = await api.get<Project[]>("/api/projects");
-//       setProjects(response.data);
-//     } catch (err: any) {
-//       setError(
-//         err?.response?.data?.message ||
-//           err.message ||
-//           "Unable to load projects.",
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     loadProjects();
-//   }, []);
-
-//   const createProject = async (event?: React.FormEvent | React.MouseEvent) => {
-//     if (event) event.preventDefault();
-//     if (!name.trim()) return;
-//     setSubmitting(true);
-//     try {
-//       await api.post("/api/projects", {
-//         name,
-//         description,
-//         dueDate: dueDate || undefined,
-//         status,
-//       });
-//       setName("");
-//       setDescription("");
-//       setDueDate("");
-//       setStatus("pending");
-//       await loadProjects();
-//       setShowCreateForm(false);
-//     } catch (err: any) {
-//       setError(
-//         err?.response?.data?.message ||
-//           err.message ||
-//           "Unable to create project.",
-//       );
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-
-//   const deleteProject = async (projectId: number) => {
-//     if (!window.confirm("Are you sure you want to delete this project?"))
-//       return;
-//     setDeletingProjectId(projectId);
-//     try {
-//       await api.delete(`/api/projects/${projectId}`);
-//       await loadProjects();
-//     } catch (err: any) {
-//       setError(
-//         err?.response?.data?.message ||
-//           err.message ||
-//           "Unable to delete project.",
-//       );
-//     } finally {
-//       setDeletingProjectId(null);
-//     }
-//   };
-
-//   const filteredProjects = useMemo(() => {
-//     return projects.filter((p) => {
-//       const matchesSearch =
-//         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-//         p.description?.toLowerCase().includes(searchQuery.toLowerCase());
-//       const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-//       return matchesSearch && matchesStatus;
-//     });
-//   }, [projects, searchQuery, statusFilter]);
-
-//   return (
-//     <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
-//       {/* Header */}
-//       <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
-//         <div>
-//           <Eyebrow>Project Management</Eyebrow>
-//           <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
-//             Projects Library
-//           </h2>
-//           <p className="text-slate-500 text-[14px] mt-1">
-//             Manage and track all company projects.
-//           </p>
-//         </div>
-//         {isAdmin && (
-//           <button
-//             onClick={() => setShowCreateForm(true)}
-//             className="flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-//           >
-//             <Plus className="w-4 h-4" />
-//             New Project
-//           </button>
-//         )}
-//       </div>
-
-//       {/* Controls */}
-//       <div className="flex flex-col gap-3 mb-6 sm:flex-row">
-//         <div className="relative flex-1">
-//           <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
-//           <input
-//             type="text"
-//             placeholder="Search projects..."
-//             value={searchQuery}
-//             onChange={(e) => setSearchQuery(e.target.value)}
-//             className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
-//           />
-//         </div>
-//         <div className="relative min-w-[160px]">
-//           <Filter className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none left-3 top-1/2 text-slate-400" />
-//           <select
-//             value={statusFilter}
-//             onChange={(e) => setStatusFilter(e.target.value)}
-//             className="w-full py-2 pr-8 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer pl-9 outline-none focus:border-blue-900 transition-colors"
-//           >
-//             <option value="all">All Status</option>
-//             <option value="in_progress">Active</option>
-//             <option value="pending">Pending</option>
-//             <option value="on_hold">On Hold</option>
-//             <option value="completed">Completed</option>
-//           </select>
-//           <ChevronDown className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none right-3 top-1/2 text-slate-400" />
-//         </div>
-//       </div>
-
-//       {/* Grid */}
-//       {loading ? (
-//         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-//           {[1, 2, 3].map((i) => (
-//             <div
-//               key={i}
-//               className="h-[280px] bg-white border border-slate-200 rounded-md animate-pulse"
-//             />
-//           ))}
-//         </div>
-//       ) : filteredProjects.length > 0 ? (
-//         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-//           {filteredProjects.map((project) => (
-//             <div
-//               key={project.id}
-//               className="flex flex-col p-5 transition-colors bg-white border rounded-md border-slate-200 hover:bg-slate-50"
-//             >
-//               <div className="flex items-start justify-between mb-3">
-//                 <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 bg-blue-100 rounded">
-//                   <Briefcase className="w-4 h-4 text-blue-900" />
-//                 </div>
-//                 <StatusPill status={project.status} />
-//               </div>
-
-//               <h3 className="font-semibold text-[15px] text-slate-900 mb-1 tracking-tight">
-//                 {project.name}
-//               </h3>
-//               <p className="text-slate-500 text-[12px] leading-relaxed mb-4 flex-1 line-clamp-2">
-//                 {project.description || "No description provided."}
-//               </p>
-
-//               <div className="mb-4">
-//                 <div
-//                   className="flex justify-between text-[10px] text-slate-400 uppercase tracking-wider mb-1.5"
-//                   style={{ fontFamily: "'JetBrains Mono', monospace" }}
-//                 >
-//                   <span>Progress</span>
-//                   <span>{project.progress || 0}%</span>
-//                 </div>
-//                 <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-//                   <div
-//                     className="h-full transition-all duration-500 bg-blue-900 rounded-full"
-//                     style={{ width: `${project.progress || 0}%` }}
-//                   />
-//                 </div>
-//               </div>
-
-//               <div className="flex items-center justify-between text-[11px] text-slate-500 mb-4">
-//                 <div className="flex items-center gap-1.5">
-//                   <Calendar className="w-3 h-3" />
-//                   <span>
-//                     {project.dueDate
-//                       ? new Date(project.dueDate).toLocaleDateString()
-//                       : "No date"}
-//                   </span>
-//                 </div>
-//                 <div className="flex items-center gap-1.5">
-//                   <UsersIcon className="w-3 h-3" />
-//                   <span>{project.assignees?.length || 0} Members</span>
-//                 </div>
-//               </div>
-
-//               <div className="flex gap-2 pt-4 border-t border-slate-200">
-//                 <button
-//                   onClick={() => navigate(`/project/${project.id}/details`)}
-//                   className="flex-1 flex items-center justify-center gap-2 py-2 text-[12px] font-medium text-blue-900 hover:bg-blue-50 rounded transition-colors"
-//                 >
-//                   View Details <ArrowRight className="w-3 h-3" />
-//                 </button>
-//                 {isAdmin && (
-//                   <button
-//                     onClick={(e) => {
-//                       e.stopPropagation();
-//                       deleteProject(project.id);
-//                     }}
-//                     disabled={deletingProjectId === project.id}
-//                     className="p-2 text-red-700 transition-colors rounded hover:bg-red-50 disabled:opacity-50"
-//                   >
-//                     {deletingProjectId === project.id ? (
-//                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-//                     ) : (
-//                       <Trash2 className="w-3.5 h-3.5" />
-//                     )}
-//                   </button>
-//                 )}
-//               </div>
-//             </div>
-//           ))}
-//         </div>
-//       ) : (
-//         <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-//           <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
-//             <Briefcase className="w-6 h-6 text-slate-400" />
-//           </div>
-//           <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
-//             No projects found
-//           </h3>
-//           <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
-//             {searchQuery || statusFilter !== "all"
-//               ? "We couldn't find any projects matching your current filters."
-//               : "Your projects list is currently empty."}
-//           </p>
-//         </div>
-//       )}
-
-//       {/* Create Modal */}
-//       {showCreateForm && (
-//         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-//           <div className="w-full max-w-xl overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
-//             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-//               <div>
-//                 <Eyebrow>New Project</Eyebrow>
-//                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-//                   Launch New Project
-//                 </h3>
-//               </div>
-//               <button
-//                 onClick={() => setShowCreateForm(false)}
-//                 className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
-//               >
-//                 <X className="w-4 h-4" />
-//               </button>
-//             </div>
-//             <form onSubmit={createProject} className="p-6 space-y-5">
-//               <div>
-//                 <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-//                 <input
-//                   value={name}
-//                   onChange={(e) => setName(e.target.value)}
-//                   required
-//                   className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-//                   placeholder="e.g. Website Redesign"
-//                 />
-//               </div>
-//               <div>
-//                 <Eyebrow className="mb-1.5">Description</Eyebrow>
-//                 <textarea
-//                   value={description}
-//                   onChange={(e) => setDescription(e.target.value)}
-//                   className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
-//                   rows={3}
-//                   placeholder="Describe the project goals..."
-//                 />
-//               </div>
-//               <div className="grid grid-cols-2 gap-4">
-//                 <div>
-//                   <Eyebrow className="mb-1.5">Status</Eyebrow>
-//                   <div className="relative">
-//                     <select
-//                       value={status}
-//                       onChange={(e) => setStatus(e.target.value as any)}
-//                       className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-//                     >
-//                       <option value="pending">Pending</option>
-//                       <option value="in_progress">Active</option>
-//                     </select>
-//                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-//                   </div>
-//                 </div>
-//                 <div>
-//                   <Eyebrow className="mb-1.5">Deadline</Eyebrow>
-//                   <input
-//                     type="date"
-//                     value={dueDate}
-//                     onChange={(e) => setDueDate(e.target.value)}
-//                     className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-//                   />
-//                 </div>
-//               </div>
-
-//               <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
-//                 <button
-//                   type="button"
-//                   onClick={() => setShowCreateForm(false)}
-//                   className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
-//                 >
-//                   Cancel
-//                 </button>
-//                 <button
-//                   type="submit"
-//                   disabled={submitting}
-//                   className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
-//                 >
-//                   {submitting && (
-//                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-//                   )}{" "}
-//                   Launch Project
-//                 </button>
-//               </div>
-//             </form>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default ProjectsPage;

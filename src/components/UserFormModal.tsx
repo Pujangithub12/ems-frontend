@@ -11,6 +11,7 @@ import {
   MapPin,
   Lock,
   Loader2,
+  Send,
 } from "lucide-react";
 import { User } from "../types";
 
@@ -76,12 +77,12 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
         <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-200">
           <div>
             <Eyebrow>
-              {editingUser ? "Edit User" : "New User"}
+              {editingUser ? "Edit User" : "Invite Member"}
             </Eyebrow>
             <h3 className="font-semibold text-[17px] text-slate-900 mt-1">
               {editingUser
                 ? "Update User Information"
-                : "Create New User Account"}
+                : "Send a Workspace Invite"}
             </h3>
           </div>
           <button
@@ -102,6 +103,13 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <AlertCircle className="flex-shrink-0 w-4 h-4" />
               {userFormError}
             </div>
+          )}
+
+          {!editingUser && (
+            <p className="text-[13px] text-slate-500 -mt-2">
+              They'll get an email with a link to set their own password and
+              join the workspace.
+            </p>
           )}
 
           <div className="grid gap-6 md:grid-cols-2">
@@ -220,26 +228,23 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2 max-w-md">
-            <Eyebrow>Account Password</Eyebrow>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="password"
-                name="new-user-password"
-                autoComplete="new-password"
-                value={userForm.password}
-                onChange={(e) => onFieldChange("password", e.target.value)}
-                className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                placeholder={
-                  editingUser
-                    ? "Leave empty to keep current"
-                    : "Set a secure password"
-                }
-                {...(!editingUser ? { required: true } : {})}
-              />
+          {editingUser && (
+            <div className="space-y-2 max-w-md">
+              <Eyebrow>Account Password</Eyebrow>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  name="new-user-password"
+                  autoComplete="new-password"
+                  value={userForm.password}
+                  onChange={(e) => onFieldChange("password", e.target.value)}
+                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                  placeholder="Leave empty to keep current"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
             <button
@@ -256,8 +261,10 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             >
               {userFormSubmitting ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : null}
-              {editingUser ? "Update Profile" : "Create Account"}
+              ) : editingUser ? null : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              {editingUser ? "Update Profile" : "Send Invite"}
             </button>
           </div>
         </form>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import {
@@ -10,13 +10,11 @@ import {
   Clock,
   Hourglass,
 } from "lucide-react";
-import api from "../api/axios";
-import { useAuth } from "../context/AuthProvider";
+import { useTasks } from "../hooks/useTasks";
 import AssignedTasks from "./AssignedTasks"; // Adjust path as needed
 import MyTasks from "./MyTasks"; // Adjust path as needed
 import CompletedTasks from "./CompletedTasks";
 
-type SummaryTask = { status: string; progress: number; dueDate: string };
 type TabKey = "assigned" | "my" | "completed";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -38,22 +36,9 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
 ];
 
 const TasksPage: React.FC = () => {
-  const { workspace } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("assigned");
 
-  const [summaryTasks, setSummaryTasks] = useState<SummaryTask[]>([]);
-
-  useEffect(() => {
-    const loadSummary = async () => {
-      try {
-        const res = await api.get<SummaryTask[]>("/api/tasks");
-        setSummaryTasks(Array.isArray(res.data) ? res.data : []);
-      } catch {
-        setSummaryTasks([]);
-      }
-    };
-    loadSummary();
-  }, [workspace?.id]);
+  const { data: summaryTasks = [] } = useTasks();
 
   const totalTasks = summaryTasks.length;
   const doneCount = summaryTasks.filter((t) => t.status === "completed").length;

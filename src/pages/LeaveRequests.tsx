@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
-import api from "../api/axios";
+import React, { useState, useMemo } from "react";
 import { useAuth } from "../context/AuthProvider";
 import {
   Calendar,
@@ -10,22 +9,14 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-
-type LeaveRequest = {
-  id: number;
-  title: string;
-  startDate: string;
-  endDate: string;
-  reason: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-  historyCount?: number;
-  user?: {
-    id: number;
-    fullName: string;
-    email: string;
-  };
-};
+import LoadingState from "../components/LoadingState";
+import ErrorBanner from "../components/ErrorBanner";
+import { getErrorMessage } from "../lib/errors";
+import {
+  useLeaveRequests,
+  useCreateLeaveRequest,
+  useUpdateLeaveRequestStatus,
+} from "../hooks/useLeaveRequests";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -43,15 +34,26 @@ const getInitials = (name: string) =>
   name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 
 const LeaveRequests: React.FC = () => {
-  const { user, workspace } = useAuth();
+  const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    data: requests = [],
+    isLoading: loading,
+    isError: requestsIsError,
+    error: requestsQueryError,
+  } = useLeaveRequests();
+  const createLeaveRequestMutation = useCreateLeaveRequest();
+  const updateStatusMutation = useUpdateLeaveRequestStatus();
+  const submitting = createLeaveRequestMutation.isPending;
+
   const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [tab, setTab] = useState("all");
+  const error = requestsIsError
+    ? getErrorMessage(requestsQueryError, "Failed to load leave requests")
+    : null;
 
   // Form state
   const [title, setTitle] = useState("");
@@ -59,45 +61,25 @@ const LeaveRequests: React.FC = () => {
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
 
-  const loadRequests = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get<LeaveRequest[]>("/api/leaverequest");
-      setRequests(response.data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to load leave requests");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRequests();
-  }, [workspace?.id]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    setError(null);
+    setFormError(null);
 
     try {
-      await api.post("/api/leaverequest", { title, startDate, endDate, reason });
+      await createLeaveRequestMutation.mutateAsync({ title, startDate, endDate, reason });
       setShowForm(false);
       resetForm();
-      await loadRequests();
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to submit leave request");
-    } finally {
-      setSubmitting(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Failed to submit leave request"));
     }
   };
 
   const handleStatusUpdate = async (id: number, status: "approved" | "rejected") => {
+    setStatusError(null);
     try {
-      await api.put(`/api/leaverequest/${id}/status`, { status });
-      await loadRequests();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to update status");
+      await updateStatusMutation.mutateAsync({ id, status });
+    } catch (err) {
+      setStatusError(getErrorMessage(err, "Failed to update status"));
     }
   };
 
@@ -192,10 +174,10 @@ const LeaveRequests: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              {error && (
+              {formError && (
                 <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded flex items-center gap-2 text-[13px]">
                   <AlertCircle className="flex-shrink-0 w-4 h-4" />
-                  <span>{error}</span>
+                  <span>{formError}</span>
                 </div>
               )}
               <div>
@@ -264,15 +246,16 @@ const LeaveRequests: React.FC = () => {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto bg-white">
+        {statusError && (
+          <div className="p-4">
+            <ErrorBanner message={statusError} onDismiss={() => setStatusError(null)} />
+          </div>
+        )}
         {loading ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-20">
-            <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-            <div
-              className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              Loading requests
-            </div>
+          <LoadingState label="Loading requests" className="py-20" />
+        ) : error ? (
+          <div className="p-4">
+            <ErrorBanner message={error} />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

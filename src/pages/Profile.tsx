@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   Mail,
@@ -15,8 +15,11 @@ import {
   Lock,
   History,
 } from "lucide-react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
+import { getErrorMessage } from "../lib/errors";
+import { useChangeMyPassword, useUpdateMyProfile } from "../hooks/useUsers";
+import { useLeaveRequests } from "../hooks/useLeaveRequests";
+import { useActivities } from "../hooks/useActivities";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -35,20 +38,6 @@ const ROLE_META: Record<string, { label: string; color: string; bg: string }> = 
   admin: { label: "Administrator", color: "#6D28D9", bg: "#EDE9FE" },
   finance: { label: "Finance", color: "#B45309", bg: "#FEF3C7" },
   user: { label: "Standard User", color: "#1E3A8A", bg: "#DBEAFE" },
-};
-
-type LeaveRequest = {
-  id: number;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-  user?: { id: number; fullName: string; email: string };
-};
-
-type ActivityItem = {
-  id: number;
-  description: string;
-  createdAt: string;
-  user?: { id: number; fullName: string; email: string };
 };
 
 const initials = (name: string) =>
@@ -98,55 +87,29 @@ const Profile: React.FC = () => {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const prefix = `/${workspaceId}`;
 
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [loadingExtras, setLoadingExtras] = useState(true);
+  const { data: allLeaveRequests = [], isLoading: leaveLoading } = useLeaveRequests();
+  const { data: allActivity = [], isLoading: activityLoading } = useActivities();
+  const loadingExtras = leaveLoading || activityLoading;
+  const leaveRequests = allLeaveRequests.filter(
+    (lr) => String(lr.user?.id) === String(user?.id),
+  );
+  const activity = allActivity.filter(
+    (a) => String(a.user?.id) === String(user?.id),
+  );
 
   const [showEditContact, setShowEditContact] = useState(false);
   const [editPhone, setEditPhone] = useState(user?.phoneNumber || "");
   const [editAddress, setEditAddress] = useState(user?.address || "");
-  const [savingContact, setSavingContact] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
+  const updateProfileMutation = useUpdateMyProfile();
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [pwSaving, setPwSaving] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoadingExtras(true);
-      try {
-        const [leaveRes, activityRes] = await Promise.all([
-          api.get<LeaveRequest[]>("/api/leaverequest"),
-          api.get<ActivityItem[]>("/api/activities"),
-        ]);
-        setLeaveRequests(
-          Array.isArray(leaveRes.data)
-            ? leaveRes.data.filter(
-                (lr) => String(lr.user?.id) === String(user?.id),
-              )
-            : [],
-        );
-        setActivity(
-          Array.isArray(activityRes.data)
-            ? activityRes.data.filter(
-                (a) => String(a.user?.id) === String(user?.id),
-              )
-            : [],
-        );
-      } catch {
-        setLeaveRequests([]);
-        setActivity([]);
-      } finally {
-        setLoadingExtras(false);
-      }
-    };
-    load();
-  }, [user?.id]);
+  const changePasswordMutation = useChangeMyPassword();
 
   if (!user) return null;
 
@@ -170,21 +133,16 @@ const Profile: React.FC = () => {
 
   const handleSaveContact = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavingContact(true);
     setContactError(null);
     try {
-      const res = await api.put("/api/me", {
+      const updated = await updateProfileMutation.mutateAsync({
         phoneNumber: editPhone,
         address: editAddress,
       });
-      updateUser(res.data.user);
+      updateUser(updated);
       setShowEditContact(false);
-    } catch (err: any) {
-      setContactError(
-        err?.response?.data?.message || err.message || "Unable to save changes.",
-      );
-    } finally {
-      setSavingContact(false);
+    } catch (err) {
+      setContactError(getErrorMessage(err, "Unable to save changes."));
     }
   };
 
@@ -200,19 +158,14 @@ const Profile: React.FC = () => {
       setPwError("New password must be at least 6 characters.");
       return;
     }
-    setPwSaving(true);
     try {
-      await api.put("/api/me/password", { currentPassword, newPassword });
+      await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
       setPwSuccess("Password updated successfully.");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
-      setPwError(
-        err?.response?.data?.message || err.message || "Failed to update password.",
-      );
-    } finally {
-      setPwSaving(false);
+    } catch (err) {
+      setPwError(getErrorMessage(err, "Failed to update password."));
     }
   };
 
@@ -472,10 +425,10 @@ const Profile: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={savingContact}
+                  disabled={updateProfileMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
-                  {savingContact && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {updateProfileMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Save changes
                 </button>
               </div>
@@ -556,10 +509,10 @@ const Profile: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={pwSaving}
+                  disabled={changePasswordMutation.isPending}
                   className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
-                  {pwSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {changePasswordMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Update Password
                 </button>
               </div>

@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import api from "../api/axios";
-import { useAuth } from "../context/AuthProvider";
+import { useTasks, useUpdateTaskStatus } from "../hooks/useTasks";
+import { useProjects } from "../hooks/useProjects";
+import { getErrorMessage } from "../lib/errors";
+import ErrorBanner from "../components/ErrorBanner";
+import type { Task } from "../services/tasks.service";
+import type { Project } from "../types";
 import {
   Search,
   Check,
@@ -23,33 +27,6 @@ import {
   Clock,
   User as UserRoundIcon,
 } from "lucide-react";
-
-type AssignedUser = { id: number; fullName: string; email: string };
-type Project = {
-  id: number;
-  name: string;
-  description?: string;
-  dueDate?: string;
-  status: "pending" | "in_progress" | "completed" | "on_hold";
-  priority: "high" | "medium" | "low";
-  createdAt: string;
-};
-
-type Task = {
-  id: number;
-  title: string;
-  description?: string;
-  priority: string;
-  status: string;
-  progress: number;
-  dueDate: string;
-  assignedUsers: AssignedUser[];
-  createdAt: string;
-  subTasks: { id: number; title: string; status: string; children?: any[] }[];
-  projectName?: string;
-  project?: { id: number; name: string; status?: string };
-  createdBy?: { id: number; fullName: string };
-};
 
 const formatDate = (dateString: string) =>
   new Date(dateString).toLocaleDateString(undefined, {
@@ -129,11 +106,19 @@ const StatusPill: React.FC<{ type: "priority"; value: string }> = ({ value }) =>
 };
 
 const CompletedTasks: React.FC = () => {
-  const { workspace } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: tasks = [],
+    isLoading: tasksLoading,
+    isError: tasksIsError,
+    error: tasksQueryError,
+  } = useTasks();
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const loading = tasksLoading || projectsLoading;
+  const error = tasksIsError
+    ? getErrorMessage(tasksQueryError, "Unable to load completed tasks.")
+    : null;
+  const updateTaskStatusMutation = useUpdateTaskStatus();
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterProjectName, setFilterProjectName] = useState("");
@@ -157,35 +142,13 @@ const CompletedTasks: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [tasksRes, projectsRes] = await Promise.all([
-          api.get<Task[]>("/api/tasks"),
-          api.get<Project[]>("/api/projects"),
-        ]);
-        setTasks(Array.isArray(tasksRes.data) ? tasksRes.data : []);
-        setProjects(projectsRes.data);
-      } catch (err: any) {
-        setError(
-          err?.response?.data?.message || err.message || "Unable to load completed tasks.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, [workspace?.id]);
-
   const handleUnComplete = async (taskId: number) => {
+    setStatusError(null);
     try {
-      await api.put(`/api/tasks/${taskId}/status`, { status: "pending" });
-      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: "pending" });
       if (expandedTaskId === taskId) setExpandedTaskId(null);
-    } catch (err: any) {
-      alert(err?.response?.data?.message || err.message || "Status update failed");
+    } catch (err) {
+      setStatusError(getErrorMessage(err, "Status update failed"));
     }
   };
 
@@ -317,22 +280,25 @@ const CompletedTasks: React.FC = () => {
         </button>
       </div>
 
+      {statusError && (
+        <ErrorBanner message={statusError} onDismiss={() => setStatusError(null)} />
+      )}
+
       {/* Content: grouped by project */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-md border-slate-200">
-          <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-          <div
-            className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            Loading completed tasks...
+        <div className="bg-white border rounded-md border-slate-200">
+          <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+            <div
+              className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              Loading completed tasks...
+            </div>
           </div>
         </div>
       ) : error ? (
-        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-100 rounded-md text-red-700 text-[13px]">
-          <AlertCircle className="flex-shrink-0 w-4 h-4" />
-          {error}
-        </div>
+        <ErrorBanner message={error} />
       ) : filteredTasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
           <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">

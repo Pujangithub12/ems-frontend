@@ -1,37 +1,22 @@
 import React, { useEffect, useState } from "react";
-import api from "../api/axios";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import {
-  UserPlus,
   Search,
   Edit2,
   Trash2,
   Mail,
   Phone,
-  Loader2,
-  AlertCircle,
 } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  DragStartEvent,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { TreeItem, DraggableUser } from "../components/tree";
-import { User, TreeNode } from "../types";
+import OrgTree from "../components/orgtree/OrgTree";
+import { User } from "../types";
 import UserFormModal from "../components/UserFormModal";
 import ConfirmationModal from "../components/ConfirmationModal";
-
-const initialTree: TreeNode = {
-  id: "root",
-  label: "Organization",
-  children: [],
-};
+import LoadingState from "../components/LoadingState";
+import ErrorBanner from "../components/ErrorBanner";
+import { getErrorMessage } from "../lib/errors";
+import { useUsers, useInviteUser, useUpdateUser, useDeleteUser } from "../hooks/useUsers";
+import { useHierarchy, useSaveHierarchy } from "../hooks/useHierarchy";
 
 const formatDate = (dateString: string) =>
   new Date(dateString).toLocaleDateString(undefined, {
@@ -69,9 +54,6 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 
 const Users: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState<string | null>(null);
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,12 +70,7 @@ const Users: React.FC = () => {
     role: "user",
   });
   const [userFormError, setUserFormError] = useState<string | null>(null);
-  const [userFormSubmitting, setUserFormSubmitting] = useState(false);
-
-  const [tree, setTree] = useState<TreeNode>(initialTree);
-  const [treeLoading, setTreeLoading] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [draggedUser, setDraggedUser] = useState<User | null>(null);
+  const [inviteSentMessage, setInviteSentMessage] = useState<string | null>(null);
 
   // Confirmation Modal State
   const [confirmModal, setConfirmModal] = useState<{
@@ -101,95 +78,36 @@ const Users: React.FC = () => {
     userId: number | null;
   }>({ isOpen: false, userId: null });
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor),
-  );
+  const {
+    data: users = [],
+    isLoading: usersLoading,
+    isError: usersIsError,
+    error: usersQueryError,
+  } = useUsers();
+  const {
+    data: people = [],
+    isLoading: treeLoading,
+  } = useHierarchy();
+  const inviteUserMutation = useInviteUser();
+  const updateUserMutation = useUpdateUser();
+  const deleteUserMutation = useDeleteUser();
+  const saveHierarchyMutation = useSaveHierarchy();
 
-  const generateId = () => `node-${Date.now()}-${Math.random()}`;
+  const usersError = usersIsError
+    ? getErrorMessage(usersQueryError, "Unable to load users.")
+    : null;
+  const userFormSubmitting = inviteUserMutation.isPending || updateUserMutation.isPending;
 
-  const findNode = (node: TreeNode, nodeId: string): TreeNode | null => {
-    if (node.id === nodeId) return node;
-    for (const child of node.children) {
-      const found = findNode(child, nodeId);
-      if (found) return found;
-    }
-    return null;
-  };
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const addChildToNode = (
-    node: TreeNode,
-    parentId: string,
-    newNode: TreeNode,
-  ): TreeNode => {
-    if (node.id === parentId) {
-      return { ...node, children: [...node.children, newNode] };
-    }
-    return {
-      ...node,
-      children: node.children.map((child) =>
-        addChildToNode(child, parentId, newNode),
-      ),
-    };
-  };
-
-  const removeNodeFromTree = (node: TreeNode, nodeId: string): TreeNode => {
-    return {
-      ...node,
-      children: node.children
-        .filter((child) => child.id !== nodeId)
-        .map((child) => removeNodeFromTree(child, nodeId)),
-    };
-  };
-
-  const loadUsers = async () => {
-    setUsersLoading(true);
-    setUsersError(null);
-    try {
-      const response = await api.get<User[]>("/api/users");
-      setUsers(response.data);
-    } catch (err: any) {
-      setUsersError(
-        err?.response?.data?.message || err.message || "Unable to load users.",
-      );
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  const loadHierarchy = async () => {
-    setTreeLoading(true);
-    try {
-      const response = await api.get<TreeNode>("/api/hierarchy");
-      if (response.data) {
-        setTree(response.data);
-      }
-    } catch (err) {
-      console.error("Failed to load hierarchy", err);
-    } finally {
-      setTreeLoading(false);
-    }
-  };
-
-  const saveHierarchy = async (newTree: TreeNode) => {
-    try {
-      const response = await api.put<TreeNode>("/api/hierarchy", {
-        tree: newTree,
-      });
-      if (response.data) {
-        setTree(response.data);
-      }
-    } catch (err) {
-      console.error("Failed to save hierarchy", err);
-    }
-  };
-
-  const { workspace } = useAuth();
-
+  // Opened via the "Invite Members" action in the profile menu.
   useEffect(() => {
-    loadUsers();
-    loadHierarchy();
-  }, [workspace?.id]);
+    if ((location.state as { openInvite?: boolean } | null)?.openInvite) {
+      setShowUserForm(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   const resetUserForm = () => {
     setUserForm({
@@ -231,7 +149,6 @@ const Users: React.FC = () => {
   const handleSubmitUser = async (event: React.FormEvent) => {
     event.preventDefault();
     setUserFormError(null);
-    setUserFormSubmitting(true);
 
     const payload: Record<string, unknown> = {
       fullName: userForm.fullName,
@@ -247,19 +164,16 @@ const Users: React.FC = () => {
     try {
       if (editingUser) {
         if (!payload.password) delete payload.password;
-        await api.put(`/api/users/${editingUser.id}`, payload);
+        await updateUserMutation.mutateAsync({ id: editingUser.id, payload });
       } else {
-        await api.post("/api/users", payload);
+        delete payload.password;
+        await inviteUserMutation.mutateAsync(payload as any);
+        setInviteSentMessage(`Invitation sent to ${userForm.email}.`);
       }
-      await loadUsers();
       setShowUserForm(false);
       resetUserForm();
-    } catch (err: any) {
-      setUserFormError(
-        err?.response?.data?.message || err.message || "Unable to save user.",
-      );
-    } finally {
-      setUserFormSubmitting(false);
+    } catch (err) {
+      setUserFormError(getErrorMessage(err, "Unable to save user."));
     }
   };
 
@@ -267,49 +181,17 @@ const Users: React.FC = () => {
     setConfirmModal({ isOpen: true, userId: id });
   };
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const confirmDeleteUser = async () => {
     if (!confirmModal.userId) return;
     try {
-      await api.delete(`/api/users/${confirmModal.userId}`);
-      setUsers((prev) =>
-        prev.filter((user) => user.id !== confirmModal.userId),
-      );
+      await deleteUserMutation.mutateAsync(confirmModal.userId);
       setConfirmModal({ isOpen: false, userId: null });
-    } catch (err: any) {
-      setUsersError(
-        err?.response?.data?.message || err.message || "Unable to delete user.",
-      );
+    } catch (err) {
+      setDeleteError(getErrorMessage(err, "Unable to delete user."));
+      setConfirmModal({ isOpen: false, userId: null });
     }
-  };
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-    const user = users.find((u) => `user-${u.id}` === event.active.id);
-    if (user) setDraggedUser(user);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setDraggedUser(null);
-
-    if (over && draggedUser) {
-      const newNode: TreeNode = {
-        id: generateId(),
-        label: draggedUser.fullName,
-        userId: draggedUser.id,
-        children: [],
-      };
-      const newTree = addChildToNode(tree, over.id as string, newNode);
-      setTree(newTree);
-      saveHierarchy(newTree);
-    }
-  };
-
-  const handleDeleteNode = (nodeId: string) => {
-    const newTree = removeNodeFromTree(tree, nodeId);
-    setTree(newTree);
-    saveHierarchy(newTree);
   };
 
   const filteredUsers = users
@@ -323,6 +205,16 @@ const Users: React.FC = () => {
 
   const isAdminOrSuperAdmin =
     currentUser?.role === "admin" || currentUser?.role === "super_admin";
+
+  // Admins can remove regular users/finance, but not peers or super admins —
+  // only a super admin can remove another admin (or a user).
+  const canDeleteUser = (target: User) => {
+    if (currentUser?.role === "super_admin") return true;
+    if (currentUser?.role === "admin") {
+      return target.role !== "admin" && target.role !== "super_admin";
+    }
+    return false;
+  };
 
   const roleStyles: Record<string, { bg: string; fg: string }> = {
     admin: { bg: "#EDE9FE", fg: "#6D28D9" },
@@ -373,21 +265,25 @@ const Users: React.FC = () => {
               Tree
             </button>
           </div>
-
-          {isAdminOrSuperAdmin && (
-            <button
-              onClick={() => {
-                if (showUserForm) resetUserForm();
-                setShowUserForm(!showUserForm);
-              }}
-              className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-            >
-              <UserPlus className="w-4 h-4" />
-              Add User
-            </button>
-          )}
         </div>
       </div>
+
+      {inviteSentMessage && (
+        <ErrorBanner
+          variant="success"
+          message={inviteSentMessage}
+          onDismiss={() => setInviteSentMessage(null)}
+          className="mb-4"
+        />
+      )}
+
+      {deleteError && (
+        <ErrorBanner
+          message={deleteError}
+          onDismiss={() => setDeleteError(null)}
+          className="mb-4"
+        />
+      )}
 
       {/* Search */}
       <div className="relative max-w-md mb-6">
@@ -429,20 +325,9 @@ const Users: React.FC = () => {
       {viewMode === "list" ? (
         <div className="overflow-hidden bg-white border rounded-md border-slate-200">
           {usersLoading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-16">
-              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-              <div
-                className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                Loading users
-              </div>
-            </div>
+            <LoadingState label="Loading users" />
           ) : usersError ? (
-            <div className="m-6 p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
-              <AlertCircle className="flex-shrink-0 w-4 h-4" />
-              <span>{usersError}</span>
-            </div>
+            <ErrorBanner message={usersError} className="m-6" />
           ) : filteredUsers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
@@ -544,13 +429,15 @@ const Users: React.FC = () => {
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-                              <button
-                                onClick={() => handleDeleteUser(userItem.id)}
-                                className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canDeleteUser(userItem) && (
+                                <button
+                                  onClick={() => handleDeleteUser(userItem.id)}
+                                  className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                                  title="Delete User"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -562,68 +449,12 @@ const Users: React.FC = () => {
             </div>
           )}
         </div>
+      ) : treeLoading ? (
+        <div className="bg-white border rounded-md border-slate-200">
+          <LoadingState label="Loading hierarchy" />
+        </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Tree Container */}
-            <div className="flex flex-col overflow-hidden bg-white border rounded-md lg:col-span-2 border-slate-200">
-              <div className="p-4 border-b border-slate-200 bg-[#EEF1F5]/30">
-                <Eyebrow>Organization Hierarchy</Eyebrow>
-                <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
-                  Drag users to build your tree
-                </div>
-              </div>
-              <div
-                className="flex-1 overflow-auto p-8 min-h-[500px]"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(circle, #E2E8F0 1px, transparent 1px)",
-                  backgroundSize: "24px 24px",
-                }}
-              >
-                <TreeItem node={tree} onDeleteNode={handleDeleteNode} />
-              </div>
-            </div>
-
-            {/* Available Users */}
-            <div className="flex flex-col overflow-hidden bg-white border rounded-md border-slate-200">
-              <div className="p-4 border-b border-slate-200 bg-[#EEF1F5]/30">
-                <Eyebrow>Available Users</Eyebrow>
-                <div className="font-semibold mt-0.5 text-[15px] text-slate-900">
-                  Drag to add to tree
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 max-h-[600px]">
-                {users.map((user) => (
-                  <DraggableUser key={`user-${user.id}`} user={user} />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <DragOverlay>
-            {activeId && draggedUser ? (
-              <div className="flex items-center gap-3 p-3 bg-white border rounded-md shadow-lg border-slate-200">
-                <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
-                  {getInitials(draggedUser.fullName)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium text-slate-900 truncate">
-                    {draggedUser.fullName}
-                  </p>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    {draggedUser.jobPosition}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        <OrgTree people={people} onSave={(updated) => saveHierarchyMutation.mutate(updated)} />
       )}
     </div>
   );

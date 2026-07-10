@@ -10,9 +10,12 @@ import {
   X,
   Calendar as CalendarIcon,
 } from "lucide-react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { useEvents, useCreateEvent, useDeleteEvent } from "../hooks/useEvents";
+import type { CalendarEvent } from "../services/events.service";
+import { getErrorMessage } from "../lib/errors";
+import ErrorBanner from "../components/ErrorBanner";
 
 const RED = "#C60009"; // Traditional Nepali patro accent color
 
@@ -48,13 +51,6 @@ const isoOfAd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate(),
   ).padStart(2, "0")}`;
-
-type CalendarEvent = {
-  id: number;
-  title: string;
-  date: string;
-  type: string;
-};
 
 const EVENT_STYLES: Record<string, { fg: string; bg: string; label: string }> = {
   event: { fg: "#1E3A8A", bg: "#DBEAFE", label: "Event" },
@@ -502,10 +498,10 @@ const DayModal: React.FC<{
 type MonthPos = { y: number; m: number };
 
 const CalendarPage: React.FC = () => {
-  const { user, workspace } = useAuth();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { data: events = [], isLoading: loading } = useEvents();
   const [holidaysByMonth, setHolidaysByMonth] = useState<Record<string, HolidayInfo[]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const today = new Date();
   const todayBs = NepaliDate.fromAD(today);
@@ -513,28 +509,15 @@ const CalendarPage: React.FC = () => {
   const [flip, setFlip] = useState<{ from: MonthPos; dir: "next" | "prev" } | null>(null);
 
   const [selectedDay, setSelectedDay] = useState<DaySel | null>(null);
-  const [addingEvent, setAddingEvent] = useState(false);
 
   const [deleteEventId, setDeleteEventId] = useState<number | null>(null);
-  const [deletingEvent, setDeletingEvent] = useState(false);
+
+  const createEventMutation = useCreateEvent();
+  const deleteEventMutation = useDeleteEvent();
+  const addingEvent = createEventMutation.isPending;
+  const deletingEvent = deleteEventMutation.isPending;
 
   const isAdmin = user?.role === "admin";
-
-  const fetchEvents = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get<CalendarEvent[]>("/api/events");
-      setEvents(response.data);
-    } catch {
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchEvents();
-  }, [workspace?.id]);
 
   // Compute holidays/festivals for the displayed BS month from tithi, cached
   // per month so navigating back to an already-seen month doesn't recompute.
@@ -576,28 +559,21 @@ const CalendarPage: React.FC = () => {
   const sheetCursor = flip ? (flip.dir === "next" ? flip.from : cursor) : null;
 
   const handleAddEventForDay = async (date: Date, title: string, type: string) => {
-    setAddingEvent(true);
+    setActionError(null);
     try {
-      await api.post("/api/events", { title, date: date.toISOString(), type });
-      await fetchEvents();
-    } catch {
-      alert("Failed to add event.");
-    } finally {
-      setAddingEvent(false);
+      await createEventMutation.mutateAsync({ title, date: date.toISOString(), type });
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to add event."));
     }
   };
 
   const handleDeleteEvent = async () => {
     if (deleteEventId === null) return;
-    setDeletingEvent(true);
     try {
-      await api.delete(`/api/events/${deleteEventId}`);
+      await deleteEventMutation.mutateAsync(deleteEventId);
       setDeleteEventId(null);
-      fetchEvents();
-    } catch {
-      alert("Failed to delete event.");
-    } finally {
-      setDeletingEvent(false);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete event."));
     }
   };
 
@@ -610,6 +586,14 @@ const CalendarPage: React.FC = () => {
           Company Calendar
         </h2>
       </div>
+
+      {actionError && (
+        <ErrorBanner
+          message={actionError}
+          onDismiss={() => setActionError(null)}
+          className="mb-4"
+        />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <p className="text-slate-500 text-[13px]">

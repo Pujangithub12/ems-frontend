@@ -1,6 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
+import { getErrorMessage } from "../lib/errors";
+import {
+  useTasks as useTasksQuery,
+  useCreateTask,
+  useUpdateTask,
+  useUpdateTaskStatus,
+  useDeleteTask,
+} from "../hooks/useTasks";
+import { useUsers } from "../hooks/useUsers";
+import { useProjects } from "../hooks/useProjects";
+import { useCreateSubtask, useUpdateSubtask, useSubtasksFetch } from "../hooks/useSubtasks";
+import {
+  useCommentsFetch,
+  useAddComment,
+  useUpdateCommentFeedback,
+} from "../hooks/useComments";
 import {
   Plus,
   Search,
@@ -172,10 +187,25 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
 };
 
 const MyTasks: React.FC = () => {
-  const { user, workspace } = useAuth();
+  const { user } = useAuth();
+  const tasksQuery = useTasksQuery();
+  const usersQuery = useUsers();
+  const projectsQuery = useProjects();
+  const createTaskMutation = useCreateTask();
+  const updateTaskMutation = useUpdateTask();
+  const updateTaskStatusMutation = useUpdateTaskStatus();
+  const deleteTaskMutation = useDeleteTask();
+  const createSubtaskMutation = useCreateSubtask();
+  const updateSubtaskMutation = useUpdateSubtask();
+  const subtasksFetchMutation = useSubtasksFetch();
+  const commentsFetchMutation = useCommentsFetch();
+  const addCommentMutation = useAddComment();
+  const updateCommentFeedbackMutation = useUpdateCommentFeedback();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -327,48 +357,44 @@ const MyTasks: React.FC = () => {
     return subTasksMap;
   };
 
-  const loadData = async () => {
-    setTasksLoading(true);
-    setTasksError(null);
-    try {
-      const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        api.get<any>("/api/tasks"),
-        api.get<User[]>("/api/users"),
-        api.get<Project[]>("/api/projects"),
-      ]);
-      let taskList: Task[] = [];
-      if (Array.isArray(tasksRes.data)) taskList = tasksRes.data;
-      else if (tasksRes.data?.task) taskList = [tasksRes.data.task];
-      else if (tasksRes.data?.tasks) taskList = tasksRes.data.tasks;
-
-      const subTasksMap = buildSubTasksMap(taskList);
-      setTaskSubTasks(subTasksMap);
-      setTasks(
-        taskList.map((t) => {
-          const detailed = subTasksMap[t.id] || [];
-          return detailed.length === 0
-            ? t
-            : { ...t, progress: computeAverageLeafProgress(detailed) };
-        }),
-      );
-      setUsers(
-        [...usersRes.data].sort((a, b) => a.fullName.localeCompare(b.fullName)),
-      );
-      setProjects(projectsRes.data);
-    } catch (err: any) {
-      setTasksError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to load my tasks.",
-      );
-    } finally {
-      setTasksLoading(false);
+  // Re-derives local state (tasks/users/projects + the subtask detail map)
+  // whenever the underlying query data changes — mutations below patch
+  // `tasks` locally for instant feedback, and also invalidate these queries
+  // so a background refetch keeps everything eventually consistent.
+  useEffect(() => {
+    setTasksLoading(tasksQuery.isLoading || usersQuery.isLoading || projectsQuery.isLoading);
+    if (tasksQuery.isError) {
+      setTasksError(getErrorMessage(tasksQuery.error, "Unable to load my tasks."));
+      return;
     }
-  };
+    setTasksError(null);
+    if (!tasksQuery.data) return;
+
+    const taskList: Task[] = tasksQuery.data as unknown as Task[];
+    const subTasksMap = buildSubTasksMap(taskList);
+    setTaskSubTasks(subTasksMap);
+    setTasks(
+      taskList.map((t) => {
+        const detailed = subTasksMap[t.id] || [];
+        return detailed.length === 0
+          ? t
+          : { ...t, progress: computeAverageLeafProgress(detailed) };
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasksQuery.data, tasksQuery.isLoading, tasksQuery.isError, usersQuery.isLoading, projectsQuery.isLoading]);
 
   useEffect(() => {
-    loadData();
-  }, [workspace?.id]);
+    if (usersQuery.data) {
+      setUsers([...usersQuery.data].sort((a, b) => a.fullName.localeCompare(b.fullName)));
+    }
+  }, [usersQuery.data]);
+
+  useEffect(() => {
+    if (projectsQuery.data) {
+      setProjects(projectsQuery.data as unknown as Project[]);
+    }
+  }, [projectsQuery.data]);
 
   const openPopup = (task: Task) => setSelectedTask(task);
   const closePopup = () => {
@@ -421,8 +447,7 @@ const MyTasks: React.FC = () => {
         for (let i = 0; i < newFiles.length; i++)
           formData.append("files", newFiles[i]);
 
-      const response = await api.post<any>("/api/tasks", formData);
-      const task: Task = response.data.task || response.data;
+      const task: Task = (await createTaskMutation.mutateAsync(formData)) as unknown as Task;
       setTasks((prev) => [task, ...prev]);
       setTaskSubTasks((prev) => ({
         ...prev,
@@ -440,15 +465,12 @@ const MyTasks: React.FC = () => {
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
     try {
-      const res = await api.put<any>(`/api/tasks/${taskId}/status`, {
-        status: newStatus,
-      });
-      const updated: Task = res.data.task || res.data;
-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-    } catch (err: any) {
-      alert(
-        err?.response?.data?.message || err.message || "Status update failed",
+      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: newStatus });
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
       );
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Status update failed"));
     }
   };
 
@@ -464,17 +486,17 @@ const MyTasks: React.FC = () => {
       );
       const formData = new FormData();
       formData.append("userIds", nextIds.join(","));
-      const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
-      const updated: Task = res.data.task || res.data;
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       setSelectedTask(updated);
       setPendingMemberIds([]);
       setMemberSearchTerm("");
       setShowAddMemberPopover(false);
-    } catch (err: any) {
-      alert(
-        err?.response?.data?.message || err.message || "Unable to add members",
-      );
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to add members"));
     } finally {
       setSavingMembers(false);
     }
@@ -489,14 +511,14 @@ const MyTasks: React.FC = () => {
         .map((u) => u.id);
       const formData = new FormData();
       formData.append("userIds", nextIds.join(","));
-      const res = await api.put<any>(`/api/tasks/${taskId}`, formData);
-      const updated: Task = res.data.task || res.data;
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       setSelectedTask(updated);
-    } catch (err: any) {
-      alert(
-        err?.response?.data?.message || err.message || "Unable to remove member",
-      );
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to remove member"));
     } finally {
       setRemovingMemberId(null);
     }
@@ -510,13 +532,13 @@ const MyTasks: React.FC = () => {
   const confirmDeleteTask = async () => {
     if (!taskToDelete) return;
     try {
-      await api.delete(`/api/tasks/${taskToDelete}`);
+      await deleteTaskMutation.mutateAsync(taskToDelete);
       setTasks((prev) => prev.filter((t) => t.id !== taskToDelete));
       if (selectedTask?.id === taskToDelete) setSelectedTask(null);
       setShowDeleteModal(false);
       setTaskToDelete(null);
-    } catch (err: any) {
-      alert(err?.response?.data?.message || err.message || "Delete failed");
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Delete failed"));
     }
   };
 
@@ -549,12 +571,13 @@ const MyTasks: React.FC = () => {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
 
     try {
-      const res = await api.post(`/api/tasks/${taskId}/subtasks`, {
+      const data = await createSubtaskMutation.mutateAsync({
+        taskId,
         title,
-        parentSubTaskId: parentId,
+        parentSubTaskId: parentId ? Number(parentId) : null,
       });
-      if (res.data.subTasks) {
-        const detailed = convertToDetailed(res.data.subTasks);
+      if (data.subTasks) {
+        const detailed = convertToDetailed(data.subTasks);
         setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
         const avg = computeAverageLeafProgress(detailed);
         setTasks((prev) =>
@@ -564,8 +587,8 @@ const MyTasks: React.FC = () => {
           prev && prev.id === taskId ? { ...prev, progress: avg } : prev,
         );
       }
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to save sub-task.");
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to save sub-task."));
     }
   };
 
@@ -580,12 +603,13 @@ const MyTasks: React.FC = () => {
       const results = await Promise.all(
         flatSubTasks.map(async (st) => {
           try {
-            const res = await api.get<any[]>(
-              `/api/tasks/${taskId}/subtasks/${st.id}/comments`,
-            );
-            return (res.data || [])
-              .filter((c) => c.feedback)
-              .map((c) => ({
+            const data = await commentsFetchMutation.mutateAsync({
+              taskId,
+              subTaskId: Number(st.id),
+            });
+            return (data || [])
+              .filter((c: any) => c.feedback)
+              .map((c: any) => ({
                 subTaskTitle: st.title,
                 commentText: c.commentText,
                 feedback: c.feedback,
@@ -609,12 +633,14 @@ const MyTasks: React.FC = () => {
     if (!editingSubTask || !selectedTask) return;
     try {
       const taskId = selectedTask.id;
-      await api.put(`/api/tasks/${taskId}/subtasks/${editingSubTask.id}`, {
+      await updateSubtaskMutation.mutateAsync({
+        taskId,
+        subTaskId: Number(editingSubTask.id),
         title: newSubTaskUpdateTitle,
         progress: subTaskProgress,
       });
-      const res = await api.get(`/api/tasks/${taskId}/subtasks`);
-      const detailed = convertToDetailed(res.data);
+      const data = await subtasksFetchMutation.mutateAsync(taskId);
+      const detailed = convertToDetailed(data);
       setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
       const avg = computeAverageLeafProgress(detailed);
       setTasks((prev) =>
@@ -625,8 +651,8 @@ const MyTasks: React.FC = () => {
       );
       setShowSubTaskUpdatePopup(false);
       setEditingSubTask(null);
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to update sub-task.");
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to update sub-task."));
     }
   };
 
@@ -692,10 +718,11 @@ const MyTasks: React.FC = () => {
               onClick={async () => {
                 setEditingSubTask(st);
                 try {
-                  const res = await api.get(
-                    `/api/tasks/${selectedTask?.id}/subtasks/${st.id}/comments`,
-                  );
-                  setSubTaskComments(res.data);
+                  const data = await commentsFetchMutation.mutateAsync({
+                    taskId: Number(selectedTask?.id),
+                    subTaskId: Number(st.id),
+                  });
+                  setSubTaskComments(data);
                 } catch (err) {
                   setSubTaskComments([]);
                 }
@@ -887,6 +914,18 @@ const MyTasks: React.FC = () => {
           <Plus className="w-3.5 h-3.5" /> Add My Own Task
         </button>
       </div>
+
+      {actionError && (
+        <div className="p-4 mb-4 bg-red-50 border border-red-100 rounded flex items-center justify-between gap-3 text-red-700 text-[13px]">
+          <span className="flex items-center gap-3">
+            <AlertCircle className="flex-shrink-0 w-4 h-4" />
+            {actionError}
+          </span>
+          <button onClick={() => setActionError(null)} className="text-red-700 hover:text-red-900">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Content: grouped by project */}
       {tasksLoading ? (
@@ -1813,23 +1852,23 @@ const MyTasks: React.FC = () => {
                                   return;
                                 }
                                 try {
-                                  await api.put(
-                                    `/api/tasks/${selectedTask?.id}/subtasks/${editingSubTask?.id}/comments/${comment.id}/feedback`,
-                                    { feedback: feedbackTexts[comment.id] },
-                                  );
-                                  const res = await api.get(
-                                    `/api/tasks/${selectedTask?.id}/subtasks/${editingSubTask?.id}/comments`,
-                                  );
-                                  setSubTaskComments(res.data);
+                                  await updateCommentFeedbackMutation.mutateAsync({
+                                    taskId: Number(selectedTask?.id),
+                                    subTaskId: Number(editingSubTask?.id),
+                                    commentId: comment.id,
+                                    feedback: feedbackTexts[comment.id],
+                                  });
+                                  const data = await commentsFetchMutation.mutateAsync({
+                                    taskId: Number(selectedTask?.id),
+                                    subTaskId: Number(editingSubTask?.id),
+                                  });
+                                  setSubTaskComments(data);
                                   setFeedbackTexts({
                                     ...feedbackTexts,
                                     [comment.id]: "",
                                   });
-                                } catch (err: any) {
-                                  alert(
-                                    err?.response?.data?.message ||
-                                      "Failed to send feedback!",
-                                  );
+                                } catch (err) {
+                                  setActionError(getErrorMessage(err, "Failed to send feedback!"));
                                 }
                               }}
                               className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
@@ -1853,17 +1892,19 @@ const MyTasks: React.FC = () => {
                   if (e.key === "Enter" && newCommentText.trim()) {
                     e.preventDefault();
                     try {
-                      await api.post(
-                        `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
-                        { commentText: newCommentText },
-                      );
-                      const res = await api.get(
-                        `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
-                      );
-                      setSubTaskComments(res.data);
+                      await addCommentMutation.mutateAsync({
+                        taskId: selectedTask.id,
+                        subTaskId: Number(editingSubTask.id),
+                        commentText: newCommentText,
+                      });
+                      const data = await commentsFetchMutation.mutateAsync({
+                        taskId: selectedTask.id,
+                        subTaskId: Number(editingSubTask.id),
+                      });
+                      setSubTaskComments(data);
                       setNewCommentText("");
                     } catch (err) {
-                      console.error("Failed to add comment", err);
+                      setActionError(getErrorMessage(err, "Failed to add comment"));
                     }
                   }
                 }}
@@ -1874,17 +1915,19 @@ const MyTasks: React.FC = () => {
                 onClick={async () => {
                   if (!newCommentText.trim()) return;
                   try {
-                    await api.post(
-                      `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
-                      { commentText: newCommentText },
-                    );
-                    const res = await api.get(
-                      `/api/tasks/${selectedTask.id}/subtasks/${editingSubTask.id}/comments`,
-                    );
-                    setSubTaskComments(res.data);
+                    await addCommentMutation.mutateAsync({
+                      taskId: selectedTask.id,
+                      subTaskId: Number(editingSubTask.id),
+                      commentText: newCommentText,
+                    });
+                    const data = await commentsFetchMutation.mutateAsync({
+                      taskId: selectedTask.id,
+                      subTaskId: Number(editingSubTask.id),
+                    });
+                    setSubTaskComments(data);
                     setNewCommentText("");
                   } catch (err) {
-                    console.error("Failed to add comment", err);
+                    setActionError(getErrorMessage(err, "Failed to add comment"));
                   }
                 }}
                 className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"

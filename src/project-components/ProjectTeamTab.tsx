@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Plus, X, Loader2, Search, AlertCircle, Trash2 } from "lucide-react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import { Project } from "../types";
 import { Eyebrow } from "./ProjectSharedComponents";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { useUpdateProject } from "../hooks/useProjects";
+import { useUsers } from "../hooks/useUsers";
+import { getErrorMessage } from "../lib/errors";
 
 const ROLE_STYLES: Record<string, { bg: string; fg: string }> = {
   super_admin: { bg: "#FEE2E2", fg: "#B91C1C" },
@@ -17,8 +19,6 @@ interface ProjectTeamTabProps {
   project: Project;
   onTeamUpdate?: () => void;
 }
-
-type WorkspaceUser = { id: number; fullName: string; email: string };
 
 const initials = (name: string) =>
   name
@@ -35,18 +35,26 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
   const canManage = user?.role === "admin" || user?.role === "super_admin";
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [allUsers, setAllUsers] = useState<WorkspaceUser[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState<string | null>(null);
+  const {
+    data: allUsers = [],
+    isLoading: usersLoading,
+    isError: usersIsError,
+    error: usersQueryError,
+  } = useUsers();
+  const usersError = usersIsError
+    ? getErrorMessage(usersQueryError, "Unable to load members.")
+    : null;
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [memberToRemove, setMemberToRemove] = useState<number | null>(null);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const updateProjectMutation = useUpdateProject();
+  const saving = updateProjectMutation.isPending;
+  const removing = updateProjectMutation.isPending;
 
   const assignedIds = new Set((project.assignees || []).map((a) => a.id));
 
@@ -58,44 +66,28 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
 
   const confirmRemoveMember = async () => {
     if (!memberToRemove) return;
-    setRemoving(true);
     setRemoveError(null);
     try {
       const nextIds = Array.from(assignedIds).filter(
         (id) => id !== memberToRemove,
       );
-      await api.put(`/api/projects/${project.id}`, { assigneeIds: nextIds });
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        payload: { assigneeIds: nextIds },
+      });
       setShowRemoveModal(false);
       setMemberToRemove(null);
       onTeamUpdate?.();
-    } catch (err: any) {
-      setRemoveError(
-        err?.response?.data?.message || err.message || "Unable to remove member.",
-      );
-    } finally {
-      setRemoving(false);
+    } catch (err) {
+      setRemoveError(getErrorMessage(err, "Unable to remove member."));
     }
   };
 
-  const openAddModal = async () => {
+  const openAddModal = () => {
     setShowAddModal(true);
     setSelectedIds([]);
     setSearchTerm("");
     setSaveError(null);
-    setUsersLoading(true);
-    setUsersError(null);
-    try {
-      const res = await api.get<WorkspaceUser[]>("/api/users");
-      setAllUsers(
-        [...res.data].sort((a, b) => a.fullName.localeCompare(b.fullName)),
-      );
-    } catch (err: any) {
-      setUsersError(
-        err?.response?.data?.message || err.message || "Unable to load members.",
-      );
-    } finally {
-      setUsersLoading(false);
-    }
   };
 
   const toggleSelected = (id: number) => {
@@ -106,19 +98,17 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
 
   const handleAddMembers = async () => {
     if (selectedIds.length === 0) return;
-    setSaving(true);
     setSaveError(null);
     try {
       const nextIds = Array.from(new Set([...assignedIds, ...selectedIds]));
-      await api.put(`/api/projects/${project.id}`, { assigneeIds: nextIds });
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        payload: { assigneeIds: nextIds },
+      });
       setShowAddModal(false);
       onTeamUpdate?.();
-    } catch (err: any) {
-      setSaveError(
-        err?.response?.data?.message || err.message || "Unable to add members.",
-      );
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      setSaveError(getErrorMessage(err, "Unable to add members."));
     }
   };
 

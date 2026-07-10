@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import api from "../api/axios";
+import React, { useState } from "react";
 import { useAuth } from "../context/AuthProvider";
 import {
   Megaphone,
@@ -13,21 +12,15 @@ import {
   Users as UsersIcon,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
-
-type User = {
-  id: number;
-  fullName: string;
-  email: string;
-};
-
-type Announcement = {
-  id: number;
-  subject: string;
-  message: string;
-  targetType: string;
-  targetEmails: string[];
-  createdAt: string;
-};
+import LoadingState from "../components/LoadingState";
+import ErrorBanner from "../components/ErrorBanner";
+import { getErrorMessage } from "../lib/errors";
+import { useUsers } from "../hooks/useUsers";
+import {
+  useAnnouncements,
+  useCreateAnnouncement,
+  useDeleteAnnouncement,
+} from "../hooks/useAnnouncements";
 
 const formatDate = (dateString: string) =>
   new Date(dateString).toLocaleDateString(undefined, {
@@ -69,14 +62,27 @@ const Avatar: React.FC<{ name: string; size?: number }> = ({
 );
 
 const Announcements: React.FC = () => {
-  const { user, workspace } = useAuth();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [announcementsError, setAnnouncementsError] = useState<string | null>(
-    null,
-  );
+  const { user } = useAuth();
+
+  const {
+    data: announcements = [],
+    isLoading: announcementsLoading,
+    isError: announcementsIsError,
+    error: announcementsQueryError,
+  } = useAnnouncements();
+  const { data: usersData = [], isLoading: usersLoading } = useUsers();
+  const users = [...usersData].sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+  const createAnnouncementMutation = useCreateAnnouncement();
+  const deleteAnnouncementMutation = useDeleteAnnouncement();
+  const submitting = createAnnouncementMutation.isPending;
+
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const announcementsError = announcementsIsError
+    ? getErrorMessage(announcementsQueryError, "Unable to load announcements.")
+    : null;
+
   const [deletingAnnouncementId, setDeletingAnnouncementId] = useState<
     number | null
   >(null);
@@ -89,54 +95,10 @@ const Announcements: React.FC = () => {
 
   // New Announcement Form State
   const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [targetType, setTargetType] = useState<"all" | "specific">("specific");
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-
-  const loadAnnouncements = async () => {
-    setAnnouncementsLoading(true);
-    setAnnouncementsError(null);
-    try {
-      const response = await api.get<any>("/api/announcements");
-      if (Array.isArray(response.data)) setAnnouncements(response.data);
-      else if (Array.isArray(response.data.announcements))
-        setAnnouncements(response.data.announcements);
-      else if (response.data?.announcement)
-        setAnnouncements([response.data.announcement]);
-      else if (Array.isArray(response.data?.history))
-        setAnnouncements(response.data.history);
-      else setAnnouncements([]);
-    } catch (err: any) {
-      setAnnouncementsError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to load announcements.",
-      );
-    } finally {
-      setAnnouncementsLoading(false);
-    }
-  };
-
-  const loadUsers = async () => {
-    setUsersLoading(true);
-    try {
-      const response = await api.get<User[]>("/api/users");
-      setUsers(
-        [...response.data].sort((a, b) => a.fullName.localeCompare(b.fullName)),
-      );
-    } catch (err: any) {
-      console.error("Failed to load users", err);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAnnouncements();
-    loadUsers();
-  }, [workspace?.id]);
 
   const deleteAnnouncement = (id: number) => {
     setAnnouncementToDelete(id);
@@ -146,20 +108,13 @@ const Announcements: React.FC = () => {
   const confirmDeleteAnnouncement = async () => {
     if (!announcementToDelete) return;
     setDeletingAnnouncementId(announcementToDelete);
-    setAnnouncementsError(null);
+    setDeleteError(null);
     try {
-      await api.delete(`/api/announcements/${announcementToDelete}`);
-      setAnnouncements((prev) =>
-        prev.filter((a) => a.id !== announcementToDelete),
-      );
+      await deleteAnnouncementMutation.mutateAsync(announcementToDelete);
       setShowDeleteModal(false);
       setAnnouncementToDelete(null);
-    } catch (err: any) {
-      setAnnouncementsError(
-        err?.response?.data?.message ||
-          err.message ||
-          "Unable to delete announcement.",
-      );
+    } catch (err) {
+      setDeleteError(getErrorMessage(err, "Unable to delete announcement."));
     } finally {
       setDeletingAnnouncementId(null);
     }
@@ -167,15 +122,14 @@ const Announcements: React.FC = () => {
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    setAnnouncementsError(null);
+    setFormError(null);
 
     const targetEmails = selectedUserIds
       .map((id) => users.find((u) => u.id === id)?.email)
       .filter((email): email is string => Boolean(email));
 
     try {
-      await api.post("/api/announcements", {
+      await createAnnouncementMutation.mutateAsync({
         subject,
         message,
         targetType,
@@ -185,13 +139,8 @@ const Announcements: React.FC = () => {
       setSubject("");
       setMessage("");
       setSelectedUserIds([]);
-      loadAnnouncements();
-    } catch (err: any) {
-      setAnnouncementsError(
-        err?.response?.data?.message || "Failed to create announcement.",
-      );
-    } finally {
-      setSubmitting(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Failed to create announcement."));
     }
   };
 
@@ -235,10 +184,10 @@ const Announcements: React.FC = () => {
             </div>
 
             <div className="flex-1 p-6 space-y-5 overflow-y-auto">
-              {announcementsError && (
+              {formError && (
                 <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded flex items-center gap-2 text-[13px]">
                   <AlertCircle className="flex-shrink-0 w-4 h-4" />
-                  <span>{announcementsError}</span>
+                  <span>{formError}</span>
                 </div>
               )}
 
@@ -402,21 +351,13 @@ const Announcements: React.FC = () => {
       {/* Announcements Feed */}
       <div className="flex-1 overflow-y-auto bg-[#F6F7F9]">
         <div className="max-w-3xl px-6 py-8 mx-auto space-y-4 lg:px-8">
+          {deleteError && (
+            <ErrorBanner message={deleteError} onDismiss={() => setDeleteError(null)} />
+          )}
           {announcementsLoading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20">
-              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-              <div
-                className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              >
-                Loading announcements
-              </div>
-            </div>
+            <LoadingState label="Loading announcements" className="py-20" />
           ) : announcementsError ? (
-            <div className="p-4 bg-red-50 border border-red-100 text-red-700 rounded flex items-center gap-3 text-[13px]">
-              <AlertCircle className="flex-shrink-0 w-4 h-4" />
-              <span>{announcementsError}</span>
-            </div>
+            <ErrorBanner message={announcementsError} />
           ) : announcements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
               <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">

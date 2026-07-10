@@ -1,20 +1,14 @@
 import React, { useState } from "react";
-import api from "../api/axios";
 import { useAuth } from "../context/AuthProvider";
 import { User } from "../types";
 import ConfirmationModal from "../components/ConfirmationModal";
 import UserFormModal from "../components/UserFormModal";
-import { UserPlus, Trash2, AlertCircle, Loader2 } from "lucide-react";
+import LoadingState from "../components/LoadingState";
+import ErrorBanner from "../components/ErrorBanner";
+import { getErrorMessage } from "../lib/errors";
+import { useUsers, useInviteUser, useDeleteUser } from "../hooks/useUsers";
+import { UserPlus, Trash2 } from "lucide-react";
 import { getInitials, avatarColor, ROLE_STYLES } from "./SettingsShared";
-
-type MembersTabProps = {
-  members: User[];
-  membersLoading: boolean;
-  membersError: string | null;
-  setMembers: React.Dispatch<React.SetStateAction<User[]>>;
-  setMembersError: React.Dispatch<React.SetStateAction<string | null>>;
-  reloadMembers: () => Promise<void>;
-};
 
 const emptyMemberForm = {
   fullName: "",
@@ -27,21 +21,28 @@ const emptyMemberForm = {
   role: "user",
 };
 
-const MembersTab: React.FC<MembersTabProps> = ({
-  members,
-  membersLoading,
-  membersError,
-  setMembers,
-  setMembersError,
-  reloadMembers,
-}) => {
+const MembersTab: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  const {
+    data: members = [],
+    isLoading: membersLoading,
+    isError: membersIsError,
+    error: membersQueryError,
+  } = useUsers();
+  const sortedMembers = [...members].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const membersError = membersIsError
+    ? getErrorMessage(membersQueryError, "Unable to load members.")
+    : null;
+
+  const inviteUserMutation = useInviteUser();
+  const deleteUserMutation = useDeleteUser();
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberForm, setMemberForm] = useState(emptyMemberForm);
   const [memberFormError, setMemberFormError] = useState<string | null>(null);
-  const [memberFormSubmitting, setMemberFormSubmitting] = useState(false);
+  const [inviteSentMessage, setInviteSentMessage] = useState<string | null>(null);
 
   const handleMemberFieldChange = (field: string, value: string) => {
     setMemberForm((prev) => ({ ...prev, [field]: value }));
@@ -49,33 +50,27 @@ const MembersTab: React.FC<MembersTabProps> = ({
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMemberFormSubmitting(true);
     setMemberFormError(null);
+    const { password, ...payload } = memberForm;
     try {
-      await api.post("/api/users", memberForm);
-      await reloadMembers();
+      await inviteUserMutation.mutateAsync(payload);
+      setInviteSentMessage(`Invitation sent to ${memberForm.email}.`);
       setShowAddMember(false);
       setMemberForm(emptyMemberForm);
-    } catch (err: any) {
-      setMemberFormError(
-        err?.response?.data?.message || err.message || "Unable to add member.",
-      );
-    } finally {
-      setMemberFormSubmitting(false);
+    } catch (err) {
+      setMemberFormError(getErrorMessage(err, "Unable to invite member."));
     }
   };
 
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<User | null>(null);
   const handleConfirmRemove = async () => {
     if (!removeTarget) return;
     try {
-      await api.delete(`/api/users/${removeTarget.id}`);
-      setMembers((prev) => prev.filter((m) => m.id !== removeTarget.id));
+      await deleteUserMutation.mutateAsync(removeTarget.id);
       setRemoveTarget(null);
-    } catch (err: any) {
-      setMembersError(
-        err?.response?.data?.message || err.message || "Unable to remove member.",
-      );
+    } catch (err) {
+      setRemoveError(getErrorMessage(err, "Unable to remove member."));
       setRemoveTarget(null);
     }
   };
@@ -92,22 +87,30 @@ const MembersTab: React.FC<MembersTabProps> = ({
               onClick={() => setShowAddMember(true)}
               className="flex items-center gap-2 px-3 py-1.5 ml-auto text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
             >
-              <UserPlus className="w-3.5 h-3.5" /> Add Member
+              <UserPlus className="w-3.5 h-3.5" /> Invite Member
             </button>
           )}
         </div>
 
-        {membersError && (
-          <div className="m-5 p-3 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100 flex items-center gap-2">
-            <AlertCircle className="flex-shrink-0 w-4 h-4" />
-            {membersError}
-          </div>
+        {inviteSentMessage && (
+          <ErrorBanner
+            variant="success"
+            message={inviteSentMessage}
+            onDismiss={() => setInviteSentMessage(null)}
+            className="m-5"
+          />
         )}
+        {removeError && (
+          <ErrorBanner
+            message={removeError}
+            onDismiss={() => setRemoveError(null)}
+            className="m-5"
+          />
+        )}
+        {membersError && <ErrorBanner message={membersError} className="m-5" />}
 
         {membersLoading ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-          </div>
+          <LoadingState />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -127,7 +130,7 @@ const MembersTab: React.FC<MembersTabProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => {
+                {sortedMembers.map((m) => {
                   const rStyle = ROLE_STYLES[m.role] || { bg: "#EEF1F5", fg: "#475569" };
                   return (
                     <tr key={m.id} className="transition-colors border-b border-slate-100 hover:bg-slate-50">
@@ -184,7 +187,7 @@ const MembersTab: React.FC<MembersTabProps> = ({
         editingUser={null}
         userForm={memberForm}
         userFormError={memberFormError}
-        userFormSubmitting={memberFormSubmitting}
+        userFormSubmitting={inviteUserMutation.isPending}
         currentUserRole={user?.role}
         onClose={() => {
           setShowAddMember(false);
