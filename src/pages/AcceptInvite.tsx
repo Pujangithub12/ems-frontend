@@ -445,9 +445,19 @@ const AcceptInvite: React.FC = () => {
 
                 <form onSubmit={submitAccept} className="space-y-3">
                   {submitError && (
-                    <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex items-start gap-2 text-[#B91C1C] text-[13px]">
-                      <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>{submitError}</span>
+                    <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex flex-col gap-2 text-[#B91C1C] text-[13px]">
+                      <div className="flex items-start gap-2">
+                        <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{submitError}</span>
+                      </div>
+                      {submitError.toLowerCase().includes("already exists") && (
+                        <Link
+                          to="/login"
+                          className="font-semibold text-[#1E3A8A] hover:underline ml-6"
+                        >
+                          Log in instead
+                        </Link>
+                      )}
                     </div>
                   )}
 
