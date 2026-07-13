@@ -170,6 +170,20 @@ export const PERMISSION_GROUPS: { category: string; items: PermissionItem[] }[] 
     ],
   },
   {
+    category: "Site Visit Requests",
+    items: [
+      { key: "sitevisit.view", label: "Submit & view site visit requests", editable: false, roles: [...ALL_ROLES] },
+      { key: "sitevisit.manage", label: "Approve, reject or delete requests", editable: true, roles: ["super_admin", "admin"] },
+    ],
+  },
+  {
+    category: "Expense Requests",
+    items: [
+      { key: "expense.view", label: "Submit & view expense requests", editable: false, roles: [...ALL_ROLES] },
+      { key: "expense.manage", label: "Approve, reject or delete requests", editable: true, roles: ["super_admin", "admin", "finance"] },
+    ],
+  },
+  {
     category: "Calendar",
     items: [
       { key: "calendar.view", label: "View calendar", editable: false, roles: [...ALL_ROLES] },

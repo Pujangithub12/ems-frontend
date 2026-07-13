@@ -48,6 +48,12 @@ interface GanttChartViewProps {
   scales: ScheduleScale[];
   /** false renders the task grid only (the "List" view) with no chart panel. */
   showChart: boolean;
+  /** Fired when the user drags a link from one bar's connector dot onto
+   * another, creating a finish-to-start dependency. Receives the two
+   * task ids involved (predecessor, then dependent). */
+  onLinkCreate?: (sourceId: string, targetId: string) => void;
+  /** Fired when the user deletes a dependency arrow (hover + click the "x"). */
+  onLinkDelete?: (sourceId: string, targetId: string) => void;
 }
 
 /** In Gantt mode, the task table takes this fraction of the container width
@@ -76,8 +82,57 @@ function toDhtmlxDate(date: Date): string {
   return `${y}-${m}-${d} 00:00`;
 }
 
+/**
+ * Draws the "today" line by hand: dhtmlx-gantt's own coordinate/marker/
+ * task-layer helpers (gantt.posFromDate, gantt.addMarker, gantt.addTaskLayer)
+ * are declared in the TypeScript types but are either absent at runtime in
+ * this build ("not a function") or — in posFromDate's case — return a
+ * position that doesn't match what's actually rendered once a multi-tier
+ * `scales` config is in play. Templates (task_class, timeline_cell_class)
+ * DO work reliably though, so this marks today's timeline cell with a class
+ * via a template, then measures that cell's real DOM position and places a
+ * plain div at the same x inside `.gantt_data_area` (the positioned ancestor
+ * task bars live in, so the coordinate space matches).
+ */
+function renderTodayLine(container: HTMLElement | null, showChart: boolean) {
+  if (!container) return;
+  const dataArea = container.querySelector<HTMLElement>(".gantt_data_area");
+  if (!dataArea) return;
+
+  let line = dataArea.querySelector<HTMLDivElement>(":scope > .gantt-today-line");
+  const todayCell = dataArea.querySelector<HTMLElement>(".gantt_task_cell.gantt-today-cell");
+  if (!showChart || !todayCell) {
+    line?.remove();
+    return;
+  }
+  if (!line) {
+    line = document.createElement("div");
+    line.className = "gantt-today-line";
+    dataArea.appendChild(line);
+  }
+
+  const left = todayCell.getBoundingClientRect().left - dataArea.getBoundingClientRect().left;
+  line.style.left = `${Math.round(left)}px`;
+}
+
 function isSameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Does the timeline cell starting at `cellStart` (whose width spans one
+ * unit of `unit`) contain `today`? Needed because timeline_cell_class only
+ * gets the cell's start date, and the finest configured scale row can be a
+ * day, a week, or a month depending on the current zoom level. */
+function cellContainsToday(cellStart: Date, unit: string, today: Date): boolean {
+  if (unit === "week") {
+    const weekEnd = new Date(cellStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return today >= cellStart && today < weekEnd;
+  }
+  if (unit === "month") {
+    return cellStart.getFullYear() === today.getFullYear() && cellStart.getMonth() === today.getMonth();
+  }
+  return isSameCalendarDay(cellStart, today);
 }
 
 const GanttChartView: React.FC<GanttChartViewProps> = ({
@@ -86,10 +141,24 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   columns,
   scales,
   showChart,
+  onLinkCreate,
+  onLinkDelete,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  // The finest scale row's unit ("day"/"week"/"month"), kept in a ref so the
+  // timeline_cell_class template (registered once, in the init effect below)
+  // always reads the current zoom level instead of a stale closure value.
+  const finestScaleUnitRef = useRef<string>("day");
+  // The onLinkCreate/onLinkDelete events are wired up once, in the init
+  // effect below, so they read these refs instead of a stale closure.
+  const onLinkCreateRef = useRef(onLinkCreate);
+  const onLinkDeleteRef = useRef(onLinkDelete);
+  useEffect(() => {
+    onLinkCreateRef.current = onLinkCreate;
+    onLinkDeleteRef.current = onLinkDelete;
+  }, [onLinkCreate, onLinkDelete]);
 
   // Tracks the container's rendered width so the grid/chart split stays a
   // true 25%/75% at any screen size, not a fixed pixel guess.
@@ -108,8 +177,13 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     if (!containerRef.current) return;
 
     gantt.config.date_format = "%Y-%m-%d %H:%i";
-    gantt.config.readonly = true;
-    gantt.config.drag_links = false;
+    // Not fully readonly: drag-to-link (the small connector dots on a bar's
+    // edges) needs to stay interactive. Every other form of editing
+    // (move/resize/progress-drag/selection) is individually switched off
+    // below so this doesn't reopen a second editing surface alongside the
+    // Add/Edit Schedule modal.
+    gantt.config.readonly = false;
+    gantt.config.drag_links = true;
     gantt.config.drag_move = false;
     gantt.config.drag_resize = false;
     gantt.config.drag_progress = false;
@@ -123,18 +197,43 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.templates.task_class = (_start: Date, _end: Date, task: unknown) =>
       `gantt-color-${(task as GanttTask).colorIndex % 4}`;
 
-    // Highlight today's column across both the scale header and the chart
-    // body — a lighter-weight stand-in for the marker extension's vertical
-    // "Today" line, which this dhtmlx-gantt build doesn't expose reliably.
-    gantt.templates.scale_cell_class = (date: Date) =>
-      isSameCalendarDay(date, new Date()) ? "gantt-today-column" : "";
-    gantt.templates.timeline_cell_class = (_item: unknown, date: Date) =>
-      isSameCalendarDay(date, new Date()) ? "gantt-today-column" : "";
+    // Marks whichever timeline cell today falls in — the "today" line is
+    // then positioned by measuring this cell's real DOM position (see
+    // renderTodayLine) rather than trusting gantt's own coordinate helpers.
+    gantt.templates.timeline_cell_class = (_item: unknown, date: Date) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return cellContainsToday(date, finestScaleUnitRef.current, today) ? "gantt-today-cell" : "";
+    };
 
     // The default double-click "lightbox" editor is a second, competing
     // editing surface — this app edits schedules only via the Add/Edit
     // Schedule modal, which does a full-replace save.
     gantt.attachEvent("onBeforeLightbox", () => false);
+
+    // A dependency can't link a task to itself.
+    gantt.attachEvent("onBeforeLinkAdd", (_id: string | number, link: { source: unknown; target: unknown }) => {
+      return link.source !== link.target;
+    });
+    // Report the new link up to the parent, which folds it into the
+    // dependent row's `predecessorId`. Left in gantt's own data store too —
+    // the next tasks/links prop update (from that state change) rebuilds
+    // this exact link via gantt.clearAll()/parse(), so it isn't lost.
+    gantt.attachEvent("onAfterLinkAdd", (_id: string | number, link: { source: unknown; target: unknown }) => {
+      onLinkCreateRef.current?.(String(link.source), String(link.target));
+    });
+    gantt.attachEvent("onAfterLinkDelete", (_id: string | number, link: { source: unknown; target: unknown }) => {
+      onLinkDeleteRef.current?.(String(link.source), String(link.target));
+    });
+    // This build has no built-in hover-to-delete icon on a dependency arrow,
+    // so double-click is repurposed here (links only — task double-click
+    // stays fully blocked above) as the one way to remove one.
+    gantt.attachEvent("onLinkDblClick", (id: string | number) => {
+      if (window.confirm("Delete this dependency?")) {
+        gantt.deleteLink(id);
+      }
+      return false;
+    });
 
     gantt.init(containerRef.current);
     readyRef.current = true;
@@ -167,6 +266,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.autofit = !showChart;
     if (showChart && gridWidthPx > 0) gantt.config.grid_width = gridWidthPx;
     if (readyRef.current) gantt.render();
+    renderTodayLine(containerRef.current, showChart);
   }, [columns, showChart, containerWidth]);
 
   useEffect(() => {
@@ -174,8 +274,10 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     // fixed 2-level array (see SCALES in ProjectScheduleTab) but built from
     // a plain literal, so it doesn't structurally match the tuple type.
     gantt.config.scales = scales as unknown as typeof gantt.config.scales;
+    finestScaleUnitRef.current = scales[scales.length - 1]?.unit ?? "day";
     if (readyRef.current) gantt.render();
-  }, [scales]);
+    renderTodayLine(containerRef.current, showChart);
+  }, [scales, showChart]);
 
   useEffect(() => {
     const data = tasks.map((t) => ({
@@ -201,7 +303,8 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
 
     gantt.clearAll();
     gantt.parse({ data, links: linkData });
-  }, [tasks, links]);
+    renderTodayLine(containerRef.current, showChart);
+  }, [tasks, links, showChart]);
 
   return (
     <>
@@ -215,8 +318,24 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_milestone.gantt-color-1 .gantt_task_content { background: #8b5cf6 !important; border-color: #7c3aed !important; }
         .gantt_milestone.gantt-color-2 .gantt_task_content { background: #14b8a6 !important; border-color: #0d9488 !important; }
         .gantt_milestone.gantt-color-3 .gantt_task_content { background: #f59e0b !important; border-color: #d97706 !important; }
-        .gantt_scale_cell.gantt-today-column { background-color: rgba(37, 99, 235, 0.12) !important; }
-        .gantt_task_cell.gantt-today-column { background-color: rgba(37, 99, 235, 0.06) !important; }
+        .gantt-today-line {
+          position: absolute;
+          top: 0;
+          width: 2px;
+          height: 100%;
+          background: #2563eb;
+          pointer-events: none;
+          z-index: 1;
+        }
+        /* The small drag-to-connect dot dhtmlx shows on a bar's edges on
+           hover — recolored to match the app's blue accent instead of its
+           default white/gray. */
+        .gantt_link_control {
+          --dhx-gantt-link-handle-background: #2563eb;
+          --dhx-gantt-link-handle-border: #2563eb;
+          --dhx-gantt-link-handle-background-hover: #1d4ed8;
+          --dhx-gantt-link-handle-border-hover: #1d4ed8;
+        }
       `}</style>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </>

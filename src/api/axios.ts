@@ -36,6 +36,18 @@ export function setActiveWorkspaceId(id: number | null) {
   activeWorkspaceId = id;
 }
 
+// Fired whenever the backend rejects a request with the
+// WORKSPACE_ACCESS_FORBIDDEN code (see authMiddleware / WorkspaceController)
+// — e.g. an invited-user account trying to reach or create a workspace other
+// than the one it was invited into. Registered once by a component mounted
+// near the app root (see App.tsx) so this axios module, which has no access
+// to React state, can still surface a global error modal.
+let onAccessForbidden: (() => void) | null = null;
+
+export function setAccessForbiddenHandler(fn: (() => void) | null) {
+  onAccessForbidden = fn;
+}
+
 api.interceptors.request.use((config) => {
   if (activeWorkspaceId !== null) {
     config.headers.set("X-Workspace-Id", String(activeWorkspaceId));
@@ -55,6 +67,9 @@ api.interceptors.response.use(
       if (!isLoginPath && !isMePath) {
         window.location.href = "/login";
       }
+    }
+    if (error.response?.data?.code === "WORKSPACE_ACCESS_FORBIDDEN") {
+      onAccessForbidden?.();
     }
     return Promise.reject(error);
   },

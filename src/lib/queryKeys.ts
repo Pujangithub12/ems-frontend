@@ -19,7 +19,12 @@ export const queryKeys = {
 
   announcements: (wsId: number) => [...queryKeys.all(wsId), "announcements"] as const,
   leaveRequests: (wsId: number) => [...queryKeys.all(wsId), "leaveRequests"] as const,
-  activities: (wsId: number) => [...queryKeys.all(wsId), "activities"] as const,
+  siteVisitRequests: (wsId: number) => [...queryKeys.all(wsId), "siteVisitRequests"] as const,
+  expenseRequests: (wsId: number) => [...queryKeys.all(wsId), "expenseRequests"] as const,
+  activities: (wsId: number, projectId?: string | number) =>
+    projectId
+      ? ([...queryKeys.all(wsId), "activities", projectId] as const)
+      : ([...queryKeys.all(wsId), "activities"] as const),
 
   tasks: (wsId: number, scope?: "mine" | "assigned" | "completed" | "all") =>
     scope
@@ -39,4 +44,9 @@ export const queryKeys = {
 
   // Unauthenticated — no workspace context yet.
   invite: (token: string) => ["invite", token] as const,
+
+  // Spans every workspace the caller belongs to, not just the active one —
+  // deliberately not rooted at wsId (unlike everything else here), since
+  // switching the active workspace doesn't change this data at all.
+  workspaceAccessMatrix: () => ["workspaceAccessMatrix"] as const,
 };

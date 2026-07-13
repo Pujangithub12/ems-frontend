@@ -9,6 +9,7 @@ import {
   Megaphone,
   Users as UsersIcon,
   Calendar,
+  ClipboardCheck,
   LogOut,
   Menu,
   X,
@@ -23,6 +24,13 @@ import {
 
 import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
 import SidebarLink from "../components/SidebarLink";
+import { useLeaveRequests } from "../hooks/useLeaveRequests";
+import { useSiteVisitRequests } from "../hooks/useSiteVisitRequests";
+import { useExpenseRequests } from "../hooks/useExpenseRequests";
+import { useHierarchy } from "../hooks/useHierarchy";
+import { useTasks } from "../hooks/useTasks";
+import { useAnnouncements } from "../hooks/useAnnouncements";
+import { canApprove as hierarchyCanApprove } from "../lib/hierarchyAuthority";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -122,6 +130,70 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Sidebar badge counts — "pending/open items" for the caller right now,
+  // not a true unread-since-last-visit tracker (this app has no per-user
+  // read-state anywhere yet). Called unconditionally (before the loading
+  // early-return below) to keep hook order stable.
+  const { data: hierarchyPeople = [] } = useHierarchy();
+  const { data: leaveRequests = [] } = useLeaveRequests();
+  const { data: siteVisitRequests = [] } = useSiteVisitRequests();
+  const { data: expenseRequests = [] } = useExpenseRequests();
+  const { data: allTasks = [] } = useTasks();
+  const { data: allAnnouncements = [] } = useAnnouncements();
+
+  const currentUserId = user?.id ? Number(user.id) : null;
+  const currentUserRole = user?.role || "";
+
+  const approvalsBadgeCount = React.useMemo(() => {
+    if (!currentUserId) return 0;
+    const canManage = {
+      leave: currentUserRole === "admin" || currentUserRole === "super_admin",
+      sitevisit: currentUserRole === "admin" || currentUserRole === "super_admin",
+      expense:
+        currentUserRole === "admin" ||
+        currentUserRole === "super_admin" ||
+        currentUserRole === "finance",
+    };
+    const canActOn = (type: "leave" | "sitevisit" | "expense", requesterUserId?: number) => {
+      if (!canManage[type] || requesterUserId == null) return false;
+      if (type === "expense" && currentUserRole === "finance") return true;
+      if (currentUserRole === "super_admin") return true;
+      return hierarchyCanApprove(hierarchyPeople, currentUserId, currentUserRole, requesterUserId);
+    };
+
+    const pending: Array<{ type: "leave" | "sitevisit" | "expense"; userId?: number }> = [
+      ...leaveRequests
+        .filter((r) => r.status === "pending")
+        .map((r) => ({ type: "leave" as const, userId: r.user?.id })),
+      ...siteVisitRequests
+        .filter((r) => r.status === "pending")
+        .map((r) => ({ type: "sitevisit" as const, userId: r.user?.id })),
+      ...expenseRequests
+        .filter((r) => r.status === "pending")
+        .map((r) => ({ type: "expense" as const, userId: r.user?.id })),
+    ];
+
+    const actionable = pending.filter((r) => canActOn(r.type, r.userId)).length;
+    if (actionable > 0) return actionable;
+
+    // Not an approver for anyone right now — fall back to "my own requests
+    // still awaiting approval" so the badge stays meaningful for regular employees.
+    return pending.filter((r) => r.userId === currentUserId).length;
+  }, [currentUserId, currentUserRole, hierarchyPeople, leaveRequests, siteVisitRequests, expenseRequests]);
+
+  const tasksBadgeCount = React.useMemo(() => {
+    if (!currentUserId) return 0;
+    return allTasks.filter(
+      (t) => t.status !== "completed" && t.assignedUsers?.some((u) => u.id === currentUserId),
+    ).length;
+  }, [allTasks, currentUserId]);
+
+  const announcementsBadgeCount = React.useMemo(() => {
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - THREE_DAYS_MS;
+    return allAnnouncements.filter((a) => new Date(a.createdAt).getTime() >= cutoff).length;
+  }, [allAnnouncements]);
+
   if (loading || !isValidParamId) {
     return (
       <div className="fixed inset-0 flex items-center justify-center flex-col gap-4 bg-[#F6F7F9]">
@@ -148,26 +220,34 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       icon: LayoutDashboard,
       id: "overview",
     },
-    { path: `${prefix}/project`, label: "Projects", icon: Briefcase, id: "project" },
+    {
+      path: `${prefix}/project`,
+      label: "Projects",
+      icon: Briefcase,
+      id: "project",
+    },
     {
       path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
       id: "tasks",
+      badgeCount: tasksBadgeCount,
     },
     {
       path: `${prefix}/announcements`,
       label: "Announcements",
       icon: Megaphone,
       id: "announcements",
+      badgeCount: announcementsBadgeCount,
     },
     { path: `${prefix}/users`, label: "Users", icon: UsersIcon, id: "users" },
     { path: `${prefix}/calendar`, label: "Calendar", icon: Calendar, id: "calendar" },
     {
       path: `${prefix}/leaverequests`,
-      label: "Leave Requests",
-      icon: Calendar,
+      label: "Approvals",
+      icon: ClipboardCheck,
       id: "leaverequests",
+      badgeCount: approvalsBadgeCount,
     },
   ];
 
@@ -237,7 +317,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <Eyebrow>Operations</Eyebrow>
           <div className="h-1.5" />
           {navItems.map((it) => (
-            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
+            <SidebarLink
+              key={it.id}
+              to={it.path}
+              icon={it.icon}
+              label={it.label}
+              badgeCount={it.badgeCount}
+            />
           ))}
           <div className="h-3" />
           <Eyebrow>Reports</Eyebrow>
@@ -300,6 +386,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   to={it.path}
                   icon={it.icon}
                   label={it.label}
+                  badgeCount={it.badgeCount}
                   onClick={() => setIsMobileMenuOpen(false)}
                 />
               ))}

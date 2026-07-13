@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -27,6 +27,8 @@ import { useAuth } from "../context/AuthProvider";
 import { Project, ProjectTask } from "../types";
 import { flattenProjectTasks } from "./taskUtils";
 import ConfirmationModal from "../components/ConfirmationModal";
+import { useHierarchy } from "../hooks/useHierarchy";
+import { getDescendantUserIds } from "../lib/hierarchyAuthority";
 import {
   useUpdateTaskStatus,
   useCreateProjectTask,
@@ -588,6 +590,24 @@ const EditTaskModal: React.FC<{
 const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const hierarchyQuery = useHierarchy();
+
+  // Who the current user is allowed to assign a project task to: themselves,
+  // plus anyone below them in the hierarchy tree — mirrors the backend's
+  // assignment check. Super admin (the account's root) can assign to any
+  // project member.
+  const assignableMembers = useMemo(() => {
+    const members = [...(project.assignees || [])].sort((a, b) =>
+      a.fullName.localeCompare(b.fullName),
+    );
+    if (!user) return members;
+    if (user.role === "super_admin") return members;
+    const currentUserId = Number(user.id);
+    const descendantIds = new Set(
+      getDescendantUserIds(hierarchyQuery.data || [], currentUserId),
+    );
+    return members.filter((m) => m.id === currentUserId || descendantIds.has(m.id));
+  }, [project.assignees, user, hierarchyQuery.data]);
 
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [activeTask, setActiveTask] = useState<ProjectTask | null>(null);
@@ -774,9 +794,7 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
       {addTaskStatus && (
         <AddTaskModal
           status={addTaskStatus}
-          assignees={[...(project.assignees || [])].sort((a, b) =>
-            a.fullName.localeCompare(b.fullName),
-          )}
+          assignees={assignableMembers}
           onClose={() => setAddTaskStatus(null)}
           onCreate={handleCreateTask}
         />
@@ -785,9 +803,7 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
       {editTarget && (
         <EditTaskModal
           task={editTarget}
-          assignees={[...(project.assignees || [])].sort((a, b) =>
-            a.fullName.localeCompare(b.fullName),
-          )}
+          assignees={assignableMembers}
           onClose={() => setEditTarget(null)}
           onSave={handleSaveEdit}
         />

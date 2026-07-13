@@ -540,6 +540,37 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
 
   const scales = useMemo(() => SCALES[zoomLevel], [zoomLevel]);
 
+  // Drag-created dependency arrows (the connector dots on a bar's edges) fold
+  // straight into the dependent row's `predecessorId` — the same field the
+  // modal's "Predecessor ID" column and Excel's "Predecessor ID" column
+  // already feed, so `buildGanttData` treats them identically. This only
+  // updates local state; it's saved to the backend the same way any other
+  // edit is, via the existing "Save to Backend" button.
+  const handleLinkCreate = useCallback((sourceId: string, targetId: string) => {
+    setScheduleRows((rows) =>
+      rows.map((row) => {
+        if (row.id !== targetId || sourceId === targetId) return row;
+        const existing = row.predecessorId
+          ? row.predecessorId.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+        if (existing.includes(sourceId)) return row;
+        return { ...row, predecessorId: [...existing, sourceId].join(",") };
+      }),
+    );
+  }, []);
+
+  const handleLinkDelete = useCallback((sourceId: string, targetId: string) => {
+    setScheduleRows((rows) =>
+      rows.map((row) => {
+        if (row.id !== targetId) return row;
+        const existing = row.predecessorId
+          ? row.predecessorId.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+        return { ...row, predecessorId: existing.filter((id) => id !== sourceId).join(",") };
+      }),
+    );
+  }, []);
+
   const cycleZoom = (direction: 1 | -1) => {
     setZoomLevel((current) => {
       const idx = ZOOM_LEVELS.indexOf(current);
@@ -888,6 +919,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 scales={scales}
                 columns={columns}
                 showChart={viewTab === "gantt"}
+                onLinkCreate={handleLinkCreate}
+                onLinkDelete={handleLinkDelete}
               />
             </div>
           </div>

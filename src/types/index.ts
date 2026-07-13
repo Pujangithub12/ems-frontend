@@ -54,12 +54,6 @@ export type ProjectFile = {
   createdAt: string;
 };
 
-/**
- * Covers both the list view (GET /api/projects, which omits headings/files
- * and includes priority) and the detail view (GET /api/projects/:id) — most
- * fields are optional because which ones are populated depends on which
- * endpoint returned this object.
- */
 export type Project = {
   id: number;
   name: string;

@@ -25,6 +25,9 @@ export type User = {
   jobPosition?: string;
   joinDate?: string;
   createdAt?: string;
+  /** Non-null for accounts created via an accepted workspace invite — they're
+   * permanently locked to this one workspace (see backend authMiddleware). */
+  homeWorkspaceId?: number | null;
 } | null;
 
 export type Workspace = {
@@ -49,6 +52,10 @@ type AuthContextType = {
   registerVerify: (details: { email: string; otp: string }) => Promise<Workspace>;
   /** Accepts a workspace invite: sets a password, creates the account with the invite's details/role, joins the workspace, and logs it in. */
   acceptInvite: (token: string, password: string) => Promise<Workspace>;
+  /** Forgot-password step 1: emails a 6-digit OTP if the address has an account (response is generic either way). */
+  forgotPasswordStart: (email: string) => Promise<void>;
+  /** Forgot-password step 2: confirms the OTP, sets the new password, and logs the user in. */
+  forgotPasswordReset: (details: { email: string; otp: string; newPassword: string }) => Promise<void>;
   logout: () => void;
   /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
   selectWorkspace: (workspaceId: number) => Workspace | null;
@@ -212,6 +219,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return ws;
   };
 
+  const forgotPasswordStart = async (email: string) => {
+    await api.post("/api/forgot-password/start", { email });
+  };
+
+  const forgotPasswordReset = async (details: {
+    email: string;
+    otp: string;
+    newPassword: string;
+  }) => {
+    didLoginRef.current = true;
+    const res = await api.post("/api/forgot-password/reset", details);
+    const { user: u } = res.data;
+    setUser(u || null);
+    await fetchWorkspacesAndCurrent();
+    setLoading(false);
+  };
+
   const logout = async () => {
     didLoginRef.current = false;
     try {
@@ -289,6 +313,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         registerStart,
         registerVerify,
         acceptInvite,
+        forgotPasswordStart,
+        forgotPasswordReset,
         logout,
         selectWorkspace,
         createWorkspace,

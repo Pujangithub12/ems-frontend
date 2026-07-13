@@ -9,8 +9,10 @@ import { useProjects } from "../hooks/useProjects";
 import { useUsers } from "../hooks/useUsers";
 import { useTasks } from "../hooks/useTasks";
 import { useLeaveRequests } from "../hooks/useLeaveRequests";
+import { useSiteVisitRequests } from "../hooks/useSiteVisitRequests";
 import { useActivities } from "../hooks/useActivities";
 import { useDashboard } from "../hooks/useDashboard";
+import { useEvents } from "../hooks/useEvents";
 import {
   Cloud,
   Clock,
@@ -36,6 +38,8 @@ import {
   Cable,
   Sparkles,
   Wand2,
+  PartyPopper,
+  CalendarX2,
 } from "lucide-react";
 
 // ---- Types ---------------------------------------------------------------
@@ -132,19 +136,28 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 // ---- Static placeholder content --------------------------------------------
-// The sections below (Today's Schedule, Supply Chain, Team Availability,
-// Construction Progress Today, AI Insights) have no backing feature in this
-// app yet (no time-boxed calendar events, no procurement/inventory tables,
-// no attendance tracking, no construction-metric fields, no AI integration).
-// Per product decision, they're rendered here as static sample data purely
-// to match the reference design, not as live figures.
+// The sections below (Supply Chain, Team Availability, Construction Progress
+// Today, AI Insights) have no backing feature in this app yet (no
+// procurement/inventory tables, no attendance tracking, no
+// construction-metric fields, no AI integration). Per product decision,
+// they're rendered here as static sample data purely to match the reference
+// design, not as live figures. Today's Schedule (below) is real data from the
+// Calendar feature, not sample data.
 
-const MOCK_SCHEDULE = [
-  { time: "09:00", ampm: "AM", title: "Site Visit", subtitle: "Solar Plant Construction" },
-  { time: "11:30", ampm: "AM", title: "Project Review Meeting", subtitle: "Conference Room" },
-  { time: "02:00", ampm: "PM", title: "Client Meeting", subtitle: "Online Meeting" },
-  { time: "04:00", ampm: "PM", title: "Daily Progress Review", subtitle: "Team Standup" },
-];
+// Matches Calendar.tsx's EVENT_STYLES exactly, plus an icon per type, so a
+// "Deadline"/"Event"/"Holiday" reads the same way here as it does on the
+// Calendar page itself.
+const SCHEDULE_TYPE_META: Record<
+  string,
+  { label: string; fg: string; bg: string; icon: React.ElementType }
+> = {
+  event: { label: "Event", fg: "#1E3A8A", bg: "#DBEAFE", icon: CalendarDays },
+  holiday: { label: "Holiday", fg: "#B91C1C", bg: "#FEE2E2", icon: PartyPopper },
+  deadline: { label: "Deadline", fg: "#B45309", bg: "#FEF3C7", icon: Flag },
+};
+const scheduleTypeMeta = (type: string) => SCHEDULE_TYPE_META[type] || SCHEDULE_TYPE_META.event;
+// Surface the most actionable items first: deadlines, then regular events, then holidays.
+const SCHEDULE_TYPE_ORDER: Record<string, number> = { deadline: 0, event: 1, holiday: 2 };
 
 const MOCK_SUPPLY_CHAIN = [
   { group: "PROCUREMENT", label: "Orders Pending", value: 5 },
@@ -154,14 +167,7 @@ const MOCK_SUPPLY_CHAIN = [
   { group: "INVENTORY", label: "Out of Stock Items", value: 5 },
 ];
 
-const MOCK_TEAM: { label: string; count: number; pct: number; color: string }[] = [
-  { label: "Present", count: 32, pct: 67, color: "#10b981" },
-  { label: "On Leave", count: 5, pct: 10, color: "#ef4444" },
-  { label: "On Site", count: 7, pct: 15, color: "#1e3a8a" },
-  { label: "In Office", count: 3, pct: 6, color: "#f59e0b" },
-  { label: "Working Remotely", count: 1, pct: 2, color: "#94a3b8" },
-];
-const MOCK_TEAM_TOTAL = MOCK_TEAM.reduce((sum, t) => sum + t.count, 0);
+type TeamSegment = { label: string; count: number; pct: number; color: string };
 
 const MOCK_CONSTRUCTION = [
   { label: "Piles Completed", value: "18", unit: "NOS", icon: Layers },
@@ -186,7 +192,7 @@ const AI_TONE_CLASSES: Record<string, string> = {
 
 // ---- Donut chart (hand-rolled SVG, no charting dependency needed) ----------
 
-const TeamDonut: React.FC<{ segments: typeof MOCK_TEAM; total: number }> = ({ segments, total }) => {
+const TeamDonut: React.FC<{ segments: TeamSegment[]; total: number }> = ({ segments, total }) => {
   const radius = 60;
   const stroke = 18;
   const circumference = 2 * Math.PI * radius;
@@ -249,7 +255,9 @@ const Dashboard: React.FC = () => {
   // than blocking the rest of the dashboard, matching the previous
   // catch-to-empty-array behavior.
   const { data: leaveRequests = [] } = useLeaveRequests();
+  const { data: siteVisitRequests = [] } = useSiteVisitRequests();
   const { data: activities = [] } = useActivities();
+  const { data: calendarEvents = [], isLoading: eventsLoading } = useEvents();
 
   const [notifTab, setNotifTab] = useState<"notifications" | "activity">("notifications");
 
@@ -313,6 +321,58 @@ const Dashboard: React.FC = () => {
     () => leaveRequests.filter((lr) => lr.status === "pending"),
     [leaveRequests],
   );
+
+  // Present / On Leave / On Site Visit — derived from today's *approved*
+  // leave and site-visit requests (a pending request doesn't take someone
+  // off the roster yet). A person on leave and site-visited the same day
+  // (unlikely, but not impossible data-wise) counts as on leave so the three
+  // buckets never double-count someone in the "present" math below.
+  const teamAvailability = useMemo((): TeamSegment[] => {
+    const total = teamCount;
+    const today = new Date();
+
+    const onLeaveIds = new Set<number>();
+    leaveRequests.forEach((lr) => {
+      if (lr.status !== "approved" || !lr.user) return;
+      const start = new Date(lr.startDate);
+      const end = new Date(lr.endDate);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      if (today.getTime() >= start.getTime() && today.getTime() <= end.getTime()) {
+        onLeaveIds.add(lr.user.id);
+      }
+    });
+
+    const onSiteVisitIds = new Set<number>();
+    siteVisitRequests.forEach((sv) => {
+      if (sv.status !== "approved" || !sv.user) return;
+      if (isSameDay(new Date(sv.visitDate), today)) {
+        onSiteVisitIds.add(sv.user.id);
+      }
+    });
+    onLeaveIds.forEach((id) => onSiteVisitIds.delete(id));
+
+    const onLeaveCount = onLeaveIds.size;
+    const onSiteVisitCount = onSiteVisitIds.size;
+    const presentCount = Math.max(0, total - onLeaveCount - onSiteVisitCount);
+    const pct = (count: number) => (total > 0 ? Math.round((count / total) * 100) : 0);
+
+    return [
+      { label: "Present", count: presentCount, pct: pct(presentCount), color: "#10b981" },
+      { label: "On Leave", count: onLeaveCount, pct: pct(onLeaveCount), color: "#ef4444" },
+      { label: "On Site Visit", count: onSiteVisitCount, pct: pct(onSiteVisitCount), color: "#6D28D9" },
+    ];
+  }, [teamCount, leaveRequests, siteVisitRequests]);
+
+  const todaysEvents = useMemo(() => {
+    const now = new Date();
+    return calendarEvents
+      .filter((ev) => isSameDay(new Date(ev.date), now))
+      .sort((a, b) => {
+        const orderDelta = (SCHEDULE_TYPE_ORDER[a.type] ?? 1) - (SCHEDULE_TYPE_ORDER[b.type] ?? 1);
+        return orderDelta !== 0 ? orderDelta : a.title.localeCompare(b.title);
+      });
+  }, [calendarEvents]);
 
   const today = new Date();
   const hour = today.getHours();
@@ -511,7 +571,7 @@ const Dashboard: React.FC = () => {
           <div className="h-2" />
         </div>
 
-        {/* Today's Schedule (sample data — no time-boxed calendar events yet) */}
+        {/* Today's Schedule — real events/deadlines from the Calendar for today */}
         <div className="bg-white border rounded-lg border-slate-200">
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Today's Schedule</div>
@@ -523,19 +583,47 @@ const Dashboard: React.FC = () => {
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="p-5 space-y-4">
-            {MOCK_SCHEDULE.map((item, idx) => (
-              <div key={idx} className="flex gap-3">
-                <div className="flex-shrink-0 w-12 text-right">
-                  <div className="font-mono font-semibold text-[13px] text-slate-900">{item.time}</div>
-                  <div className="text-slate-400 text-[10px]">{item.ampm}</div>
+          <div className="p-5">
+            {eventsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+              </div>
+            ) : todaysEvents.length > 0 ? (
+              <div className="space-y-3">
+                {todaysEvents.map((ev) => {
+                  const meta = scheduleTypeMeta(ev.type);
+                  return (
+                    <div key={ev.id} className="flex items-center gap-3">
+                      <div
+                        className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg"
+                        style={{ background: meta.bg }}
+                      >
+                        <meta.icon className="w-4 h-4" style={{ color: meta.fg }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-[13px] text-slate-900 truncate">{ev.title}</div>
+                      </div>
+                      <span
+                        className="flex-shrink-0 text-[9.5px] uppercase tracking-[0.04em] font-semibold px-2 py-0.5 rounded-full"
+                        style={{ background: meta.bg, color: meta.fg }}
+                      >
+                        {meta.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="flex items-center justify-center w-10 h-10 mb-2.5 rounded-full bg-slate-100">
+                  <CalendarX2 className="w-5 h-5 text-slate-400" />
                 </div>
-                <div className="pl-3 border-l-2 border-blue-100">
-                  <div className="font-medium text-[13px] text-slate-900">{item.title}</div>
-                  <div className="text-slate-400 text-[12px]">{item.subtitle}</div>
+                <div className="font-medium text-[13px] text-slate-900">Nothing scheduled today</div>
+                <div className="text-slate-400 text-[12px] mt-0.5">
+                  Add an event or deadline from the calendar.
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -629,7 +717,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Team Availability (sample data — no attendance/location tracking yet) */}
+        {/* Team Availability — real counts from today's approved leave/site-visit requests */}
         <div className="bg-white border rounded-lg border-slate-200">
           <div className="flex items-center px-5 py-3 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Team Availability</div>
@@ -641,9 +729,9 @@ const Dashboard: React.FC = () => {
             </button>
           </div>
           <div className="flex items-center gap-5 p-4">
-            <TeamDonut segments={MOCK_TEAM} total={teamCount ?? MOCK_TEAM_TOTAL} />
+            <TeamDonut segments={teamAvailability} total={teamCount} />
             <div className="flex-1 space-y-1.5 min-w-0">
-              {MOCK_TEAM.map((seg) => (
+              {teamAvailability.map((seg) => (
                 <div key={seg.label} className="flex gap-2 items-center text-[12px]">
                   <span className="flex-shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
                   <span className="flex-1 truncate text-slate-600">{seg.label}</span>

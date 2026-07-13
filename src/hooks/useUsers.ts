@@ -22,9 +22,17 @@ export function useUsers() {
 }
 
 export function useInviteUser() {
+  const wsId = useWorkspaceId();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: InviteUserPayload) => inviteUser(payload),
-    // No User row exists until the invite is accepted — nothing to invalidate yet.
+    // A brand-new email creates a pending invite (no User row until accepted,
+    // so nothing to refetch). An email that already has an account elsewhere
+    // is added as a member of this workspace immediately, so refresh the list
+    // to reflect that right away.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users(wsId) });
+    },
   });
 }
 

@@ -167,8 +167,12 @@ const Users: React.FC = () => {
         await updateUserMutation.mutateAsync({ id: editingUser.id, payload });
       } else {
         delete payload.password;
-        await inviteUserMutation.mutateAsync(payload as any);
-        setInviteSentMessage(`Invitation sent to ${userForm.email}.`);
+        const result = await inviteUserMutation.mutateAsync(payload as any);
+        setInviteSentMessage(
+          result?.message === "Existing user added to workspace"
+            ? `${userForm.email} already had an account — added them to this workspace.`
+            : `Invitation sent to ${userForm.email}.`,
+        );
       }
       setShowUserForm(false);
       resetUserForm();
