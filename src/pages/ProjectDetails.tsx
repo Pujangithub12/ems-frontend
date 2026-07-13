@@ -68,7 +68,7 @@ const ProjectDetails: React.FC = () => {
   if (error || !project) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-center">
-        <div className="flex justify-center items-center mb-1 w-12 h-12 bg-red-100 rounded">
+        <div className="flex items-center justify-center w-12 h-12 mb-1 bg-red-100 rounded">
           <AlertCircle className="w-6 h-6 text-red-700" />
         </div>
         <h2 className="font-semibold text-[15px] text-slate-900">
@@ -90,7 +90,7 @@ const ProjectDetails: React.FC = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case "overview":
-        return <ProjectOverviewTab project={project} />;
+        return <ProjectOverviewTab project={project} onNavigateTab={setActiveTab} />;
       case "schedule":
         return <ProjectScheduleTab projectId={String(project.id)} />;
       case "tasks":
@@ -113,10 +113,9 @@ const ProjectDetails: React.FC = () => {
     // top bar), edge to edge in both directions.
     <div className="flex flex-col w-full min-h-[calc(100vh-4rem)] bg-white">
       {/* Header */}
-      <div className="flex flex-shrink-0 gap-4 items-center px-6 py-4 border-b border-slate-200 lg:px-8">
+      <div className="flex items-center flex-shrink-0 gap-4 px-6 py-4 border-b border-slate-200 lg:px-8">
         <div className="flex-1 min-w-0">
-          <Eyebrow>Project Details</Eyebrow>
-          <div className="flex gap-3 items-center mt-1">
+          <div className="flex items-center gap-3 mt-1">
             <h1 className="font-semibold text-[22px] tracking-tight text-slate-900 truncate">
               {project.name}
             </h1>
@@ -126,8 +125,8 @@ const ProjectDetails: React.FC = () => {
       </div>
 
       {/* Tabs & Content — fills the remaining page height */}
-      <div className="flex overflow-hidden flex-col flex-1 w-full">
-        <div className="flex overflow-x-auto gap-1 px-2 border-b border-slate-200 flex-shrink-0">
+      <div className="flex flex-col flex-1 w-full overflow-hidden">
+        <div className="flex flex-shrink-0 gap-1 px-2 overflow-x-auto border-b border-slate-200">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -147,7 +146,7 @@ const ProjectDetails: React.FC = () => {
             );
           })}
         </div>
-        <div className="overflow-auto flex-1 p-6">{renderTabContent()}</div>
+        <div className="flex-1 p-6 overflow-auto">{renderTabContent()}</div>
       </div>
     </div>
   );

@@ -28,9 +28,16 @@ export async function getUsers(): Promise<User[]> {
   return res.data;
 }
 
-/** POST /api/users/invite — sends a workspace invite, no account is created yet. */
-export async function inviteUser(payload: InviteUserPayload): Promise<void> {
-  await api.post("/api/users/invite", payload);
+/**
+ * POST /api/users/invite — sends a workspace invite for a brand-new email
+ * (no account created yet), or, if the email already has an account from
+ * another workspace, immediately adds that existing account as a member here
+ * instead. Returns the backend's message so the caller can show which one
+ * happened.
+ */
+export async function inviteUser(payload: InviteUserPayload): Promise<{ message: string }> {
+  const res = await api.post("/api/users/invite", payload);
+  return res.data;
 }
 
 /** PUT /api/users/:id — partial update, shared by the full-edit form and the single-field role picker. */

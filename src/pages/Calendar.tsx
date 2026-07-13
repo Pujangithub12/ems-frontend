@@ -424,7 +424,7 @@ const DayModal: React.FC<{
                     {isAdmin && (
                       <button
                         onClick={() => onDeleteRequest(ev.id)}
-                        className="flex-shrink-0 p-1 rounded text-slate-400 hover:text-red-700 hover:bg-red-50 transition-colors"
+                        className="flex-shrink-0 p-1 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -458,7 +458,7 @@ const DayModal: React.FC<{
                         key={id}
                         type="button"
                         onClick={() => setType(id)}
-                        className="rounded-full border font-medium transition-colors"
+                        className="font-medium transition-colors border rounded-full"
                         style={{
                           padding: "4px 11px",
                           fontSize: 11.5,
@@ -698,21 +698,6 @@ const CalendarPage: React.FC = () => {
         </div>
       </div>
 
-      <div
-        className="flex items-start gap-3 p-4 mt-5 rounded-md"
-        style={{ background: "#C6000908", borderLeft: `3px solid ${RED}` }}
-      >
-        <CalendarIcon className="flex-shrink-0 w-4 h-4 mt-0.5" style={{ color: RED }} />
-        <p className="text-[12px] leading-relaxed text-slate-600">
-          This calendar runs on the Bikram Sambat (B.S.) system used in Nepal — the grid itself is
-          the Nepali month, with the Gregorian date shown as a small reference in the corner of each
-          day. Saturdays are marked in red, matching the standard Nepali work week. Public holidays
-          and festivals (Dashain, Tihar, Maha Shivaratri, and other tithi-based observances) are
-          highlighted the same way, computed directly from the lunar tithi for any year. Fixed-date
-          national holidays (e.g. Constitution Day, Nepali New Year) aren't tithi-based, so they
-          aren't shown automatically — add them manually if needed.
-        </p>
-      </div>
 
       {selectedDay && (
         <DayModal

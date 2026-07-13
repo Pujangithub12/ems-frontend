@@ -49,3 +49,33 @@ export async function deleteWorkspace(
   });
   return res.data.workspace ?? null;
 }
+
+export type WorkspaceAccessEmployee = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: string;
+  /** Ids (from the returned `workspaces` list) this employee currently has access to. */
+  workspaceIds: number[];
+};
+
+export type WorkspaceAccessMatrix = {
+  workspaces: { id: number; name: string }[];
+  employees: WorkspaceAccessEmployee[];
+};
+
+/** GET /api/workspaces/access-matrix — every workspace the caller belongs to, plus every distinct member across them. */
+export async function getWorkspaceAccessMatrix(): Promise<WorkspaceAccessMatrix> {
+  const res = await api.get("/api/workspaces/access-matrix");
+  return res.data;
+}
+
+/** PUT /api/workspaces/:workspaceId/members/:userId — grants an existing employee access to one of the caller's own workspaces. */
+export async function grantWorkspaceAccess(workspaceId: number, userId: number): Promise<void> {
+  await api.put(`/api/workspaces/${workspaceId}/members/${userId}`);
+}
+
+/** DELETE /api/workspaces/:workspaceId/members/:userId — revokes an employee's access to one of the caller's own workspaces. */
+export async function revokeWorkspaceAccess(workspaceId: number, userId: number): Promise<void> {
+  await api.delete(`/api/workspaces/${workspaceId}/members/${userId}`);
+}

@@ -53,21 +53,6 @@ const getStatusMeta = (status: string) => {
   return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
 };
 
-const getDueMeta = (dueDate: string, status: string) => {
-  const due = new Date(new Date(dueDate).toDateString()).getTime();
-  const today = new Date(new Date().toDateString()).getTime();
-  const diffDays = Math.round((due - today) / 86400000);
-  if (status === "completed") return { label: "Completed", bg: "#DCFCE7", fg: "#15803D" };
-  if (diffDays < 0)
-    return {
-      label: `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} overdue`,
-      bg: "#FEE2E2",
-      fg: "#B91C1C",
-    };
-  if (diffDays === 0) return { label: "Due today", bg: "#FEF3C7", fg: "#B45309" };
-  return { label: `In ${diffDays} day${diffDays === 1 ? "" : "s"}`, bg: "#DBEAFE", fg: "#1E3A8A" };
-};
-
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = "",
@@ -417,18 +402,16 @@ const CompletedTasks: React.FC = () => {
           const t = completedTasks.find((task) => task.id === expandedTaskId);
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
-          const dueMeta = getDueMeta(t.dueDate, t.status);
-          const StatusIcon = statusMeta.Icon;
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
-              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
-                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
+              <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-100 shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50">
+                    <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100/60">
                       <ClipboardList className="w-3.5 h-3.5 text-blue-900" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-[15px] text-slate-900 truncate">
+                      <h3 className="font-semibold text-[16px] text-slate-900 truncate">
                         {t.title}
                       </h3>
                       <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-0.5 truncate">
@@ -436,7 +419,10 @@ const CompletedTasks: React.FC = () => {
                           {t.project?.name || t.projectName || "No Project"}
                         </span>
                         <span>·</span>
-                        <span>Due {formatLongDate(t.dueDate)}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-50 text-red-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                          Due {formatLongDate(t.dueDate)}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -456,16 +442,16 @@ const CompletedTasks: React.FC = () => {
                         setExpandedTaskId(null);
                         setShowAllMembers(false);
                       }}
-                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <div className="flex-1 p-5 space-y-3 overflow-y-auto">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                      <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="p-2.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
+                      <div className="flex items-center gap-2 mb-1.5">
                         <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
                           <Folder className="w-3.5 h-3.5 text-blue-900" />
                         </div>
@@ -475,51 +461,27 @@ const CompletedTasks: React.FC = () => {
                         {t.project?.name || t.projectName || "No Project"}
                       </p>
                     </div>
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
-                          <Calendar className="w-3.5 h-3.5 text-blue-900" />
-                        </div>
-                        <Eyebrow>Due Date</Eyebrow>
-                      </div>
-                      <p className="font-semibold text-[13px] text-slate-900">
-                        {formatLongDate(t.dueDate)}
-                      </p>
-                      <span
-                        className="inline-flex items-center gap-1.5 mt-2 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                        style={{ background: dueMeta.bg, color: dueMeta.fg }}
-                      >
-                        {dueMeta.label}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                      <div className="flex items-center gap-2 mb-2">
+                    <div className="p-2.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
+                      <div className="flex items-center gap-2 mb-1.5">
                         <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
                           <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
                         </div>
                         <Eyebrow>Progress</Eyebrow>
                       </div>
-                      <span className="font-semibold text-[18px] tracking-tight text-slate-900">
+                      <span className="font-semibold text-[15px] tracking-tight text-slate-900">
                         {t.progress}%
                       </span>
-                      <div className="w-full h-1.5 mt-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="w-full h-1.5 mt-1.5 overflow-hidden rounded-full bg-slate-100">
                         <div
                           className="h-full rounded-full"
                           style={{ width: `${t.progress}%`, background: statusMeta.fg }}
                         />
                       </div>
-                      <div
-                        className="flex items-center gap-1.5 mt-2 text-[11px] font-medium"
-                        style={{ color: statusMeta.fg }}
-                      >
-                        <StatusIcon className="w-3.5 h-3.5" />
-                        {statusMeta.label}
-                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                  <div className="space-y-3">
+                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
                       <div className="flex items-center gap-2 mb-2">
                         <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Description</Eyebrow>
@@ -528,7 +490,7 @@ const CompletedTasks: React.FC = () => {
                         {t.description || "No description provided."}
                       </p>
                     </div>
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
                       <div className="flex items-center gap-2 mb-2">
                         <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Assigned To</Eyebrow>
@@ -539,7 +501,10 @@ const CompletedTasks: React.FC = () => {
                         ) : (
                           <>
                             {t.assignedUsers.slice(0, 2).map((u) => (
-                              <div key={u.id} className="flex items-center gap-2">
+                              <div
+                                key={u.id}
+                                className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                              >
                                 <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
                                   {u.fullName.charAt(0)}
                                 </div>
@@ -572,7 +537,7 @@ const CompletedTasks: React.FC = () => {
                   </div>
 
                   {t.subTasks && t.subTasks.length > 0 && (
-                    <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
+                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
                       <div className="flex items-center gap-2 mb-2">
                         <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Sub-Tasks</Eyebrow>
@@ -581,7 +546,7 @@ const CompletedTasks: React.FC = () => {
                         {t.subTasks.map((st) => (
                           <div
                             key={st.id}
-                            className="flex items-center gap-2 px-2 py-1.5 rounded bg-slate-50"
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50"
                           >
                             <CheckCircle2
                               className={`w-3.5 h-3.5 flex-shrink-0 ${
@@ -613,8 +578,8 @@ const CompletedTasks: React.FC = () => {
           const t = completedTasks.find((task) => task.id === expandedTaskId);
           if (!t) return null;
           return (
-            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
-              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
+              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-2xl shadow-2xl border-slate-100 max-h-[80vh]">
                 <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
                   <Eyebrow>Assigned Members ({t.assignedUsers.length})</Eyebrow>
                   <button
