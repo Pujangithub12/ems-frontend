@@ -10,7 +10,6 @@ import { useUsers } from "../hooks/useUsers";
 import { useTasks } from "../hooks/useTasks";
 import { useLeaveRequests } from "../hooks/useLeaveRequests";
 import { useSiteVisitRequests } from "../hooks/useSiteVisitRequests";
-import { useActivities } from "../hooks/useActivities";
 import { useDashboard } from "../hooks/useDashboard";
 import { useEvents } from "../hooks/useEvents";
 import {
@@ -26,16 +25,7 @@ import {
   Loader2,
   ArrowRight,
   Bell,
-  Activity as ActivityIcon,
-  Package,
-  Truck,
-  PackageX,
-  PackageSearch,
-  Boxes,
-  Warehouse,
   Users as UsersIcon,
-  Layers,
-  Cable,
   Sparkles,
   Wand2,
   PartyPopper,
@@ -159,36 +149,19 @@ const scheduleTypeMeta = (type: string) => SCHEDULE_TYPE_META[type] || SCHEDULE_
 // Surface the most actionable items first: deadlines, then regular events, then holidays.
 const SCHEDULE_TYPE_ORDER: Record<string, number> = { deadline: 0, event: 1, holiday: 2 };
 
-const MOCK_SUPPLY_CHAIN = [
-  { group: "PROCUREMENT", label: "Orders Pending", value: 5 },
-  { group: "PROCUREMENT", label: "Materials in Transit", value: 8 },
-  { group: "PROCUREMENT", label: "Delayed Deliveries", value: 3 },
-  { group: "INVENTORY", label: "Low Stock Items", value: 12 },
-  { group: "INVENTORY", label: "Out of Stock Items", value: 5 },
-];
-
 type TeamSegment = { label: string; count: number; pct: number; color: string };
 
-const MOCK_CONSTRUCTION = [
-  { label: "Piles Completed", value: "18", unit: "NOS", icon: Layers },
-  { label: "Structures Installed", value: "24", unit: "NOS", icon: Building2 },
-  { label: "Modules Installed", value: "420", unit: "NOS", icon: Package },
-  { label: "Cable Laid", value: "850", unit: "M", icon: Cable },
-  { label: "Concrete Poured", value: "12", unit: "M³", icon: Boxes },
-];
+// ---- Coming soon placeholder (Supply Chain / Construction Progress / AI
+// Insights all depend on data this app doesn't track yet) -------------------
 
-const MOCK_AI_INSIGHTS = [
-  { tone: "red", icon: AlertTriangle, text: "3 critical tasks are overdue by more than 5 days" },
-  { tone: "amber", icon: Clock, text: "Project Hydro Power is 5 days behind schedule" },
-  { tone: "amber", icon: Clock, text: "Cable stock is sufficient for only 1 more week" },
-  { tone: "amber", icon: Clock, text: "2 approvals have been pending for more than 48 hours" },
-  { tone: "green", icon: CheckCircle2, text: "Great job! 21 tasks completed this week" },
-];
-const AI_TONE_CLASSES: Record<string, string> = {
-  red: "bg-red-50 text-red-700",
-  amber: "bg-amber-50 text-amber-700",
-  green: "bg-emerald-50 text-emerald-700",
-};
+const ComingSoon: React.FC<{ className?: string }> = ({ className = "py-10" }) => (
+  <div className={`flex flex-col items-center justify-center text-center ${className}`}>
+    <div className="flex items-center justify-center w-10 h-10 mb-2 rounded-lg bg-slate-100">
+      <Wand2 className="w-4.5 h-4.5 text-slate-400" />
+    </div>
+    <div className="text-slate-400 text-[13px] font-medium">Coming soon</div>
+  </div>
+);
 
 // ---- Donut chart (hand-rolled SVG, no charting dependency needed) ----------
 
@@ -256,10 +229,7 @@ const Dashboard: React.FC = () => {
   // catch-to-empty-array behavior.
   const { data: leaveRequests = [] } = useLeaveRequests();
   const { data: siteVisitRequests = [] } = useSiteVisitRequests();
-  const { data: activities = [] } = useActivities();
   const { data: calendarEvents = [], isLoading: eventsLoading } = useEvents();
-
-  const [notifTab, setNotifTab] = useState<"notifications" | "activity">("notifications");
 
   const [now, setNow] = useState(new Date());
 
@@ -631,90 +601,44 @@ const Dashboard: React.FC = () => {
       {/* Notifications/Activity + Supply Chain + Team Availability */}
       <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-3">
         <div className="bg-white border rounded-lg border-slate-200">
-          <div className="flex items-center gap-5 px-5 pt-3 border-b border-slate-200">
-            <button
-              onClick={() => setNotifTab("notifications")}
-              className={`pb-3 text-[13px] font-medium border-b-2 transition-colors ${
-                notifTab === "notifications" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              Notifications
-            </button>
-            <button
-              onClick={() => setNotifTab("activity")}
-              className={`pb-3 text-[13px] font-medium border-b-2 transition-colors ${
-                notifTab === "activity" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              Recent Activity
-            </button>
+          <div className="flex items-center px-5 pt-3 pb-3 border-b border-slate-200">
+            <div className="text-[13px] font-medium text-slate-900">Notifications</div>
             <button
               onClick={() => navigate(`/${workspace?.id}/activities`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto mb-3 text-[12px] font-medium text-blue-900 hover:text-blue-700"
+              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View All
             </button>
           </div>
           <div className="p-4 space-y-3 max-h-[200px] overflow-y-auto">
-            {notifTab === "notifications" ? (
-              pendingLeaveRequests.length > 0 ? (
-                pendingLeaveRequests.slice(0, 6).map((lr) => (
-                  <div key={lr.id} className="flex gap-2.5 items-start">
-                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-[13px] text-slate-700">
-                        <span className="font-semibold text-slate-900">Leave request from {lr.user?.fullName || "a team member"}</span>{" "}
-                        needs your approval
-                      </div>
-                      <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(lr.createdAt)}</div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex gap-2.5 items-start">
-                  <Bell className="mt-0.5 w-4 h-4 text-slate-300 flex-shrink-0" />
-                  <div className="text-slate-400 text-[13px]">Nothing needs your attention right now.</div>
-                </div>
-              )
-            ) : activities.length > 0 ? (
-              activities.slice(0, 6).map((a) => (
-                <div key={a.id} className="flex gap-2.5 items-start">
-                  <ActivityIcon className="mt-0.5 w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            {pendingLeaveRequests.length > 0 ? (
+              pendingLeaveRequests.slice(0, 6).map((lr) => (
+                <div key={lr.id} className="flex gap-2.5 items-start">
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-[13px] text-slate-700">{a.description}</div>
-                    <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(a.createdAt)}</div>
+                    <div className="text-[13px] text-slate-700">
+                      <span className="font-semibold text-slate-900">Leave request from {lr.user?.fullName || "a team member"}</span>{" "}
+                      needs your approval
+                    </div>
+                    <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(lr.createdAt)}</div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-slate-400 text-[13px]">No recent activity yet.</div>
+              <div className="flex gap-2.5 items-start">
+                <Bell className="mt-0.5 w-4 h-4 text-slate-300 flex-shrink-0" />
+                <div className="text-slate-400 text-[13px]">Nothing needs your attention right now.</div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Supply Chain (sample data — procurement/inventory tracking isn't built yet) */}
+        {/* Supply Chain — procurement/inventory tracking isn't built yet */}
         <div className="bg-white border rounded-lg border-slate-200">
           <div className="flex items-center px-5 py-3 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Supply Chain</div>
-            <span className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900">
-              View All
-            </span>
           </div>
-          <div className="divide-y divide-slate-100">
-            {MOCK_SUPPLY_CHAIN.map((row) => (
-              <div key={row.label} className="flex items-center gap-3 px-5 py-2">
-                <span
-                  className="font-mono text-[9px] tracking-[0.08em] uppercase text-slate-400 w-24 flex-shrink-0"
-                >
-                  {row.group}
-                </span>
-                <span className="flex-1 text-[13px] text-slate-700">{row.label}</span>
-                <span className="flex items-center justify-center min-w-[26px] h-6 px-1.5 rounded-full bg-amber-50 text-amber-700 text-[12px] font-semibold">
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
+          <ComingSoon />
         </div>
 
         {/* Team Availability — real counts from today's approved leave/site-visit requests */}
@@ -746,7 +670,7 @@ const Dashboard: React.FC = () => {
 
       {/* Construction Progress Today + AI Insights */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Sample data — no construction-metric fields exist on Project/Task yet */}
+        {/* No construction-metric fields exist on Project/Task yet */}
         <div className="bg-white border rounded-lg lg:col-span-3 border-slate-200">
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Construction Progress Today</div>
@@ -758,21 +682,10 @@ const Dashboard: React.FC = () => {
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-5">
-            {MOCK_CONSTRUCTION.map((item) => (
-              <div key={item.label} className="text-center">
-                <div className="flex items-center justify-center w-10 h-10 mx-auto mb-2 rounded-lg bg-blue-50">
-                  <item.icon className="w-4.5 h-4.5 text-blue-700" />
-                </div>
-                <div className="font-bold text-[20px] text-slate-900 tracking-tight">{item.value}</div>
-                <div className="text-slate-400 text-[10px] tracking-wide">{item.unit}</div>
-                <div className="text-slate-500 text-[11px] mt-1">{item.label}</div>
-              </div>
-            ))}
-          </div>
+          <ComingSoon />
         </div>
 
-        {/* AI Insights (sample data — no AI feature is wired up yet) */}
+        {/* AI Insights — no AI feature is wired up yet */}
         <div className="bg-white border rounded-lg lg:col-span-2 border-slate-200">
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">AI Insights</div>
@@ -781,17 +694,7 @@ const Dashboard: React.FC = () => {
               Powered by AI
             </span>
           </div>
-          <div className="p-4 space-y-2">
-            {MOCK_AI_INSIGHTS.map((insight, idx) => (
-              <div
-                key={idx}
-                className={`flex gap-2.5 items-center px-3 py-2.5 rounded-md text-[12.5px] ${AI_TONE_CLASSES[insight.tone]}`}
-              >
-                <insight.icon className="flex-shrink-0 w-4 h-4" />
-                {insight.text}
-              </div>
-            ))}
-          </div>
+          <ComingSoon />
         </div>
       </div>
     </div>

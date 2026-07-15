@@ -167,8 +167,8 @@ const MonthGrid: React.FC<{
       <div className="flex items-baseline justify-between px-5 py-3 bg-white border-b border-slate-200">
         <div className="flex items-baseline gap-3">
           <span
-            className="font-bold text-[21px]"
-            style={{ color: RED, fontFamily: "'Noto Sans Devanagari', system-ui, sans-serif" }}
+            className="font-bold text-[21px] font-nepali"
+            style={{ color: RED }}
           >
             {new NepaliDate(y, m, 1).format("MMMM", "np")} {new NepaliDate(y, m, 1).format("YYYY", "np")}
           </span>
@@ -189,10 +189,9 @@ const MonthGrid: React.FC<{
             style={{ background: i === 6 ? "#C6000910" : "#EEF1F5" }}
           >
             <div
-              className="font-semibold text-[12.5px]"
+              className="font-semibold text-[12.5px] font-nepali"
               style={{
                 color: i === 6 ? RED : "#0f172a",
-                fontFamily: "'Noto Sans Devanagari', system-ui, sans-serif",
               }}
             >
               {w.short}
@@ -265,11 +264,10 @@ const MonthGrid: React.FC<{
               </div>
               <div className="flex justify-center mt-1.5 mb-1">
                 <span
-                  className={`font-bold flex items-center justify-center ${
+                  className={`font-bold flex items-center justify-center font-nepali ${
                     todayCell ? "rounded-full text-white" : ""
                   }`}
                   style={{
-                    fontFamily: "'Noto Sans Devanagari', system-ui, sans-serif",
                     fontSize: todayCell ? 17 : 21,
                     lineHeight: 1,
                     width: todayCell ? 34 : "auto",
@@ -365,8 +363,8 @@ const DayModal: React.FC<{
         >
           <div>
             <div
-              className="font-bold text-[16px]"
-              style={{ color: RED, fontFamily: "'Noto Sans Devanagari', system-ui, sans-serif" }}
+              className="font-bold text-[16px] font-nepali"
+              style={{ color: RED }}
             >
               {bsDate.format("ddd, D MMMM YYYY", "np")}
             </div>
@@ -598,8 +596,8 @@ const CalendarPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <p className="text-slate-500 text-[13px]">
           <span
-            className="font-semibold"
-            style={{ color: RED, fontFamily: "'Noto Sans Devanagari', system-ui, sans-serif" }}
+            className="font-semibold font-nepali"
+            style={{ color: RED }}
           >
             Today: {todayBs.format("D MMMM, YYYY", "np")}
           </span>

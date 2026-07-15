@@ -16,8 +16,15 @@ export function useWorkspaceAccessMatrix() {
 export function useGrantWorkspaceAccess() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ workspaceId, userId }: { workspaceId: number; userId: number }) =>
-      grantWorkspaceAccess(workspaceId, userId),
+    mutationFn: ({
+      workspaceId,
+      userId,
+      role,
+    }: {
+      workspaceId: number;
+      userId: number;
+      role: string;
+    }) => grantWorkspaceAccess(workspaceId, userId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaceAccessMatrix() });
     },

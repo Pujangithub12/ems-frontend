@@ -111,13 +111,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fetchWorkspacesAndCurrent = async () => {
     try {
-      const [validWorkspaces, current] = await Promise.all([
+      // Also re-fetch /api/me here: login/registerVerify/acceptInvite/
+      // forgotPasswordReset no longer return `role` on their own response
+      // (role only makes sense once a workspace is resolved, which happens
+      // inside authMiddleware — the same place /api/me runs through). This
+      // is what keeps user.role accurate after those actions.
+      const [validWorkspaces, current, meRes] = await Promise.all([
         getWorkspaces(),
         getCurrentWorkspace(),
+        api.get("/api/me"),
       ]);
       setWorkspaces(validWorkspaces);
       setWorkspace(current);
       setActiveWorkspaceId(current?.id ?? null);
+      setUser(meRes.data.user ?? null);
     } catch (err) {
       console.error("Failed to fetch workspaces", err);
     }
@@ -259,9 +266,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setWorkspace(target);
     setActiveWorkspaceId(target.id);
-    switchWorkspace(target.id).catch((err) => {
-      console.error("Failed to persist workspace switch", err);
-    });
+    // Role is scoped per workspace now, so switching workspaces can change
+    // it — re-fetch /api/me (it'll pick up the new X-Workspace-Id header,
+    // set just above) and refresh the stored role. Without this, role-gated
+    // UI would keep showing the previous workspace's role until a reload.
+    switchWorkspace(target.id)
+      .then(() => api.get("/api/me"))
+      .then((res) => setUser(res.data.user ?? null))
+      .catch((err) => {
+        console.error("Failed to persist workspace switch", err);
+      });
 
     return target;
   };

@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Check, Plus, Loader2 } from "lucide-react";
+import { X, Check, Plus, Loader2, Search } from "lucide-react";
 import { useAuth, Workspace } from "../context/AuthProvider";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -29,8 +29,24 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
   const [newWorkspaceDescription, setNewWorkspaceDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [switchingId, setSwitchingId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
   const { workspace, workspaces, createWorkspace } = useAuth();
+
+  const sortedWorkspaces = useMemo(
+    () =>
+      workspaces
+        .filter((w): w is Workspace => w !== null && w !== undefined)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [workspaces],
+  );
+
+  const filteredWorkspaces = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return sortedWorkspaces;
+    return sortedWorkspaces.filter((w) => w.name.toLowerCase().includes(q));
+  }, [sortedWorkspaces, searchTerm]);
 
   if (!isOpen) return null;
 
@@ -39,6 +55,7 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
     setNewWorkspaceName("");
     setNewWorkspaceDescription("");
     setSwitchingId(null);
+    setSearchTerm("");
     onClose();
   };
 
@@ -93,10 +110,26 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
 
         {!showCreateForm ? (
           <>
+            <div className="px-3 pt-3">
+              <div className="relative">
+                <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search workspaces..."
+                  autoFocus
+                  className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                />
+              </div>
+            </div>
             <div className="p-3 space-y-1 max-h-[50vh] overflow-y-auto">
-              {workspaces
-                .filter((w): w is Workspace => w !== null && w !== undefined)
-                .map((ws) => {
+              {filteredWorkspaces.length === 0 ? (
+                <p className="py-6 text-center text-slate-400 text-[12.5px]">
+                  No workspaces match "{searchTerm}".
+                </p>
+              ) : (
+                filteredWorkspaces.map((ws) => {
                   const isCurrent = workspace?.id === ws.id;
                   const isSwitchingTo = switchingId === ws.id;
                   const disabled = switchingId !== null;
@@ -135,7 +168,8 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                       )}
                     </button>
                   );
-                })}
+                })
+              )}
             </div>
             <div className="p-3 border-t border-slate-200">
               <button

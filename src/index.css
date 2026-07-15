@@ -24,6 +24,25 @@
   }
 }
 
+/*
+ * Roboto everywhere. Unlayered (not @layer) so it beats Tailwind's layered
+ * base/components/utilities regardless of selector specificity, overriding
+ * the per-component inline font-family styles (Space Grotesk headings,
+ * JetBrains/IBM Plex Mono labels) sprinkled throughout the app.
+ *
+ * Nepali-script text is the one deliberate exception: Roboto has no
+ * Devanagari glyphs, so anything rendering Nepali text uses the
+ * `font-nepali` class instead of an inline style, and its higher-specificity
+ * !important rule below wins over the universal override.
+ */
+* {
+  font-family: 'Roboto', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.font-nepali {
+  font-family: 'Noto Sans Devanagari', system-ui, sans-serif !important;
+}
+
 @layer components {
   .animate-shake {
     animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;

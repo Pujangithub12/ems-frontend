@@ -292,7 +292,7 @@ const Approvals: React.FC = () => {
   return (
     <div className="flex flex-col min-h-0 overflow-hidden bg-white border rounded-md border-slate-200">
       {/* Tab Bar */}
-      <div className="flex items-end flex-shrink-0 gap-1 px-6 pt-3 overflow-x-auto border-b border-slate-200">
+      <div className="flex items-end flex-shrink-0 gap-1 px-6 pt-3 overflow-x-auto no-scrollbar border-b border-slate-200">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
