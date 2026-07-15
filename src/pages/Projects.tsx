@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import {
@@ -14,6 +14,7 @@ import {
   Calendar,
   Users as UsersIcon,
   TrendingUp,
+  MoreVertical,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import ErrorBanner from "../components/ErrorBanner";
@@ -73,7 +74,7 @@ const StatusPill: React.FC<{ status: string }> = ({ status }) => {
 const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, workspace } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const {
     data: projects = [],
@@ -96,6 +97,19 @@ const ProjectsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<number | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const cardMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (openMenuId === null) return;
+    const handler = (e: MouseEvent) => {
+      if (cardMenuRef.current && !cardMenuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenuId]);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -275,163 +289,179 @@ const ProjectsPage: React.FC = () => {
         />
       )}
 
-      {/* List */}
+      {/* Grid */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="h-[100px] bg-white border border-slate-200 rounded-md animate-pulse"
+              className="bg-white border border-slate-200 rounded-lg aspect-square max-w-[250px] mx-auto animate-pulse"
             />
           ))}
         </div>
       ) : filteredProjects.length > 0 ? (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filteredProjects.map((project) => {
             const iconStyle =
               PROJECT_ICON_STYLES[project.status] || PROJECT_ICON_STYLES.pending;
             return (
-            <button
+            <div
               key={project.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
-              className="block w-full p-5 text-left bg-white border rounded-lg cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md transition-shadow group"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate(`/${workspace?.id}/project/${project.id}/details`);
+                }
+              }}
+              className="relative flex flex-col w-full max-w-[250px] mx-auto p-3.5 text-left bg-white border rounded-lg cursor-pointer aspect-square border-slate-200 hover:border-blue-300 hover:shadow-md transition-shadow group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
-              <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_180px_160px_180px_auto] gap-5 items-center">
-                {/* Icon badge */}
+              {/* 3-dot menu (Admin Only) */}
+              {isAdmin && (
+                <div className="absolute z-10 top-2.5 right-2.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuId((id) => (id === project.id ? null : project.id));
+                    }}
+                    className={`flex-shrink-0 flex items-center justify-center w-6 h-6 transition-colors rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 ${
+                      openMenuId === project.id ? "opacity-100 bg-slate-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                    title="Project options"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                  {openMenuId === project.id && (
+                    <div
+                      ref={cardMenuRef}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 z-20 mt-1 overflow-hidden bg-white border rounded-md shadow-lg w-28 border-slate-200"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          handleEditClick(project);
+                        }}
+                        className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left transition-colors text-slate-700 hover:bg-slate-50"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          deleteProject(project.id);
+                        }}
+                        disabled={deletingProjectId === project.id}
+                        className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingProjectId === project.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Header: icon + status */}
+              <div className="flex items-center justify-between flex-shrink-0 gap-2 pr-6">
                 <div
-                  className={`hidden md:flex items-center justify-center w-11 h-11 rounded-lg flex-shrink-0 ${iconStyle.bg}`}
+                  className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${iconStyle.bg}`}
                 >
-                  <FolderKanban className={`w-5 h-5 ${iconStyle.text}`} />
+                  <FolderKanban className={`w-4 h-4 ${iconStyle.text}`} />
                 </div>
+                <StatusPill status={project.status} />
+              </div>
 
-                {/* Col 1: Name & Meta */}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <h3 className="font-semibold text-[17px] tracking-tight text-slate-900 truncate">
-                      {project.name}
-                    </h3>
-                    <StatusPill status={project.status} />
-                  </div>
-                  <p className="text-slate-500 text-[12px] line-clamp-1">
-                    {project.description || "No description provided."}
-                  </p>
-                </div>
+              {/* Name & description */}
+              <div className="flex-shrink-0 mt-2.5 min-w-0">
+                <h3 className="font-semibold text-[13.5px] tracking-tight text-slate-900 truncate">
+                  {project.name}
+                </h3>
+                <p className="mt-1 text-slate-500 text-[11px] line-clamp-2">
+                  {project.description || "No description provided."}
+                </p>
+              </div>
 
-                {/* Col 2: Progress */}
-                <div>
+              {/* Spacer pushes footer content down for a consistent square layout */}
+              <div className="flex-1 min-h-2" />
+
+              {/* Progress */}
+              <div className="flex-shrink-0">
+                <div className="flex items-baseline justify-between">
                   <Eyebrow className="flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" /> Progress
                   </Eyebrow>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <div className="font-semibold text-[22px] text-blue-900 tracking-tight leading-none">
-                      {project.progress || 0}
-                    </div>
-                    <div
-                      className="text-slate-400 text-[11px]"
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      % complete
-                    </div>
-                  </div>
-                  <div className="h-1.5 rounded-full mt-2 bg-slate-100 w-full max-w-[180px]">
-                    <div
-                      className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
-                      style={{ width: `${project.progress || 0}%` }}
-                    ></div>
+                  <div className="font-semibold text-[13px] text-blue-900 tracking-tight leading-none">
+                    {project.progress || 0}%
                   </div>
                 </div>
+                <div className="h-1.5 rounded-full mt-1.5 bg-slate-100 w-full">
+                  <div
+                    className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
+                    style={{ width: `${project.progress || 0}%` }}
+                  ></div>
+                </div>
+              </div>
 
-                {/* Col 3: Deadline & Tasks */}
-                <div>
-                  <Eyebrow className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Deadline
-                  </Eyebrow>
-                  <div className="font-medium mt-1 text-slate-900 text-[13px]">
+              {/* Deadline & tasks */}
+              <div className="flex items-center justify-between flex-shrink-0 mt-2 text-[10.5px]">
+                <div className="flex items-center gap-1 text-slate-500 min-w-0">
+                  <Calendar className="flex-shrink-0 w-3 h-3" />
+                  <span className="truncate">
                     {project.dueDate
                       ? new Date(project.dueDate).toLocaleDateString(
                           undefined,
                           { month: "short", day: "numeric", year: "numeric" },
                         )
                       : "No date"}
-                  </div>
-                  <div className="text-slate-500 mt-0.5 text-[11px]">
-                    {project.tasksCount || 0} tasks assigned
-                  </div>
+                  </span>
                 </div>
-
-                {/* Col 4: Team */}
-                <div>
-                  <Eyebrow className="flex items-center gap-1">
-                    <UsersIcon className="w-3 h-3" /> Team Members
-                  </Eyebrow>
-                  {project.assignees && project.assignees.length > 0 ? (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="flex flex-shrink-0 -space-x-2">
-                        {project.assignees.slice(0, 3).map((u) => (
-                          <div
-                            key={u.id}
-                            className="w-7 h-7 rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[10px] font-semibold"
-                          >
-                            {u.fullName.charAt(0)}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-medium truncate text-[12px] text-slate-900">
-                          {project.assignees
-                            .slice(0, 2)
-                            .map((u) => u.fullName.split(" ")[0])
-                            .join(", ")}
-                          {project.assignees.length > 2 &&
-                            ` +${project.assignees.length - 2}`}
-                        </div>
-                        <div className="text-slate-500 truncate text-[10px] capitalize">
-                          {project.priority} priority
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-slate-400 text-[12px] mt-1.5">
-                      Unassigned
-                    </div>
-                  )}
+                <div className="flex-shrink-0 ml-2 text-slate-400">
+                  {project.tasksCount || 0} tasks
                 </div>
+              </div>
 
-                {/* Col 5: Actions (Admin Only) */}
-                {isAdmin && (
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditClick(project);
-                      }}
-                      className="flex-shrink-0 p-2 transition-colors rounded opacity-0 text-slate-400 hover:text-blue-700 hover:bg-blue-50 group-hover:opacity-100"
-                      title="Edit Project"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteProject(project.id);
-                      }}
-                      disabled={deletingProjectId === project.id}
-                      className="flex-shrink-0 p-2 transition-colors rounded opacity-0 text-slate-400 hover:text-red-700 hover:bg-red-50 group-hover:opacity-100 disabled:opacity-50"
-                      title="Delete Project"
-                    >
-                      {deletingProjectId === project.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
+              {/* Team */}
+              <div className="flex items-center justify-between flex-shrink-0 pt-2 mt-2 border-t border-slate-100">
+                {project.assignees && project.assignees.length > 0 ? (
+                  <>
+                    <div className="flex flex-shrink-0 -space-x-1.5">
+                      {project.assignees.slice(0, 3).map((u) => (
+                        <div
+                          key={u.id}
+                          className="w-[22px] h-[22px] rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[9px] font-semibold"
+                          title={u.fullName}
+                        >
+                          {u.fullName.charAt(0)}
+                        </div>
+                      ))}
+                      {project.assignees.length > 3 && (
+                        <div className="flex items-center justify-center w-[22px] h-[22px] text-[9px] font-semibold text-white border-2 border-white rounded-full bg-slate-400">
+                          +{project.assignees.length - 3}
+                        </div>
                       )}
-                    </button>
+                    </div>
+                    <div className="text-slate-400 text-[10px] capitalize truncate ml-2">
+                      {project.priority}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1 text-slate-400 text-[10.5px]">
+                    <UsersIcon className="w-3 h-3" /> Unassigned
                   </div>
                 )}
               </div>
-            </button>
+            </div>
             );
           })}
         </div>

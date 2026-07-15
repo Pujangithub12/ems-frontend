@@ -17,11 +17,10 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-import { ScheduleRow } from "./schema/Scheduletypes";
+import { ScheduleRow, emptyScheduleRow } from "./schema/Scheduletypes";
 import { GanttLink, GanttTask, ScheduleStatus, STATUS_META } from "./schema/Scheduletypes";
 import { dtoToRows, rowsToDto } from "./scheduleApi";
 import { useScheduleQuery, useSaveScheduleMutation } from "../hooks/useSchedule";
-import AddScheduleModal from "./modal/AddScheduleModal";
 import GanttChartView, { ScheduleColumnDef, ScheduleScale } from "./GanttChartView";
 
 /**
@@ -30,7 +29,9 @@ import GanttChartView, { ScheduleColumnDef, ScheduleScale } from "./GanttChartVi
  * Renders an interactive, hierarchical Gantt chart (dhtmlx-gantt) built from
  * a single source of truth — `scheduleRows` — which can be populated three ways:
  *   1. Uploading an Excel/CSV sheet
- *   2. Typing directly into the "Add / Edit Schedule" modal
+ *   2. Editing directly on the chart — inline task-name editing, the "+"
+ *      button to add a task, and drag-resizing a bar to change its duration
+ *      (see GanttChartView's onTaskChange)
  *   3. Loading whatever was last saved for this project from the backend
  *
  * Whichever way the rows are populated, "Save to Backend" persists the whole
@@ -435,7 +436,10 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       progress,
       type,
       parent,
-      open: type === "summary",
+      // Any row with children starts expanded (not just true "summary" rows)
+      // so a freshly added subtask (see handleAddChildTask) is visible right
+      // away instead of hidden behind a collapsed parent.
+      open: hasChildren,
       status,
       wbs: wbsById.get(row.id) ?? "",
       durationLabel: type === "milestone" ? "—" : `${row.duration ?? dayDiff(end, start)} day${(row.duration ?? 0) === 1 ? "" : "s"}`,
@@ -485,7 +489,10 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  // Master edit switch for the chart itself — off by default so the Gantt is
+  // read-only until "Edit Schedule" is clicked. Inline text editing,
+  // drag-to-link, and drag-resize on the chart all key off this.
+  const [editMode, setEditMode] = useState(false);
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -530,12 +537,24 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // reserves for the table (the remaining 75% is the chart).
   const columns: ScheduleColumnDef[] = useMemo(
     () => [
-      { id: "wbs", header: "#", width: 52, align: "center" },
+      {
+        id: "wbs",
+        header: "Id",
+        width: editMode ? 90 : 52,
+        align: "center",
+        // Only while editing: a small "+" next to the id that adds a
+        // subtask under that row (see handleAddChildTask). Wired up in
+        // GanttChartView's onTaskClick via the "gantt-add-child-btn" class.
+        render: editMode
+          ? (t) =>
+              `<span class="gantt-wbs-label">${t.wbs}</span><button type="button" class="gantt-add-child-btn" data-add-child-id="${t.id}" title="Add subtask">+</button>`
+          : undefined,
+      },
       { id: "text", header: "Task Name", width: 260, tree: true, align: "center" },
       { id: "durationLabel", header: "Duration", width: 90, align: "center" },
       { id: "startLabel", header: "Start", width: 84, align: "center" },
     ],
-    [],
+    [editMode],
   );
 
   const scales = useMemo(() => SCALES[zoomLevel], [zoomLevel]);
@@ -569,6 +588,82 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         return { ...row, predecessorId: existing.filter((id) => id !== sourceId).join(",") };
       }),
     );
+  }, []);
+
+  // Inline task-name edits and drag-resizes on the chart both report back
+  // here — folded into scheduleRows the same way link create/delete are.
+  // Nothing is sent to the backend until "Save to Backend" is clicked.
+  const handleTaskChange = useCallback(
+    (id: string, changes: { text?: string; start?: Date; duration?: number }) => {
+      setScheduleRows((rows) =>
+        rows.map((row) => {
+          if (row.id !== id) return row;
+          const next = { ...row };
+          if (changes.text !== undefined) next.taskName = changes.text;
+          if (changes.start !== undefined) next.startDate = formatDateInput(changes.start);
+          if (changes.duration !== undefined) next.duration = String(changes.duration);
+          return next;
+        }),
+      );
+    },
+    [],
+  );
+
+  // Appends a new task row, defaulting it to start right after the last
+  // existing task ends so it lands somewhere visible on the chart. The user
+  // renames it inline and can drag its bar to adjust the duration.
+  const handleAddTask = useCallback(() => {
+    setScheduleRows((rows) => {
+      const existingIds = new Set(rows.map((r) => r.id));
+      let n = rows.length + 1;
+      let newId = String(n);
+      while (existingIds.has(newId)) newId = String(++n);
+
+      const { tasks } = buildGanttData(rows as NormalizedRow[]);
+      const lastEnd = tasks.length > 0 ? tasks[tasks.length - 1].end : new Date();
+
+      const newRow: ScheduleRow = {
+        ...emptyScheduleRow(),
+        id: newId,
+        taskName: "New Task",
+        duration: "1",
+        startDate: formatDateInput(lastEnd),
+      };
+      return [...rows, newRow];
+    });
+  }, []);
+
+  // Adds a subtask under the task whose "+" (next to its # id) was clicked.
+  // parentId drives both the tree nesting and the auto WBS numbering
+  // (1.1, 1.2, ...) — buildGanttData derives the WBS code purely from the
+  // parentId chain, so nothing needs computing here beyond a sane default
+  // start date (right after the parent's other children, or the parent
+  // itself if it has none yet).
+  const handleAddChildTask = useCallback((parentId: string) => {
+    setScheduleRows((rows) => {
+      const existingIds = new Set(rows.map((r) => r.id));
+      let n = rows.length + 1;
+      let newId = String(n);
+      while (existingIds.has(newId)) newId = String(++n);
+
+      const { tasks } = buildGanttData(rows as NormalizedRow[]);
+      const parentTask = tasks.find((t) => t.id === parentId);
+      const childTasks = tasks.filter((t) => t.parent === parentId);
+      const lastEnd =
+        childTasks.length > 0
+          ? childTasks.reduce((max, t) => (t.end > max ? t.end : max), childTasks[0].end)
+          : parentTask?.start ?? new Date();
+
+      const newRow: ScheduleRow = {
+        ...emptyScheduleRow(),
+        id: newId,
+        parentId,
+        taskName: "New Task",
+        duration: "1",
+        startDate: formatDateInput(lastEnd),
+      };
+      return [...rows, newRow];
+    });
   }, []);
 
   const cycleZoom = (direction: 1 | -1) => {
@@ -705,6 +800,13 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
 
   return (
     <div className="space-y-6">
+      {/* Dims the rest of the page while editing, so the (still-crisp, since
+          it sits above this overlay in z-index) chart reads as the one thing
+          that's currently interactive. pointer-events-none so it's purely
+          visual — nothing underneath loses clickability. */}
+      {editMode && (
+        <div className="fixed inset-0 z-30 bg-slate-900/10 pointer-events-none transition-opacity duration-200" />
+      )}
       {scheduleRows.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-16 text-center rounded border border-dashed border-slate-200">
           <div className="flex justify-center items-center mb-3 w-12 h-12 rounded bg-slate-100">
@@ -733,6 +835,19 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               Upload Excel Sheet
             </label>
           </div>
+
+          {!loadingInitial && (
+            <button
+              onClick={() => {
+                setEditMode(true);
+                handleAddTask();
+              }}
+              className="flex items-center gap-1.5 mt-3 text-[12px] font-medium text-blue-900 hover:text-blue-700"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Or start from scratch
+            </button>
+          )}
 
           {uploadError && (
             <div className="flex gap-2 items-start p-3 mt-4 max-w-md text-xs text-left text-rose-700 bg-rose-50 rounded border border-rose-200">
@@ -834,25 +949,31 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 Export
               </button>
 
-              <button
-                onClick={() => setModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-blue-900 rounded hover:bg-blue-800"
-              >
-                <Plus className="w-4 h-4" />
-                Add Task
-              </button>
+              {editMode && (
+                <button
+                  onClick={handleAddTask}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-blue-900 rounded hover:bg-blue-800"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Task
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Secondary actions: upload / save / clear */}
+          {/* Secondary actions: edit toggle / save / clear */}
           <div className="flex flex-wrap gap-3 justify-between items-center -mt-2">
             <div className="flex flex-wrap gap-2 items-center">
               <button
-                onClick={() => setModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                onClick={() => setEditMode((m) => !m)}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded transition-colors ${
+                  editMode
+                    ? "text-white bg-blue-900 hover:bg-blue-800"
+                    : "text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
               >
                 <Pencil className="w-3.5 h-3.5" />
-                Edit Schedule
+                {editMode ? "Done Editing" : "Edit Schedule"}
               </button>
 
               <button
@@ -911,32 +1032,39 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             </div>
           )}
 
-          <div className="overflow-x-auto bg-white rounded-lg border border-slate-200" style={{ height: 560 }}>
-            <div className="min-w-[600px] h-full">
+          <div
+            className={`overflow-auto bg-white rounded-lg border border-slate-200 ${editMode ? "relative z-40" : ""}`}
+            style={{ maxHeight: 560 }}
+          >
+            <div className="min-w-[600px]">
               <GanttChartView
                 tasks={visibleTasks}
                 links={ganttLinks}
                 scales={scales}
                 columns={columns}
                 showChart={viewTab === "gantt"}
+                editable={editMode}
                 onLinkCreate={handleLinkCreate}
                 onLinkDelete={handleLinkDelete}
+                onTaskChange={handleTaskChange}
+                onAddChildTask={handleAddChildTask}
               />
+              {editMode && (
+                <div className="flex items-stretch border-t border-slate-200">
+                  <button
+                    onClick={handleAddTask}
+                    title="Add Task"
+                    className="flex items-center justify-center flex-shrink-0 w-[52px] py-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-50 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 bg-slate-50/40" />
+                </div>
+              )}
             </div>
           </div>
         </>
       )}
-
-      <AddScheduleModal
-        open={modalOpen}
-        initialRows={scheduleRows}
-        onClose={() => setModalOpen(false)}
-        onSave={async (rows) => {
-          setScheduleRows(rows);
-          await persistSchedule(rows);
-          setModalOpen(false);
-        }}
-      />
     </div>
   );
 };

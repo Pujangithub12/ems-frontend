@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import { getPasswordStrengthError } from "../lib/passwordPolicy";
 import {
   Eye,
   EyeOff,
@@ -77,8 +78,9 @@ const CreateAccount: React.FC = () => {
   const submitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    const passwordError = getPasswordStrengthError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== confirmPassword) {

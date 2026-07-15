@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import { useInvite } from "../hooks/useInvite";
 import { getErrorMessage } from "../lib/errors";
+import { getPasswordStrengthError } from "../lib/passwordPolicy";
 import {
   Eye,
   EyeOff,
@@ -104,8 +105,9 @@ const AcceptInvite: React.FC = () => {
   const submitAccept = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
-    if (password.length < 6) {
-      setSubmitError("Password must be at least 6 characters");
+    const passwordError = getPasswordStrengthError(password);
+    if (passwordError) {
+      setSubmitError(passwordError);
       return;
     }
     if (password !== confirmPassword) {

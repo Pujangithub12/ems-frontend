@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Lock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Eyebrow } from "./SettingsShared";
 import { getErrorMessage } from "../lib/errors";
+import { getPasswordStrengthError } from "../lib/passwordPolicy";
 import { useChangeMyPassword } from "../hooks/useUsers";
 
 const SecurityTab: React.FC = () => {
@@ -20,8 +21,9 @@ const SecurityTab: React.FC = () => {
       setPwError("New passwords do not match.");
       return;
     }
-    if (newPassword.length < 6) {
-      setPwError("New password must be at least 6 characters.");
+    const passwordError = getPasswordStrengthError(newPassword);
+    if (passwordError) {
+      setPwError(passwordError);
       return;
     }
     try {

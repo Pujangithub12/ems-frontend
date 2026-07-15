@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
+import { getPasswordStrengthError } from "../lib/passwordPolicy";
 import {
   Eye,
   EyeOff,
@@ -45,8 +46,9 @@ const ForgotPassword: React.FC = () => {
   const submitReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+    const passwordError = getPasswordStrengthError(newPassword);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (newPassword !== confirmPassword) {

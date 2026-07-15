@@ -4,34 +4,13 @@ import "dhtmlx-gantt/codebase/dhtmlxgantt.css";
 
 import { GanttLink, GanttTask } from "./schema/Scheduletypes";
 
-/**
- * GanttChartView
- * --------------
- * Thin React wrapper around dhtmlx-gantt. dhtmlx-gantt is a singleton (the
- * `gantt` export is one shared instance, not a fresh object per component),
- * so every mount fully (re)configures it via `gantt.init()`, which dhtmlx
- * supports calling repeatedly to re-target a new container element (e.g.
- * switching away from and back to the Schedule tab). Unmount only calls
- * `gantt.clearAll()` — NOT `gantt.destructor()`, which tears down internal
- * extension state (markers, event wiring) in a way this version doesn't
- * cleanly recover from on the next `gantt.init()`.
- *
- * Read-only by design: all editing (add/rename/reschedule tasks) happens
- * through the existing "Add / Edit Schedule" modal, which fully replaces the
- * schedule on save — so drag-move/resize/progress and the built-in
- * double-click lightbox are all disabled here to avoid a second, competing
- * editing surface.
- */
-
 export interface ScheduleColumnDef {
-  /** Property name on the dhtmlx task object (matches a GanttTask field, or "wbs"). */
   id: string;
   header: string;
   width?: number;
   align?: "left" | "center" | "right";
-  /** Marks the tree column (expand/collapse arrows + indentation) — exactly one column should set this. */
   tree?: boolean;
-  /** Custom cell renderer; omit to just print the raw field value (used for the tree column). */
+
   render?: (task: GanttTask) => string;
 }
 
@@ -46,19 +25,22 @@ interface GanttChartViewProps {
   links: GanttLink[];
   columns: ScheduleColumnDef[];
   scales: ScheduleScale[];
-  /** false renders the task grid only (the "List" view) with no chart panel. */
+  
   showChart: boolean;
-  /** Fired when the user drags a link from one bar's connector dot onto
-   * another, creating a finish-to-start dependency. Receives the two
-   * task ids involved (predecessor, then dependent). */
+  
+  editable: boolean;
+  
   onLinkCreate?: (sourceId: string, targetId: string) => void;
-  /** Fired when the user deletes a dependency arrow (hover + click the "x"). */
   onLinkDelete?: (sourceId: string, targetId: string) => void;
+  onTaskChange?: (
+    id: string,
+    changes: { text?: string; start?: Date; duration?: number },
+  ) => void;
+
+  onAddChildTask?: (parentId: string) => void;
 }
 
-/** In Gantt mode, the task table takes this fraction of the container width
- * and the chart takes the rest. Column `width`s are relative weights scaled
- * to fit inside it — not literal pixel widths. */
+
 const GRID_WIDTH_RATIO = 0.25;
 
 const LINK_TYPE_MAP: Record<GanttLink["type"], string> = {
@@ -82,25 +64,18 @@ function toDhtmlxDate(date: Date): string {
   return `${y}-${m}-${d} 00:00`;
 }
 
-/**
- * Draws the "today" line by hand: dhtmlx-gantt's own coordinate/marker/
- * task-layer helpers (gantt.posFromDate, gantt.addMarker, gantt.addTaskLayer)
- * are declared in the TypeScript types but are either absent at runtime in
- * this build ("not a function") or — in posFromDate's case — return a
- * position that doesn't match what's actually rendered once a multi-tier
- * `scales` config is in play. Templates (task_class, timeline_cell_class)
- * DO work reliably though, so this marks today's timeline cell with a class
- * via a template, then measures that cell's real DOM position and places a
- * plain div at the same x inside `.gantt_data_area` (the positioned ancestor
- * task bars live in, so the coordinate space matches).
- */
+
 function renderTodayLine(container: HTMLElement | null, showChart: boolean) {
   if (!container) return;
   const dataArea = container.querySelector<HTMLElement>(".gantt_data_area");
   if (!dataArea) return;
 
-  let line = dataArea.querySelector<HTMLDivElement>(":scope > .gantt-today-line");
-  const todayCell = dataArea.querySelector<HTMLElement>(".gantt_task_cell.gantt-today-cell");
+  let line = dataArea.querySelector<HTMLDivElement>(
+    ":scope > .gantt-today-line",
+  );
+  const todayCell = dataArea.querySelector<HTMLElement>(
+    ".gantt_task_cell.gantt-today-cell",
+  );
   if (!showChart || !todayCell) {
     line?.remove();
     return;
@@ -111,29 +86,41 @@ function renderTodayLine(container: HTMLElement | null, showChart: boolean) {
     dataArea.appendChild(line);
   }
 
-  const left = todayCell.getBoundingClientRect().left - dataArea.getBoundingClientRect().left;
+  const left =
+    todayCell.getBoundingClientRect().left -
+    dataArea.getBoundingClientRect().left;
   line.style.left = `${Math.round(left)}px`;
 }
 
 function isSameCalendarDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
-/** Does the timeline cell starting at `cellStart` (whose width spans one
- * unit of `unit`) contain `today`? Needed because timeline_cell_class only
- * gets the cell's start date, and the finest configured scale row can be a
- * day, a week, or a month depending on the current zoom level. */
-function cellContainsToday(cellStart: Date, unit: string, today: Date): boolean {
+
+function cellContainsToday(
+  cellStart: Date,
+  unit: string,
+  today: Date,
+): boolean {
   if (unit === "week") {
     const weekEnd = new Date(cellStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     return today >= cellStart && today < weekEnd;
   }
   if (unit === "month") {
-    return cellStart.getFullYear() === today.getFullYear() && cellStart.getMonth() === today.getMonth();
+    return (
+      cellStart.getFullYear() === today.getFullYear() &&
+      cellStart.getMonth() === today.getMonth()
+    );
   }
   return isSameCalendarDay(cellStart, today);
 }
+
+let activeGanttEventIds: string[] = [];
 
 const GanttChartView: React.FC<GanttChartViewProps> = ({
   tasks,
@@ -141,27 +128,32 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   columns,
   scales,
   showChart,
+  editable,
   onLinkCreate,
   onLinkDelete,
+  onTaskChange,
+  onAddChildTask,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(0);
-  // The finest scale row's unit ("day"/"week"/"month"), kept in a ref so the
-  // timeline_cell_class template (registered once, in the init effect below)
-  // always reads the current zoom level instead of a stale closure value.
+  
   const finestScaleUnitRef = useRef<string>("day");
-  // The onLinkCreate/onLinkDelete events are wired up once, in the init
-  // effect below, so they read these refs instead of a stale closure.
+  
   const onLinkCreateRef = useRef(onLinkCreate);
   const onLinkDeleteRef = useRef(onLinkDelete);
+  const onTaskChangeRef = useRef(onTaskChange);
+  const onAddChildTaskRef = useRef(onAddChildTask);
+  const editableRef = useRef(editable);
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
     onLinkDeleteRef.current = onLinkDelete;
-  }, [onLinkCreate, onLinkDelete]);
+    onTaskChangeRef.current = onTaskChange;
+    onAddChildTaskRef.current = onAddChildTask;
+    editableRef.current = editable;
+  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, editable]);
 
-  // Tracks the container's rendered width so the grid/chart split stays a
-  // true 25%/75% at any screen size, not a fixed pixel guess.
+
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -177,13 +169,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     if (!containerRef.current) return;
 
     gantt.config.date_format = "%Y-%m-%d %H:%i";
-    // Not fully readonly: drag-to-link (the small connector dots on a bar's
-    // edges) needs to stay interactive. Every other form of editing
-    // (move/resize/progress-drag/selection) is individually switched off
-    // below so this doesn't reopen a second editing surface alongside the
-    // Add/Edit Schedule modal.
-    gantt.config.readonly = false;
-    gantt.config.drag_links = true;
+    
+    gantt.config.readonly = true;
+    gantt.config.drag_links = false;
     gantt.config.drag_move = false;
     gantt.config.drag_resize = false;
     gantt.config.drag_progress = false;
@@ -193,62 +181,171 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.bar_height = 22;
     gantt.config.scale_height = 44;
     gantt.config.min_column_width = 34;
+    gantt.config.autosize = "y";
 
     gantt.templates.task_class = (_start: Date, _end: Date, task: unknown) =>
       `gantt-color-${(task as GanttTask).colorIndex % 4}`;
 
-    // Marks whichever timeline cell today falls in — the "today" line is
-    // then positioned by measuring this cell's real DOM position (see
-    // renderTodayLine) rather than trusting gantt's own coordinate helpers.
+
     gantt.templates.timeline_cell_class = (_item: unknown, date: Date) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      return cellContainsToday(date, finestScaleUnitRef.current, today) ? "gantt-today-cell" : "";
+      return cellContainsToday(date, finestScaleUnitRef.current, today)
+        ? "gantt-today-cell"
+        : "";
     };
 
-    // The default double-click "lightbox" editor is a second, competing
-    // editing surface — this app edits schedules only via the Add/Edit
-    // Schedule modal, which does a full-replace save.
-    gantt.attachEvent("onBeforeLightbox", () => false);
+
+    activeGanttEventIds.forEach((eid) => gantt.detachEvent(eid));
+    activeGanttEventIds = [];
+
+    const eventIds: string[] = [];
+
+    eventIds.push(gantt.attachEvent("onBeforeLightbox", () => false));
+
+    eventIds.push(
+      gantt.attachEvent("onTaskClick", (id: string | number, e: MouseEvent) => {
+        if (!editableRef.current) return true;
+        const target = e.target as HTMLElement;
+        const addChildBtn = target.closest<HTMLElement>(".gantt-add-child-btn");
+        if (addChildBtn) {
+          onAddChildTaskRef.current?.(
+            addChildBtn.dataset.addChildId ?? String(id),
+          );
+          return false;
+        }
+        if (target.closest(".gantt_tree_icon")) return true; // expand/collapse arrow
+        const cell = target.closest<HTMLElement>(
+          ".gantt_cell[data-column-name='text']",
+        );
+        if (!cell || cell.querySelector("input")) return true;
+        const contentEl = cell.querySelector<HTMLElement>(
+          ".gantt_tree_content",
+        );
+        if (!contentEl) return true;
+
+        const originalText = String(gantt.getTask(id).text ?? "");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = originalText;
+        input.className = "gantt-inline-text-editor";
+        contentEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let settled = false;
+        const commit = () => {
+          if (settled) return;
+          settled = true;
+          const nextText = input.value.trim() || originalText;
+          if (nextText !== originalText) {
+            gantt.getTask(id).text = nextText;
+            gantt.updateTask(id);
+          } else {
+            gantt.render();
+          }
+        };
+        const cancel = () => {
+          if (settled) return;
+          settled = true;
+          gantt.render();
+        };
+
+        input.addEventListener("blur", commit);
+        input.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            input.blur();
+          } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            input.removeEventListener("blur", commit);
+            cancel();
+          }
+        });
+
+        return false;
+      }),
+    );
+
+    eventIds.push(
+      gantt.attachEvent("onBeforeTaskDrag", (id: string | number) => {
+        return gantt.getTask(id).type !== "project";
+      }),
+    );
+
+    eventIds.push(
+      gantt.attachEvent(
+        "onAfterTaskUpdate",
+        (
+          id: string | number,
+          task: { text?: string; start_date?: Date; duration?: number },
+        ) => {
+          onTaskChangeRef.current?.(String(id), {
+            text: task.text,
+            start: task.start_date,
+            duration: task.duration,
+          });
+        },
+      ),
+    );
 
     // A dependency can't link a task to itself.
-    gantt.attachEvent("onBeforeLinkAdd", (_id: string | number, link: { source: unknown; target: unknown }) => {
-      return link.source !== link.target;
-    });
-    // Report the new link up to the parent, which folds it into the
-    // dependent row's `predecessorId`. Left in gantt's own data store too —
-    // the next tasks/links prop update (from that state change) rebuilds
-    // this exact link via gantt.clearAll()/parse(), so it isn't lost.
-    gantt.attachEvent("onAfterLinkAdd", (_id: string | number, link: { source: unknown; target: unknown }) => {
-      onLinkCreateRef.current?.(String(link.source), String(link.target));
-    });
-    gantt.attachEvent("onAfterLinkDelete", (_id: string | number, link: { source: unknown; target: unknown }) => {
-      onLinkDeleteRef.current?.(String(link.source), String(link.target));
-    });
-    // This build has no built-in hover-to-delete icon on a dependency arrow,
-    // so double-click is repurposed here (links only — task double-click
-    // stays fully blocked above) as the one way to remove one.
-    gantt.attachEvent("onLinkDblClick", (id: string | number) => {
-      if (window.confirm("Delete this dependency?")) {
-        gantt.deleteLink(id);
-      }
-      return false;
-    });
+    eventIds.push(
+      gantt.attachEvent(
+        "onBeforeLinkAdd",
+        (_id: string | number, link: { source: unknown; target: unknown }) => {
+          return link.source !== link.target;
+        },
+      ),
+    );
+    
+    eventIds.push(
+      gantt.attachEvent(
+        "onAfterLinkAdd",
+        (_id: string | number, link: { source: unknown; target: unknown }) => {
+          onLinkCreateRef.current?.(String(link.source), String(link.target));
+        },
+      ),
+    );
+    eventIds.push(
+      gantt.attachEvent(
+        "onAfterLinkDelete",
+        (_id: string | number, link: { source: unknown; target: unknown }) => {
+          onLinkDeleteRef.current?.(String(link.source), String(link.target));
+        },
+      ),
+    );
+    
+    eventIds.push(
+      gantt.attachEvent("onLinkDblClick", (id: string | number) => {
+        if (window.confirm("Delete this dependency?")) {
+          gantt.deleteLink(id);
+        }
+        return false;
+      }),
+    );
+
+    activeGanttEventIds = eventIds;
 
     gantt.init(containerRef.current);
     readyRef.current = true;
 
     return () => {
       readyRef.current = false;
+      eventIds.forEach((eid) => gantt.detachEvent(eid));
+      if (activeGanttEventIds === eventIds) activeGanttEventIds = [];
       gantt.clearAll();
     };
   }, []);
 
   useEffect(() => {
-    // In Gantt mode the grid is a fixed 25% of the container (column
-    // `width`s are relative weights scaled to fit); in List mode there's no
-    // chart to share space with, so columns keep their weight as a literal
-    // pixel width and the last one is stretched to fill the container.
+    gantt.config.readonly = !editable;
+    gantt.config.drag_links = editable;
+    gantt.config.drag_resize = editable;
+    if (readyRef.current) gantt.render();
+  }, [editable]);
+
+  useEffect(() => {
     const gridWidthPx = Math.round(containerWidth * GRID_WIDTH_RATIO);
     const totalWeight = columns.reduce((sum, c) => sum + (c.width ?? 100), 0);
 
@@ -256,11 +353,16 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       name: col.id,
       label: col.header,
       width: showChart
-        ? Math.max(28, Math.round(((col.width ?? 100) / totalWeight) * gridWidthPx))
+        ? Math.max(
+            28,
+            Math.round(((col.width ?? 100) / totalWeight) * gridWidthPx),
+          )
         : col.width,
       align: col.align,
       tree: col.tree,
-      template: col.render ? (task: unknown) => col.render!(task as GanttTask) : undefined,
+      template: col.render
+        ? (task: unknown) => col.render!(task as GanttTask)
+        : undefined,
     }));
     gantt.config.show_chart = showChart;
     gantt.config.autofit = !showChart;
@@ -270,9 +372,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   }, [columns, showChart, containerWidth]);
 
   useEffect(() => {
-    // dhtmlx types `scales` as a non-empty tuple array; ours is always a
-    // fixed 2-level array (see SCALES in ProjectScheduleTab) but built from
-    // a plain literal, so it doesn't structurally match the tuple type.
+    
     gantt.config.scales = scales as unknown as typeof gantt.config.scales;
     finestScaleUnitRef.current = scales[scales.length - 1]?.unit ?? "day";
     if (readyRef.current) gantt.render();
@@ -284,7 +384,13 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       id: t.id,
       text: t.text,
       start_date: toDhtmlxDate(t.start),
-      duration: t.type === "milestone" ? 0 : Math.max(1, Math.round((t.end.getTime() - t.start.getTime()) / 86400000)),
+      duration:
+        t.type === "milestone"
+          ? 0
+          : Math.max(
+              1,
+              Math.round((t.end.getTime() - t.start.getTime()) / 86400000),
+            ),
       progress: Math.max(0, Math.min(1, (t.progress || 0) / 100)),
       parent: t.parent,
       type: TYPE_MAP[t.type],
@@ -336,8 +442,48 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           --dhx-gantt-link-handle-background-hover: #1d4ed8;
           --dhx-gantt-link-handle-border-hover: #1d4ed8;
         }
+        /* Hand-rolled inline task-name editor (see onTaskClick) — sized to
+           fill the cell it replaces. */
+        .gantt-inline-text-editor {
+          width: 100%;
+          height: 100%;
+          padding: 0 4px;
+          border: 1px solid #2563eb;
+          border-radius: 2px;
+          outline: none;
+          font: inherit;
+          text-align: inherit;
+          background: #fff;
+        }
+        /* The "+" next to a task's # id (edit mode only) that adds a
+           subtask under that row — see the "wbs" column's render + the
+           onAddChildTask handler in onTaskClick. */
+        .gantt-wbs-label {
+          margin-right: 4px;
+        }
+        .gantt-add-child-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+          padding: 0;
+          line-height: 1;
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: 3px;
+          border: 1px solid #cbd5e1;
+          background: #fff;
+          color: #64748b;
+          cursor: pointer;
+        }
+        .gantt-add-child-btn:hover {
+          background: #eff6ff;
+          border-color: #2563eb;
+          color: #2563eb;
+        }
       `}</style>
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={containerRef} style={{ width: "100%" }} />
     </>
   );
 };

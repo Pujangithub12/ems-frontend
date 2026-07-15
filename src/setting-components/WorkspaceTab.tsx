@@ -10,6 +10,8 @@ import {
   Check,
   ShieldCheck,
   Users as UsersIcon,
+  Plus,
+  X,
 } from "lucide-react";
 import { Eyebrow } from "./SettingsShared";
 import {
@@ -83,7 +85,11 @@ const AccessMatrixSection: React.FC = () => {
       const userId = Number(empIdStr);
       try {
         if (desired) {
-          await grantMutation.mutateAsync({ workspaceId, userId });
+          // This checkbox grid only grants/revokes access, it doesn't pick
+          // a role per cell — new access always starts as "user" here,
+          // matching the backend's own default. Bump someone to admin/super
+          // admin for that workspace from the Users page afterward.
+          await grantMutation.mutateAsync({ workspaceId, userId, role: "user" });
         } else {
           await revokeMutation.mutateAsync({ workspaceId, userId });
         }
@@ -237,9 +243,10 @@ const AccessMatrixSection: React.FC = () => {
 };
 
 const WorkspaceTab: React.FC = () => {
-  const { user, workspace, updateWorkspace, deleteWorkspace } = useAuth();
+  const { user, workspace, updateWorkspace, deleteWorkspace, createWorkspace } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin";
 
   const [wsName, setWsName] = useState(workspace?.name || "");
   const [wsDescription, setWsDescription] = useState(workspace?.description || "");
@@ -273,6 +280,37 @@ const WorkspaceTab: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
+  const [newWsDescription, setNewWsDescription] = useState("");
+  const [addingWs, setAddingWs] = useState(false);
+  const [addWsError, setAddWsError] = useState<string | null>(null);
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setNewWsName("");
+    setNewWsDescription("");
+    setAddWsError(null);
+  };
+
+  const handleAddWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWsName.trim()) return;
+    setAddingWs(true);
+    setAddWsError(null);
+    try {
+      const created = await createWorkspace(newWsName.trim(), newWsDescription);
+      if (created) {
+        closeAddModal();
+        navigate(`/${created.id}/dashboard`);
+      } else {
+        setAddWsError("Failed to create workspace.");
+      }
+    } finally {
+      setAddingWs(false);
+    }
+  };
+
   const handleDeleteWorkspace = async () => {
     if (!workspace) return;
     setDeleting(true);
@@ -297,6 +335,15 @@ const WorkspaceTab: React.FC = () => {
           <div className="font-semibold text-[15px] text-slate-900">
             Workspace details
           </div>
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 ml-auto text-[12.5px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Workspace
+            </button>
+          )}
         </div>
         <form onSubmit={handleSaveWorkspace} className="p-5 space-y-4">
           {wsError && (
@@ -379,6 +426,76 @@ const WorkspaceTab: React.FC = () => {
       </div>
 
       {isAdmin && <AccessMatrixSection />}
+
+      {/* Add Workspace Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-6">
+          <div className="w-full max-w-md overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div>
+                <Eyebrow>Workspaces</Eyebrow>
+                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
+                  Add Workspace
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddModal}
+                className="p-1.5 rounded text-slate-400 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddWorkspace} className="p-6 space-y-4">
+              {addWsError && (
+                <div className="flex items-center gap-2 p-3 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100">
+                  <AlertCircle className="flex-shrink-0 w-4 h-4" />
+                  {addWsError}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Eyebrow>Name</Eyebrow>
+                <input
+                  type="text"
+                  value={newWsName}
+                  onChange={(e) => setNewWsName(e.target.value)}
+                  required
+                  autoFocus
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  placeholder="My New Workspace"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Eyebrow>Description (optional)</Eyebrow>
+                <textarea
+                  value={newWsDescription}
+                  onChange={(e) => setNewWsDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                  placeholder="What's this workspace for?"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeAddModal}
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingWs}
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                >
+                  {addingWs && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Create Workspace
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Workspace Modal */}
       {showDeleteModal && workspace && (

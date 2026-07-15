@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthProvider";
 import { getErrorMessage } from "../lib/errors";
+import { getPasswordStrengthError } from "../lib/passwordPolicy";
 import { useChangeMyPassword, useUpdateMyProfile } from "../hooks/useUsers";
 import { useLeaveRequests } from "../hooks/useLeaveRequests";
 import { useActivities } from "../hooks/useActivities";
@@ -154,8 +155,9 @@ const Profile: React.FC = () => {
       setPwError("New passwords do not match.");
       return;
     }
-    if (newPassword.length < 6) {
-      setPwError("New password must be at least 6 characters.");
+    const passwordError = getPasswordStrengthError(newPassword);
+    if (passwordError) {
+      setPwError(passwordError);
       return;
     }
     try {

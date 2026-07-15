@@ -374,10 +374,9 @@ const Login: React.FC = () => {
             <button
               type="button"
               onClick={() => setLang("ne")}
-              className={`px-3.5 py-1.5 text-[12px] font-medium transition-colors ${
+              className={`px-3.5 py-1.5 text-[12px] font-medium transition-colors font-nepali ${
                 lang === "ne" ? "bg-[#10141F] text-white" : "text-[#7A8499]"
               }`}
-              style={{ fontFamily: "'Noto Sans Devanagari', 'Inter', sans-serif" }}
             >
               नेपाली
             </button>
