@@ -485,8 +485,22 @@ const CalendarPage: React.FC = () => {
     }
   };
 
+  // "This week" runs from today through the coming Saturday (matching the
+  // grid's Sun-first week layout) — days already past this week are excluded
+  // since the box is meant to show what's still upcoming, not a history.
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const endOfWeek = new Date(startOfToday);
+  endOfWeek.setDate(startOfToday.getDate() + (6 - startOfToday.getDay()));
+  endOfWeek.setHours(23, 59, 59, 999);
+  const upcomingThisWeek = events
+    .filter((ev) => {
+      const d = new Date(ev.date);
+      return d >= startOfToday && d <= endOfWeek;
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
   return (
-    <div className="h-[calc(100vh-4rem)] max-w-5xl px-6 py-6 mx-auto lg:px-8 flex flex-col overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] max-w-6xl px-6 py-6 mx-auto lg:px-8 flex flex-col overflow-hidden">
 
       {actionError && (
         <ErrorBanner
@@ -496,6 +510,8 @@ const CalendarPage: React.FC = () => {
         />
       )}
 
+      <div className="flex flex-1 min-h-0 gap-5">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
       <div className="flex flex-wrap items-center justify-between flex-shrink-0 gap-3 mb-4">
         <p className="text-slate-500 text-[13px]">
           <span
@@ -596,7 +612,56 @@ const CalendarPage: React.FC = () => {
           )}
         </div>
       </div>
+      </div>
 
+      {/* Upcoming Events sidebar */}
+      <div className="flex flex-col flex-shrink-0 overflow-hidden bg-white border rounded-md w-72 border-slate-200">
+        <div className="flex items-center gap-2 flex-shrink-0 px-4 py-3 border-b border-slate-200">
+          <CalendarIcon className="w-4 h-4 flex-shrink-0" style={{ color: RED }} />
+          <h3 className="font-semibold text-[13px] text-slate-900">Upcoming Events</h3>
+        </div>
+        <div className="flex-1 min-h-0 p-3 space-y-2 overflow-y-auto">
+          {upcomingThisWeek.length === 0 ? (
+            <p className="py-8 text-center text-slate-400 text-[12px]">
+              No upcoming events this week.
+            </p>
+          ) : (
+            upcomingThisWeek.map((ev) => {
+              const st = eventStyle(ev.type);
+              const evDate = new Date(ev.date);
+              return (
+                <div
+                  key={ev.id}
+                  className="flex items-start gap-2.5 p-2.5 rounded border border-slate-200"
+                >
+                  <span
+                    className="flex-shrink-0 mt-1 rounded-full"
+                    style={{ width: 7, height: 7, background: st.fg }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12.5px] font-medium text-slate-800 truncate">
+                      {ev.title}
+                    </p>
+                    <p
+                      className="text-[10.5px] text-slate-400 mt-0.5"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {evDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <span
+                    className="flex-shrink-0 text-[9.5px] uppercase tracking-[0.04em] font-medium"
+                    style={{ color: st.fg }}
+                  >
+                    {st.label}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+      </div>
 
       {selectedDay && (
         <DayModal
