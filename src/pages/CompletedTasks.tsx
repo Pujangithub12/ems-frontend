@@ -211,9 +211,10 @@ const CompletedTasks: React.FC = () => {
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
             <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">

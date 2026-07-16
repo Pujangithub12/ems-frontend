@@ -6,6 +6,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import AcceptInvite from "./pages/AcceptInvite";
 import Dashboard from "./pages/Dashboard";
 import Announcements from "./pages/Announcements";
+import Documents from "./pages/Documents";
 import Users from "./pages/Users";
 import ProjectPage from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
@@ -99,6 +100,14 @@ function App() {
             element={
               <DashboardLayout>
                 <Announcements />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/:workspaceId/documents"
+            element={
+              <DashboardLayout>
+                <Documents />
               </DashboardLayout>
             }
           />

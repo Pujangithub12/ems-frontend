@@ -1045,9 +1045,10 @@ const AssignedTasks: React.FC = () => {
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
             <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
@@ -1087,39 +1088,48 @@ const AssignedTasks: React.FC = () => {
             </div>
           )}
         </div>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-        >
-          <option value="">All Priorities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-        >
-          <option value="">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="in_progress">In Progress</option>
-          <option value="on_hold">On Hold</option>
-          <option value="completed">Completed</option>
-        </select>
-        <select
-          value={filterEmployee}
-          onChange={(e) => setFilterEmployee(e.target.value)}
-          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-        >
-          <option value="">All Employees</option>
-          {users.map((user) => (
-            <option key={user.id} value={user.id.toString()}>
-              {user.fullName}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+          >
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="on_hold">On Hold</option>
+            <option value="completed">Completed</option>
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select
+            value={filterEmployee}
+            onChange={(e) => setFilterEmployee(e.target.value)}
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+          >
+            <option value="">All Employees</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id.toString()}>
+                {user.fullName}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
         <button
           onClick={toggleAllGroups}
           className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
@@ -2529,7 +2539,12 @@ const AssignedTasks: React.FC = () => {
       )}
 
       {/* Sub-Task Activity Popup */}
-      {showSubTaskActivityPopup && editingSubTask && expandedTaskId && (
+      {showSubTaskActivityPopup && editingSubTask && expandedTaskId && (() => {
+        const currentTask = assignedTasks.find((task) => task.id === expandedTaskId);
+        // Only the person who assigned this task may give feedback on the
+        // assignee's update — matches the same check enforced on the backend.
+        const canGiveFeedback = currentTask?.createdBy?.id === user?.id;
+        return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
           <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
@@ -2631,9 +2646,7 @@ const AssignedTasks: React.FC = () => {
                           </p>
                         </div>
                       )}
-                      {!comment.feedback &&
-                        (user?.role === "admin" ||
-                          user?.role === "super_admin") && (
+                      {!comment.feedback && canGiveFeedback && (
                           <div className="flex gap-2 mt-2">
                             <input
                               type="text"
@@ -2697,7 +2710,8 @@ const AssignedTasks: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal

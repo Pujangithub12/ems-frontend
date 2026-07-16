@@ -577,13 +577,6 @@ const CalendarPage: React.FC = () => {
 
   return (
     <div className="max-w-5xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
-      {/* Header */}
-      <div className="mb-6">
-        <Eyebrow>Schedule & Deadlines</Eyebrow>
-        <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
-          Company Calendar
-        </h2>
-      </div>
 
       {actionError && (
         <ErrorBanner
