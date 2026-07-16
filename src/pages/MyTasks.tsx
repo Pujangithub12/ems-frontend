@@ -287,13 +287,16 @@ const MyTasks: React.FC = () => {
     useState(false);
 
   type SubTaskFeedbackItem = {
+    subTaskId: number;
     subTaskTitle: string;
+    commentId: number;
     commentText: string;
-    feedback: string;
+    feedback: string | null;
     authorName?: string;
     date: string;
   };
   const [showTaskFeedbackPopup, setShowTaskFeedbackPopup] = useState(false);
+  const [feedbackPopupTaskId, setFeedbackPopupTaskId] = useState<number | null>(null);
   const [taskFeedbackList, setTaskFeedbackList] = useState<
     SubTaskFeedbackItem[]
   >([]);
@@ -582,6 +585,7 @@ const MyTasks: React.FC = () => {
 
   const handleShowTaskFeedback = async (taskId: number) => {
     setShowTaskFeedbackPopup(true);
+    setFeedbackPopupTaskId(taskId);
     setLoadingTaskFeedback(true);
     try {
       const flatSubTasks = flattenSubTasks(taskSubTasks[taskId] || []);
@@ -592,25 +596,44 @@ const MyTasks: React.FC = () => {
               taskId,
               subTaskId: Number(st.id),
             });
-            return (data || [])
-              .filter((c: any) => c.feedback)
-              .map((c: any) => ({
-                subTaskTitle: st.title,
-                commentText: c.commentText,
-                feedback: c.feedback,
-                authorName: c.author?.fullName,
-                date: c.createdAt,
-              }));
+            return (data || []).map((c: any) => ({
+              subTaskId: Number(st.id),
+              subTaskTitle: st.title,
+              commentId: c.id,
+              commentText: c.commentText,
+              feedback: c.feedback || null,
+              authorName: c.author?.fullName,
+              date: c.createdAt,
+            }));
           } catch {
             return [];
           }
         }),
       );
-      setTaskFeedbackList(results.flat());
+      setTaskFeedbackList(
+        results.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      );
     } catch {
       setTaskFeedbackList([]);
     } finally {
       setLoadingTaskFeedback(false);
+    }
+  };
+
+  const handleSendTaskFeedback = async (item: SubTaskFeedbackItem) => {
+    const value = feedbackTexts[item.commentId];
+    if (!value?.trim() || feedbackPopupTaskId == null) return;
+    try {
+      await updateCommentFeedbackMutation.mutateAsync({
+        taskId: feedbackPopupTaskId,
+        subTaskId: item.subTaskId,
+        commentId: item.commentId,
+        feedback: value,
+      });
+      setFeedbackTexts((prev) => ({ ...prev, [item.commentId]: "" }));
+      await handleShowTaskFeedback(feedbackPopupTaskId);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to add feedback."));
     }
   };
 
@@ -1482,14 +1505,19 @@ const MyTasks: React.FC = () => {
       )}
 
       {/* Task Sub-Task Feedback Popup */}
-      {showTaskFeedbackPopup && (
+      {showTaskFeedbackPopup && (() => {
+        const feedbackTask = tasks.find((task) => task.id === feedbackPopupTaskId);
+        // Only the person who assigned this task may give feedback — matches
+        // the same check enforced on the backend.
+        const canGiveFeedback = feedbackTask?.createdBy?.id === user?.id;
+        return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
           <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
               <div>
-                <Eyebrow>Sub-Task Feedback</Eyebrow>
+                <Eyebrow>Sub-Task Updates</Eyebrow>
                 <h3 className="font-semibold text-[15px] text-slate-900 mt-0.5">
-                  Feedback received on this task's sub-tasks
+                  {feedbackTask?.title || "Updates on this task's sub-tasks"}
                 </h3>
               </div>
               <button
@@ -1506,12 +1534,12 @@ const MyTasks: React.FC = () => {
                 </div>
               ) : taskFeedbackList.length === 0 ? (
                 <p className="py-8 text-center text-slate-400 text-[12px]">
-                  No feedback has been given on this task's sub-tasks yet.
+                  No updates have been posted on this task's sub-tasks yet.
                 </p>
               ) : (
-                taskFeedbackList.map((fb, idx) => (
+                taskFeedbackList.map((fb) => (
                   <div
-                    key={idx}
+                    key={fb.commentId}
                     className="p-3 border rounded-lg border-slate-200 bg-slate-50/50"
                   >
                     <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -1527,25 +1555,51 @@ const MyTasks: React.FC = () => {
                     </div>
                     <p className="text-[12px] text-slate-500 italic">
                       "{fb.commentText}"
+                      {fb.authorName && (
+                        <span className="not-italic text-slate-400"> — {fb.authorName}</span>
+                      )}
                     </p>
-                    <div className="flex items-start gap-2 p-2 mt-2 border rounded bg-white border-slate-200">
-                      <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
-                      <p className="text-[12px] text-slate-800">
-                        {fb.feedback}
-                        {fb.authorName && (
-                          <span className="block mt-1 text-[11px] font-medium text-slate-400">
-                            — {fb.authorName}
-                          </span>
-                        )}
-                      </p>
-                    </div>
+                    {fb.feedback ? (
+                      <div className="flex items-start gap-2 p-2 mt-2 border rounded bg-white border-slate-200">
+                        <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
+                        <p className="text-[12px] text-slate-800">{fb.feedback}</p>
+                      </div>
+                    ) : (
+                      canGiveFeedback && (
+                        <div className="flex gap-2 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Add feedback..."
+                            value={feedbackTexts[fb.commentId] || ""}
+                            onChange={(e) =>
+                              setFeedbackTexts({
+                                ...feedbackTexts,
+                                [fb.commentId]: e.target.value,
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSendTaskFeedback(fb);
+                            }}
+                            className="flex-1 px-2.5 py-1.5 text-[12px] bg-white rounded border border-slate-200 outline-none focus:border-blue-900 transition-colors"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSendTaskFeedback(fb)}
+                            className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                          >
+                            Send
+                          </button>
+                        </div>
+                      )
+                    )}
                   </div>
                 ))
               )}
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Sub-task Update Popup */}
       {showSubTaskUpdatePopup && editingSubTask && selectedTask && (

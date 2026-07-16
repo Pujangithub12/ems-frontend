@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import NepaliDate from "nepali-date-converter";
-import { getDailyPanchang } from "panchang-ts";
 import {
   ChevronRight,
   ChevronLeft,
@@ -59,67 +58,6 @@ const EVENT_STYLES: Record<string, { fg: string; bg: string; label: string }> = 
 };
 const eventStyle = (type: string) => EVENT_STYLES[type] || EVENT_STYLES.event;
 
-// Public holidays / festivals, computed from real tithi (lunar day) via
-// panchang-ts's astronomical engine, so it works for any BS year rather than
-// being limited to a fixed data table. panchang-ts's own `region: 'nepal'`
-// filter still surfaces plenty of pan-Indian/regional observances that aren't
-// actually marked or observed as holidays in Nepal (Karva Chauth, Onam,
-// monthly Ekadashi/Pradosha/Sankashti vratas, etc.), so results are further
-// filtered to a curated set of festivals genuinely tied to Nepal's calendar,
-// relabeled with the names used here (Dashain/Tihar stages etc.) instead of
-// the library's India-centric names. Purely secular/fixed-BS-date holidays
-// (Constitution Day, Democracy Day, Nepali New Year) aren't tithi-based at
-// all, so they can't be derived this way and are simply not shown.
-type HolidayInfo = { day: number; holiday: boolean; label: string };
-
-const holidayCacheKey = (y: number, m: number) => `${y}-${m}`; // m is 0-indexed (BS)
-
-const KATHMANDU_LOCATION = { latitude: 27.7172, longitude: 85.324 };
-const NEPAL_TZ_OFFSET_MINUTES = 345; // NPT = UTC+5:45
-
-const NEPAL_TITHI_FESTIVALS: Record<string, string> = {
-  "Makar Sankranti": "Maghe Sankranti",
-  "Maha Shivaratri": "Maha Shivaratri",
-  "Holi": "Fagu Purnima (Holi)",
-  "Rama Navami": "Ram Navami",
-  "Krishna Janmashtami": "Krishna Janmashtami",
-  "Ganesh Chaturthi": "Ganesh Chaturthi",
-  "Raksha Bandhan": "Janai Purnima / Rakshya Bandhan",
-  "Mahalaya Amavasya": "Pitri Aunsi",
-  "Sharad Navaratri": "Ghatasthapana (Dashain begins)",
-  "Durga Ashtami": "Maha Ashtami (Dashain)",
-  "Maha Navami": "Maha Navami (Dashain)",
-  "Dussehra": "Vijaya Dashami (Dashain)",
-  "Sharad Purnima": "Kojagrat Purnima",
-  "Dhanteras": "Dhanteras (Tihar begins)",
-  "Narak Chaturdashi": "Kaag/Kukur Tihar",
-  "Diwali": "Laxmi Puja (Tihar)",
-  "Bhai Dooj": "Bhai Tika (Tihar ends)",
-  "Chhath — Nahay Khay": "Chhath — Nahay Khay",
-  "Chhath — Kharna": "Chhath — Kharna",
-  "Chhath — Sandhya Arghya": "Chhath — Sandhya Arghya",
-  "Chhath — Usha Arghya": "Chhath — Usha Arghya",
-};
-
-const computeTithiHolidaysForBsMonth = (y: number, m: number): HolidayInfo[] => {
-  const totalDays = daysInBsMonth(y, m);
-  const result: HolidayInfo[] = [];
-  for (let d = 1; d <= totalDays; d++) {
-    const ad = new NepaliDate(y, m, d).toJsDate();
-    const panchang = getDailyPanchang(ad, KATHMANDU_LOCATION, {
-      timezone: NEPAL_TZ_OFFSET_MINUTES,
-      region: "nepal",
-    });
-    const labels = (panchang?.festivals || [])
-      .map((f) => NEPAL_TITHI_FESTIVALS[f.name])
-      .filter((label): label is string => !!label);
-    if (labels.length > 0) {
-      result.push({ day: d, holiday: true, label: labels.join(", ") });
-    }
-  }
-  return result;
-};
-
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = "",
@@ -139,11 +77,9 @@ const MonthGrid: React.FC<{
   m: number;
   today: Date;
   events: CalendarEvent[];
-  holidays?: HolidayInfo[];
   onDayClick?: (sel: DaySel) => void;
-}> = ({ y, m, today, events, holidays = [], onDayClick }) => {
+}> = ({ y, m, today, events, onDayClick }) => {
   const totalDays = daysInBsMonth(y, m);
-  const holidayByDay = new Map(holidays.map((h) => [h.day, h]));
   const firstAd = new NepaliDate(y, m, 1).toJsDate();
   const lastAd = new NepaliDate(y, m, totalDays).toJsDate();
   const startWeekday = firstAd.getDay();
@@ -161,10 +97,11 @@ const MonthGrid: React.FC<{
   const cells: (number | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= totalDays; d++) cells.push(d);
+  const numRows = Math.ceil(cells.length / 7);
 
   return (
-    <div className="overflow-hidden bg-white border rounded-md border-slate-200">
-      <div className="flex items-baseline justify-between px-5 py-3 bg-white border-b border-slate-200">
+    <div className="flex flex-col h-full overflow-hidden bg-white border rounded-md border-slate-200">
+      <div className="flex items-baseline justify-between flex-shrink-0 px-5 py-3 bg-white border-b border-slate-200">
         <div className="flex items-baseline gap-3">
           <span
             className="font-bold text-[21px] font-nepali"
@@ -181,7 +118,7 @@ const MonthGrid: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-7 border-b border-slate-200">
+      <div className="grid flex-shrink-0 grid-cols-7 border-b border-slate-200">
         {WEEKDAY_LABELS_NP.map((w, i) => (
           <div
             key={i}
@@ -206,7 +143,10 @@ const MonthGrid: React.FC<{
         ))}
       </div>
 
-      <div className="grid grid-cols-7">
+      <div
+        className="grid flex-1 min-h-0 grid-cols-7"
+        style={{ gridTemplateRows: `repeat(${numRows}, minmax(0, 1fr))` }}
+      >
         {cells.map((d, i) => {
           if (d === null) {
             return (
@@ -214,7 +154,6 @@ const MonthGrid: React.FC<{
                 key={`b${i}`}
                 className="bg-slate-50"
                 style={{
-                  minHeight: 100,
                   borderRight: "1px solid #E2E8F0",
                   borderBottom: "1px solid #E2E8F0",
                   opacity: 0.5,
@@ -223,12 +162,7 @@ const MonthGrid: React.FC<{
             );
           }
           const ad = new NepaliDate(y, m, d).toJsDate();
-          const sat = ad.getDay() === 6;
-          const hol = holidayByDay.get(d);
-          // Every Saturday comes back from the source as a holiday too (it's
-          // Nepal's weekly day off) - only flag it separately when there's an
-          // actual festival/holiday name, or it's a holiday on a non-Saturday.
-          const notableHoliday = !!hol?.holiday && (!!hol.label || !sat);
+          const sat = ad.getDay() === 6; // Saturday is Nepal's weekly day off.
           const dayEvents = events.filter((ev) => isoOfAd(new Date(ev.date)) === isoOfAd(ad));
           const todayCell = isToday(d);
           const shown = dayEvents.slice(0, 2);
@@ -241,13 +175,12 @@ const MonthGrid: React.FC<{
           return (
             <div
               key={d}
-              className={`relative px-2 pt-1.5 pb-2 ${onDayClick ? "cal-day" : ""}`}
+              className={`relative px-2 pt-1.5 pb-2 overflow-hidden ${onDayClick ? "cal-day" : ""}`}
               onClick={onDayClick ? () => onDayClick({ y, m, d, ad }) : undefined}
               style={{
-                minHeight: 100,
                 borderRight: "1px solid #E2E8F0",
                 borderBottom: "1px solid #E2E8F0",
-                background: sat || notableHoliday ? "#C6000906" : "#fff",
+                background: sat ? "#C6000906" : "#fff",
               }}
             >
               <div
@@ -257,7 +190,7 @@ const MonthGrid: React.FC<{
                   right: 8,
                   fontSize: 9.5,
                   fontFamily: "'JetBrains Mono', monospace",
-                  color: sat || notableHoliday ? "#C6000999" : "#94a3b8",
+                  color: sat ? "#C6000999" : "#94a3b8",
                 }}
               >
                 {adSmall}
@@ -273,22 +206,13 @@ const MonthGrid: React.FC<{
                     width: todayCell ? 34 : "auto",
                     height: todayCell ? 34 : "auto",
                     background: todayCell ? RED : "transparent",
-                    color: todayCell ? "#fff" : sat || notableHoliday ? RED : "#0f172a",
+                    color: todayCell ? "#fff" : sat ? RED : "#0f172a",
                   }}
                 >
                   {new NepaliDate(y, m, d).format("D", "np")}
                 </span>
               </div>
               <div className="space-y-0.5">
-                {notableHoliday && (
-                  <div
-                    className="font-medium truncate rounded"
-                    style={{ fontSize: 9.5, padding: "1.5px 5px", background: "#FEE2E2", color: "#B91C1C" }}
-                    title={hol?.label || "Public Holiday"}
-                  >
-                    {hol?.label || "Public Holiday"}
-                  </div>
-                )}
                 {shown.map((ev) => {
                   const st = eventStyle(ev.type);
                   return (
@@ -321,20 +245,17 @@ const MonthGrid: React.FC<{
 const DayModal: React.FC<{
   sel: DaySel;
   events: CalendarEvent[];
-  holidayInfo?: HolidayInfo;
   isAdmin: boolean;
   submitting: boolean;
   onAdd: (title: string, type: string) => void;
   onDeleteRequest: (id: number) => void;
   onClose: () => void;
-}> = ({ sel, events, holidayInfo, isAdmin, submitting, onAdd, onDeleteRequest, onClose }) => {
+}> = ({ sel, events, isAdmin, submitting, onAdd, onDeleteRequest, onClose }) => {
   const [title, setTitle] = useState("");
   const [type, setType] = useState("event");
   const bsDate = new NepaliDate(sel.y, sel.m, sel.d);
   const dayEvents = events.filter((ev) => isoOfAd(new Date(ev.date)) === isoOfAd(sel.ad));
-  const holidayLabel =
-    holidayInfo?.holiday &&
-    (holidayInfo.label || (sel.ad.getDay() === 6 ? "Saturday — Weekly Holiday" : "Public Holiday"));
+  const holidayLabel = sel.ad.getDay() === 6 ? "Saturday — Weekly Holiday" : null;
 
   const submit = () => {
     if (!title.trim()) return;
@@ -498,7 +419,6 @@ type MonthPos = { y: number; m: number };
 const CalendarPage: React.FC = () => {
   const { user } = useAuth();
   const { data: events = [], isLoading: loading } = useEvents();
-  const [holidaysByMonth, setHolidaysByMonth] = useState<Record<string, HolidayInfo[]>>({});
   const [actionError, setActionError] = useState<string | null>(null);
 
   const today = new Date();
@@ -516,16 +436,6 @@ const CalendarPage: React.FC = () => {
   const deletingEvent = deleteEventMutation.isPending;
 
   const isAdmin = user?.role === "admin";
-
-  // Compute holidays/festivals for the displayed BS month from tithi, cached
-  // per month so navigating back to an already-seen month doesn't recompute.
-  useEffect(() => {
-    const key = holidayCacheKey(cursor.y, cursor.m);
-    if (holidaysByMonth[key] !== undefined) return;
-    const computed = computeTithiHolidaysForBsMonth(cursor.y, cursor.m);
-    setHolidaysByMonth((prev) => ({ ...prev, [key]: computed }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor.y, cursor.m]);
 
   const clampMonth = (y: number, m: number): MonthPos | null => {
     if (m < 0) {
@@ -576,17 +486,17 @@ const CalendarPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
+    <div className="h-[calc(100vh-4rem)] max-w-5xl px-6 py-6 mx-auto lg:px-8 flex flex-col overflow-hidden">
 
       {actionError && (
         <ErrorBanner
           message={actionError}
           onDismiss={() => setActionError(null)}
-          className="mb-4"
+          className="flex-shrink-0 mb-4"
         />
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between flex-shrink-0 gap-3 mb-4">
         <p className="text-slate-500 text-[13px]">
           <span
             className="font-semibold font-nepali"
@@ -630,7 +540,7 @@ const CalendarPage: React.FC = () => {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 mb-4">
+      <div className="flex flex-wrap items-center flex-shrink-0 gap-4 mb-4">
         {Object.entries(EVENT_STYLES).map(([key, st]) => (
           <span key={key} className="flex items-center gap-1.5 text-slate-500 text-[11px]">
             <span className="rounded-sm" style={{ width: 8, height: 8, background: st.fg }} />
@@ -644,7 +554,7 @@ const CalendarPage: React.FC = () => {
       </div>
 
       {/* Calendar book */}
-      <div className="cal-book">
+      <div className="flex-1 min-h-0 cal-book">
         <div className="cal-binding" aria-hidden="true">
           {Array.from({ length: 18 }).map((_, i) => (
             <span key={i} className="cal-ring" />
@@ -656,7 +566,6 @@ const CalendarPage: React.FC = () => {
             m={underCursor.m}
             today={today}
             events={events}
-            holidays={holidaysByMonth[holidayCacheKey(underCursor.y, underCursor.m)] || []}
             onDayClick={flip ? undefined : (sel) => setSelectedDay(sel)}
           />
           {flip && (
@@ -675,7 +584,6 @@ const CalendarPage: React.FC = () => {
                   m={sheetCursor.m}
                   today={today}
                   events={events}
-                  holidays={holidaysByMonth[holidayCacheKey(sheetCursor.y, sheetCursor.m)] || []}
                 />
                 <div
                   className={`cal-tint ${flip.dir === "next" ? "cal-tint-away" : "cal-tint-arrive"}`}
@@ -694,9 +602,6 @@ const CalendarPage: React.FC = () => {
         <DayModal
           sel={selectedDay}
           events={events}
-          holidayInfo={(holidaysByMonth[holidayCacheKey(selectedDay.y, selectedDay.m)] || []).find(
-            (h) => h.day === selectedDay.d,
-          )}
           isAdmin={isAdmin}
           submitting={addingEvent}
           onAdd={(title, type) => handleAddEventForDay(selectedDay.ad, title, type)}
@@ -716,17 +621,17 @@ const CalendarPage: React.FC = () => {
       />
 
       <style>{`
-        .cal-book { perspective: 1500px; }
+        .cal-book { perspective: 1500px; height: 100%; display: flex; flex-direction: column; }
         .cal-binding {
           display: flex; justify-content: space-between; align-items: center;
-          padding: 0 28px; height: 20px; position: relative; z-index: 7;
+          padding: 0 28px; height: 20px; flex-shrink: 0; position: relative; z-index: 7;
         }
         .cal-ring {
           width: 7px; height: 16px; border: 1.6px solid #96A3AE; border-radius: 4px;
           background: #F6F7F9; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
           margin-bottom: -9px;
         }
-        .cal-pages { position: relative; transform-style: preserve-3d; }
+        .cal-pages { position: relative; transform-style: preserve-3d; flex: 1; min-height: 0; }
         .cal-sheet {
           position: absolute; inset: 0; z-index: 5;
           transform-origin: top center;
