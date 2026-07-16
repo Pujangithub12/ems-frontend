@@ -41,6 +41,7 @@ export const queryKeys = {
     [...queryKeys.all(wsId), "schedule", projectId] as const,
   projectFiles: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "projectFiles", projectId] as const,
+  workspaceFiles: (wsId: number) => [...queryKeys.all(wsId), "workspaceFiles"] as const,
 
   // Unauthenticated — no workspace context yet.
   invite: (token: string) => ["invite", token] as const,

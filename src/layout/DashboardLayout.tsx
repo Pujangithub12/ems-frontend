@@ -8,6 +8,7 @@ import {
   CheckSquare,
   Megaphone,
   Users as UsersIcon,
+  FolderOpen,
   Calendar,
   ClipboardCheck,
   LogOut,
@@ -227,6 +228,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "project",
     },
     {
+      path: `${prefix}/documents`,
+      label: "Documents",
+      icon: FolderOpen,
+      id: "documents",
+    },
+    {
       path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
@@ -240,7 +247,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "announcements",
       badgeCount: announcementsBadgeCount,
     },
-    { path: `${prefix}/users`, label: "Users", icon: UsersIcon, id: "users" },
     { path: `${prefix}/calendar`, label: "Calendar", icon: Calendar, id: "calendar" },
     {
       path: `${prefix}/leaverequests`,
@@ -261,6 +267,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   ];
 
   const system = [
+    {
+      path: `${prefix}/users`,
+      label: "People",
+      icon: UsersIcon,
+      id: "users",
+    },
     {
       path: `${prefix}/settings`,
       label: "Settings",
@@ -331,12 +343,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           {reports.map((it) => (
             <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
           ))}
-          <div className="h-3" />
-          <Eyebrow>System</Eyebrow>
-          <div className="h-1.5" />
-          {system.map((it) => (
-            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
-          ))}
         </nav>
 
         {/* User footer */}
@@ -394,18 +400,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Reports</Eyebrow>
               <div className="h-1.5" />
               {reports.map((it) => (
-                <SidebarLink
-                  key={it.id}
-                  to={it.path}
-                  icon={it.icon}
-                  label={it.label}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                />
-              ))}
-              <div className="h-3" />
-              <Eyebrow>System</Eyebrow>
-              <div className="h-1.5" />
-              {system.map((it) => (
                 <SidebarLink
                   key={it.id}
                   to={it.path}
@@ -514,6 +508,26 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   >
                     <UserRoundIcon className="w-3.5 h-3.5 opacity-70" />
                     My Profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate(`${prefix}/users`);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <UsersIcon className="w-3.5 h-3.5 opacity-70" />
+                    People
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate(`${prefix}/settings`);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <Settings className="w-3.5 h-3.5 opacity-70" />
+                    Settings
                   </button>
                   {(user?.role === "admin" || user?.role === "super_admin") && (
                     <button

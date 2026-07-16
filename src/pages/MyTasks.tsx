@@ -817,9 +817,10 @@ const MyTasks: React.FC = () => {
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
             <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
@@ -859,27 +860,33 @@ const MyTasks: React.FC = () => {
             </div>
           )}
         </div>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-        >
-          <option value="">All Priorities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-        >
-          <option value="">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="inprogress">In Progress</option>
-          <option value="on_hold">On Hold</option>
-          <option value="completed">Completed</option>
-        </select>
+        <div className="relative">
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+          >
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
+        <div className="relative">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+          >
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="inprogress">In Progress</option>
+            <option value="on_hold">On Hold</option>
+            <option value="completed">Completed</option>
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+        </div>
         <button
           onClick={toggleAllGroups}
           className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
@@ -1793,8 +1800,7 @@ const MyTasks: React.FC = () => {
                         </div>
                       )}
                       {!comment.feedback &&
-                        (user?.role === "admin" ||
-                          user?.role === "super_admin") && (
+                        selectedTask?.createdBy?.id === user?.id && (
                           <div className="flex gap-2 mt-2">
                             <input
                               type="text"
