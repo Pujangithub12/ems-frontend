@@ -244,15 +244,7 @@ const Users: React.FC = () => {
     <div className="w-full px-6 py-6 lg:px-8 lg:py-8">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
-        <div>
-          <Eyebrow>Team Management</Eyebrow>
-          <h2 className="font-semibold text-[28px] tracking-tight text-slate-900">
-            Users
-          </h2>
-          <p className="text-slate-500 text-[14px] ">
-            Manage your organization's members and hierarchy.
-          </p>
-        </div>
+
         <div className="flex items-center gap-3">
           {/* View Toggle */}
           <div className="flex items-center bg-[#EEF1F5] rounded p-0.5 border border-slate-200">

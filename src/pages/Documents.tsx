@@ -161,7 +161,7 @@ const FolderTree: React.FC<{
             {isMenuOpen && (
               <div
                 ref={menuRef}
-                className="absolute right-1 top-8 z-20 w-36 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden"
+                className="absolute z-20 overflow-hidden bg-white border rounded-md shadow-lg right-1 top-8 w-36 border-slate-200"
               >
                 <button
                   onClick={() => onRename(folder)}
@@ -416,12 +416,6 @@ const Documents: React.FC = () => {
 
   return (
     <div className="p-6 space-y-4">
-      <div>
-        <Eyebrow>Workspace</Eyebrow>
-        <h2 className="font-semibold mt-1 text-[20px] tracking-tight text-slate-900">
-          Documents
-        </h2>
-      </div>
 
       <input
         ref={fileInputRef}
@@ -432,12 +426,12 @@ const Documents: React.FC = () => {
       />
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <div className="flex flex-col items-center justify-center gap-3 py-16">
           <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
           <p className="text-[12px] text-slate-400">Loading documents…</p>
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
+        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
           <AlertCircle className="w-6 h-6 text-red-600" />
           <p className="text-[13px] text-slate-600">{error}</p>
           <button
@@ -475,7 +469,7 @@ const Documents: React.FC = () => {
               </button>
               <button
                 onClick={refresh}
-                className="flex items-center justify-center w-8 h-8 text-slate-500 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                className="flex items-center justify-center w-8 h-8 transition-colors border rounded text-slate-500 border-slate-200 hover:bg-slate-50"
                 title="Refresh"
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
@@ -503,7 +497,7 @@ const Documents: React.FC = () => {
 
           <div className="flex gap-4">
             {/* Sidebar */}
-            <div className="w-56 shrink-0 border border-slate-200 rounded">
+            <div className="w-56 border rounded shrink-0 border-slate-200">
               <div className="px-3 py-2 text-[11px] font-semibold tracking-wide uppercase text-slate-400 border-b border-slate-200">
                 Folders
               </div>
@@ -536,7 +530,7 @@ const Documents: React.FC = () => {
             </div>
 
             {/* Table */}
-            <div className="flex-1 min-w-0 border border-slate-200 rounded overflow-hidden">
+            <div className="flex-1 min-w-0 overflow-hidden border rounded border-slate-200">
               {crumb.length > 0 && (
                 <div className="flex items-center gap-1 px-3 py-2 text-[12px] text-slate-500 border-b border-slate-200 bg-slate-50">
                   <button
@@ -576,16 +570,16 @@ const Documents: React.FC = () => {
                   <table className="w-full text-[12px]">
                     <thead>
                       <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                        <th className="px-3 py-2 text-left font-medium">Name</th>
+                        <th className="px-3 py-2 font-medium text-left">Name</th>
                         {selectedFolderId === ALL_DOCUMENTS && (
-                          <th className="px-3 py-2 text-left font-medium">Folder</th>
+                          <th className="px-3 py-2 font-medium text-left">Folder</th>
                         )}
-                        <th className="px-3 py-2 text-left font-medium">Type</th>
-                        <th className="px-3 py-2 text-left font-medium">Size</th>
-                        <th className="px-3 py-2 text-left font-medium">Uploaded By</th>
-                        <th className="px-3 py-2 text-left font-medium">Uploaded On</th>
-                        <th className="px-3 py-2 text-left font-medium">Version</th>
-                        <th className="px-3 py-2 text-right font-medium">Actions</th>
+                        <th className="px-3 py-2 font-medium text-left">Type</th>
+                        <th className="px-3 py-2 font-medium text-left">Size</th>
+                        <th className="px-3 py-2 font-medium text-left">Uploaded By</th>
+                        <th className="px-3 py-2 font-medium text-left">Uploaded On</th>
+                        <th className="px-3 py-2 font-medium text-left">Version</th>
+                        <th className="px-3 py-2 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -601,7 +595,7 @@ const Documents: React.FC = () => {
                               className="flex items-center gap-2 text-left disabled:cursor-default"
                             >
                               {row.isFolder ? (
-                                <Folder size={15} className="shrink-0 text-blue-900" />
+                                <Folder size={15} className="text-blue-900 shrink-0" />
                               ) : (
                                 <span
                                   className={`flex items-center justify-center w-5 h-5 rounded shrink-0 ${fileTypeStyle(
@@ -623,7 +617,7 @@ const Documents: React.FC = () => {
                           {selectedFolderId === ALL_DOCUMENTS && (
                             <td className="px-3 py-2 text-slate-500">{folderNameOf(row)}</td>
                           )}
-                          <td className="px-3 py-2 text-slate-500 uppercase">
+                          <td className="px-3 py-2 uppercase text-slate-500">
                             {row.isFolder ? "Folder" : row.type || "--"}
                           </td>
                           <td className="px-3 py-2 text-slate-500">
@@ -643,7 +637,7 @@ const Documents: React.FC = () => {
                               {!row.isFolder && (
                                 <a
                                   href={workspaceDownloadUrl(row.id)}
-                                  className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
                                   title="Download"
                                 >
                                   <Download size={14} />
@@ -651,7 +645,7 @@ const Documents: React.FC = () => {
                               )}
                               <button
                                 onClick={() => setDeleteTarget(row)}
-                                className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
+                                className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100"
                                 title="Delete"
                               >
                                 <Trash2 size={14} />
@@ -676,8 +670,8 @@ const Documents: React.FC = () => {
 
       {/* New Folder modal */}
       {showNewFolder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h3 className="text-[14px] font-semibold text-slate-900">New Folder</h3>
               <button
@@ -686,7 +680,7 @@ const Documents: React.FC = () => {
                   setNewFolderName("");
                   setFolderError(null);
                 }}
-                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
               >
                 <X size={16} />
               </button>
@@ -734,15 +728,15 @@ const Documents: React.FC = () => {
 
       {/* Rename modal */}
       {renameTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h3 className="text-[14px] font-semibold text-slate-900">
                 Rename {renameTarget.isFolder ? "Folder" : "File"}
               </h3>
               <button
                 onClick={() => setRenameTarget(null)}
-                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
               >
                 <X size={16} />
               </button>
