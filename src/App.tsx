@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 import CreateAccount from "./pages/CreateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -49,13 +50,27 @@ const RootRedirect: React.FC = () => {
   return null;
 };
 
+/**
+ * "/" specifically: logged-out visitors see the public marketing home page;
+ * logged-in users still fall through to their workspace dashboard. Unmatched
+ * paths (the "*" route) keep using RootRedirect's straight-to-login behavior.
+ */
+const RootPage: React.FC = () => {
+  const { user, workspace, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user) return <Home />;
+  if (workspace) return <Navigate replace to={`/${workspace.id}/dashboard`} />;
+  return null;
+};
+
 function App() {
   return (
     <AuthProvider>
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <GlobalAccessForbiddenModal />
         <Routes>
-          <Route path="/" element={<RootRedirect />} />
+          <Route path="/" element={<RootPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<CreateAccount />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

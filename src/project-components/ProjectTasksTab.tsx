@@ -770,7 +770,7 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
               title={col.title}
               accent={col.accent}
               tasks={tasks.filter((t) => (t.status || "pending") === col.status)}
-              canAddTask={isAdmin}
+              canAddTask={isAdmin && col.status !== "completed"}
               onAddTask={() => setAddTaskStatus(col.status)}
               canManageTasks={isAdmin}
               openMenuTaskId={openMenuTaskId}

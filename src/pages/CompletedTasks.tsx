@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Calendar,
   FolderKanban,
-  ClipboardList,
   Folder,
   TrendingUp,
   FileText,
@@ -194,6 +193,7 @@ const CompletedTasks: React.FC = () => {
     allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
 
   return (
+    <>
     <div className="p-6 space-y-6">
       {/* Search + Filters + Expand/Collapse toggle */}
       <div className="flex flex-wrap items-center gap-3 p-3 bg-white border rounded-lg shadow-sm border-slate-200">
@@ -396,6 +396,8 @@ const CompletedTasks: React.FC = () => {
         </div>
       )}
 
+    </div>
+
       {/* Task Details Popup */}
       {expandedTaskId &&
         (() => {
@@ -403,141 +405,73 @@ const CompletedTasks: React.FC = () => {
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
-              <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-100 shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
+              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
                 <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100/60">
-                      <ClipboardList className="w-3.5 h-3.5 text-blue-900" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-[16px] text-slate-900 truncate">
-                        {t.title}
-                      </h3>
-                      <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-0.5 truncate">
-                        <span className="font-medium text-blue-900">
-                          {t.project?.name || t.projectName || "No Project"}
-                        </span>
-                        <span>·</span>
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-50 text-red-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
-                          Due {formatLongDate(t.dueDate)}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center flex-shrink-0 gap-2.5">
-                    <span
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                      style={{ background: statusMeta.bg, color: statusMeta.fg }}
-                    >
-                      <span
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{ background: statusMeta.fg }}
-                      />
-                      {statusMeta.label}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setExpandedTaskId(null);
-                        setShowAllMembers(false);
-                      }}
-                      className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="p-2.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
-                          <Folder className="w-3.5 h-3.5 text-blue-900" />
-                        </div>
-                        <Eyebrow>Project</Eyebrow>
-                      </div>
-                      <p className="font-semibold text-[13px] text-slate-900 truncate">
+                  <div className="min-w-0">
+                    <Eyebrow>Task Details</Eyebrow>
+                    <h3 className="font-semibold text-[16px] text-slate-900 truncate mt-0.5">
+                      {t.title}
+                    </h3>
+                    <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-1 truncate">
+                      <span className="font-medium text-blue-900">
                         {t.project?.name || t.projectName || "No Project"}
-                      </p>
-                    </div>
-                    <div className="p-2.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
-                          <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
-                        </div>
-                        <Eyebrow>Progress</Eyebrow>
-                      </div>
-                      <span className="font-semibold text-[15px] tracking-tight text-slate-900">
-                        {t.progress}%
                       </span>
-                      <div className="w-full h-1.5 mt-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <span>·</span>
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <Calendar className="w-3 h-3" />
+                        Due {formatLongDate(t.dueDate)}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end flex-shrink-0 gap-1.5">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                        style={{ background: statusMeta.bg, color: statusMeta.fg }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: statusMeta.fg }}
+                        />
+                        {statusMeta.label}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setExpandedTaskId(null);
+                          setShowAllMembers(false);
+                        }}
+                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5 w-28">
+                      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
                         <div
                           className="h-full rounded-full"
                           style={{ width: `${t.progress}%`, background: statusMeta.fg }}
                         />
                       </div>
+                      <span className="text-[10px] font-medium text-slate-500 flex-shrink-0">
+                        {t.progress}%
+                      </span>
                     </div>
                   </div>
-
-                  <div className="space-y-3">
-                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
-                      <div className="flex items-center gap-2 mb-2">
-                        <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <Eyebrow>Description</Eyebrow>
-                      </div>
-                      <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                        {t.description || "No description provided."}
-                      </p>
+                </div>
+                <div className="flex-1 p-6 space-y-3 overflow-y-auto">
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                      <Eyebrow>Description</Eyebrow>
                     </div>
-                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
-                      <div className="flex items-center gap-2 mb-2">
-                        <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <Eyebrow>Assigned To</Eyebrow>
-                      </div>
-                      <div className="space-y-2">
-                        {t.assignedUsers.length === 0 ? (
-                          <p className="text-slate-400 text-[12px]">Unassigned</p>
-                        ) : (
-                          <>
-                            {t.assignedUsers.slice(0, 2).map((u) => (
-                              <div
-                                key={u.id}
-                                className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
-                              >
-                                <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                                  {u.fullName.charAt(0)}
-                                </div>
-                                <span className="text-[13px] font-medium text-slate-800 truncate">
-                                  {u.fullName}
-                                </span>
-                              </div>
-                            ))}
-                            {t.assignedUsers.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => setShowAllMembers(true)}
-                                className="text-[12px] font-medium text-blue-900 hover:underline"
-                              >
-                                View all ({t.assignedUsers.length})
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {t.createdBy && (
-                        <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
-                          Assigned by{" "}
-                          <span className="font-medium text-slate-600">
-                            {t.createdBy.fullName}
-                          </span>
-                        </p>
-                      )}
-                    </div>
+                    <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
+                      {t.description || "No description provided."}
+                    </p>
                   </div>
 
                   {t.subTasks && t.subTasks.length > 0 && (
-                    <div className="p-3.5 rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-150">
+                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
                       <div className="flex items-center gap-2 mb-2">
                         <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Sub-Tasks</Eyebrow>
@@ -565,6 +499,51 @@ const CompletedTasks: React.FC = () => {
                       </div>
                     </div>
                   )}
+
+                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                      <Eyebrow>Assigned To</Eyebrow>
+                    </div>
+                    <div className="space-y-2">
+                      {t.assignedUsers.length === 0 ? (
+                        <p className="text-slate-400 text-[12px]">Unassigned</p>
+                      ) : (
+                        <>
+                          {t.assignedUsers.slice(0, 2).map((u) => (
+                            <div
+                              key={u.id}
+                              className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                {u.fullName.charAt(0)}
+                              </div>
+                              <span className="text-[13px] font-medium text-slate-800 truncate">
+                                {u.fullName}
+                              </span>
+                            </div>
+                          ))}
+                          {t.assignedUsers.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllMembers(true)}
+                              className="text-[12px] font-medium text-blue-900 hover:underline"
+                            >
+                              View all ({t.assignedUsers.length})
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {t.createdBy && (
+                      <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
+                        Assigned by{" "}
+                        <span className="font-medium text-slate-600">
+                          {t.createdBy.fullName}
+                        </span>
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -578,8 +557,8 @@ const CompletedTasks: React.FC = () => {
           const t = completedTasks.find((task) => task.id === expandedTaskId);
           if (!t) return null;
           return (
-            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
-              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-2xl shadow-2xl border-slate-100 max-h-[80vh]">
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
+              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
                 <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
                   <Eyebrow>Assigned Members ({t.assignedUsers.length})</Eyebrow>
                   <button
@@ -621,7 +600,7 @@ const CompletedTasks: React.FC = () => {
             </div>
           );
         })()}
-    </div>
+    </>
   );
 };
 
