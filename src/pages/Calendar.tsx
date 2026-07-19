@@ -510,8 +510,6 @@ const CalendarPage: React.FC = () => {
         />
       )}
 
-      <div className="flex flex-1 min-h-0 gap-5">
-      <div className="flex flex-col flex-1 min-w-0 min-h-0">
       <div className="flex flex-wrap items-center justify-between flex-shrink-0 gap-3 mb-4">
         <p className="text-slate-500 text-[13px]">
           <span
@@ -569,8 +567,9 @@ const CalendarPage: React.FC = () => {
         </span>
       </div>
 
+      <div className="flex flex-1 min-h-0 gap-5">
       {/* Calendar book */}
-      <div className="flex-1 min-h-0 cal-book">
+      <div className="flex-1 min-w-0 min-h-0 cal-book">
         <div className="cal-binding" aria-hidden="true">
           {Array.from({ length: 18 }).map((_, i) => (
             <span key={i} className="cal-ring" />
@@ -612,12 +611,11 @@ const CalendarPage: React.FC = () => {
           )}
         </div>
       </div>
-      </div>
 
       {/* Upcoming Events sidebar */}
-      <div className="flex flex-col flex-shrink-0 overflow-hidden bg-white border rounded-md w-72 border-slate-200">
-        <div className="flex items-center gap-2 flex-shrink-0 px-4 py-3 border-b border-slate-200">
-          <CalendarIcon className="w-4 h-4 flex-shrink-0" style={{ color: RED }} />
+      <div className="flex-col flex-shrink-0 mt-5 overflow-hidden bg-white border rounded-md w-72 border-slate-200">
+        <div className="flex items-center flex-shrink-0 gap-2 px-4 py-3 border-b border-slate-200">
+          <CalendarIcon className="flex-shrink-0 w-4 h-4" style={{ color: RED }} />
           <h3 className="font-semibold text-[13px] text-slate-900">Upcoming Events</h3>
         </div>
         <div className="flex-1 min-h-0 p-3 space-y-2 overflow-y-auto">
