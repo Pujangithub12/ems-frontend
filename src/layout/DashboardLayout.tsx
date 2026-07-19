@@ -295,6 +295,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   // exact navItems match, so it falls through to a breadcrumb instead of a title.
   const isProjectDetails = /^\/[^/]+\/project\/[^/]+\/details/.test(location.pathname);
 
+  // One-line blurb shown under the page title in the topbar — previously just
+  // repeated currentTitle verbatim (e.g. "Tasks" under "Tasks").
+  const sectionDescriptions: Record<string, string> = {
+    project: "Track and manage all your projects",
+    documents: "Browse and manage workspace files",
+    tasks: "Assign, track and update tasks",
+    announcements: "Company-wide updates and notices",
+    calendar: "Events, deadlines and schedules",
+    leaverequests: "Review and approve requests",
+    activities: "Recent workspace activity log",
+    users: "Manage people and permissions",
+    settings: "Workspace configuration and preferences",
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
@@ -457,7 +471,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 ? "Projects · Details"
                 : activeSection === "overview"
                   ? "EMS Workspace · Management"
-                  : currentTitle}
+                  : sectionDescriptions[activeSection] || currentTitle}
             </div>
           </div>
 
