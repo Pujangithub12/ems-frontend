@@ -435,7 +435,7 @@ const CalendarPage: React.FC = () => {
   const addingEvent = createEventMutation.isPending;
   const deletingEvent = deleteEventMutation.isPending;
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const clampMonth = (y: number, m: number): MonthPos | null => {
     if (m < 0) {

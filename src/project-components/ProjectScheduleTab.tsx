@@ -540,17 +540,24 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       {
         id: "wbs",
         header: "Id",
-        width: editMode ? 90 : 52,
-        align: "center",
-        // Only while editing: a small "+" next to the id that adds a
-        // subtask under that row (see handleAddChildTask). Wired up in
-        // GanttChartView's onTaskClick via the "gantt-add-child-btn" class.
-        render: editMode
-          ? (t) =>
-              `<span class="gantt-wbs-label">${t.wbs}</span><button type="button" class="gantt-add-child-btn" data-add-child-id="${t.id}" title="Add subtask">+</button>`
-          : undefined,
+        width: editMode ? 100 : 52,
+        align: "left",
+        // Indent the id itself by nesting depth (e.g. "1.1" one level in
+        // from "1") to match the Task Name column's tree indent. While
+        // editing, also add a "⋮" that opens a small menu with "Add
+        // subtask" (see handleAddChildTask) and "Delete task" (see
+        // handleDeleteTask) — wired up in GanttChartView's onTaskClick via
+        // the "gantt-row-menu-btn" class + openRowMenu.
+        render: (t) => {
+          const depth = (t.wbs.match(/\./g) ?? []).length;
+          const label = `<span class="gantt-wbs-label" style="margin-left:${depth * 10}px">${t.wbs}</span>`;
+          const buttons = editMode
+            ? `<button type="button" class="gantt-row-menu-btn" data-row-menu-id="${t.id}" title="Task options">&#8942;</button>`
+            : "";
+          return `${label}${buttons}`;
+        },
       },
-      { id: "text", header: "Task Name", width: 260, tree: true, align: "center" },
+      { id: "text", header: "Task Name", width: 260, tree: true, align: "left" },
       { id: "durationLabel", header: "Duration", width: 90, align: "center" },
       { id: "startLabel", header: "Start", width: 84, align: "center" },
     ],
@@ -663,6 +670,27 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         startDate: formatDateInput(lastEnd),
       };
       return [...rows, newRow];
+    });
+  }, []);
+
+  // Deletes a task row and cascades to every descendant under it (a summary
+  // row can't be left with orphaned children pointing at a parentId that no
+  // longer exists). Confirmed via window.confirm in GanttChartView before
+  // this fires. Nothing is sent to the backend until "Save to Backend".
+  const handleDeleteTask = useCallback((id: string) => {
+    setScheduleRows((rows) => {
+      const idsToRemove = new Set<string>([id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const row of rows) {
+          if (row.parentId && idsToRemove.has(row.parentId) && !idsToRemove.has(row.id)) {
+            idsToRemove.add(row.id);
+            changed = true;
+          }
+        }
+      }
+      return rows.filter((row) => !idsToRemove.has(row.id));
     });
   }, []);
 
@@ -1048,6 +1076,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 onLinkDelete={handleLinkDelete}
                 onTaskChange={handleTaskChange}
                 onAddChildTask={handleAddChildTask}
+                onDeleteTask={handleDeleteTask}
               />
               {editMode && (
                 <div className="flex items-stretch border-t border-slate-200">
