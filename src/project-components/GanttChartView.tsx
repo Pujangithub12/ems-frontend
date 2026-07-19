@@ -38,6 +38,7 @@ interface GanttChartViewProps {
   ) => void;
 
   onAddChildTask?: (parentId: string) => void;
+  onDeleteTask?: (id: string) => void;
 }
 
 
@@ -122,6 +123,58 @@ function cellContainsToday(
 
 let activeGanttEventIds: string[] = [];
 
+// The row-options ("⋮") menu is a plain floating DOM node appended to
+// <body> — not part of React's tree — because it must render outside the
+// gantt grid's clipped/scrolling cells (see the "wbs" column's render in
+// ProjectScheduleTab.tsx, which emits the ".gantt-row-menu-btn" trigger).
+let openRowMenuEl: HTMLDivElement | null = null;
+
+function closeRowMenu() {
+  openRowMenuEl?.remove();
+  openRowMenuEl = null;
+}
+
+function openRowMenu(
+  anchor: HTMLElement,
+  taskId: string,
+  onAddChild: (id: string) => void,
+  onDelete: (id: string) => void,
+) {
+  closeRowMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "gantt-row-menu";
+  menu.innerHTML = `
+    <button type="button" class="gantt-row-menu-item" data-action="add">Add subtask</button>
+    <button type="button" class="gantt-row-menu-item gantt-row-menu-item-danger" data-action="delete">Delete task</button>
+  `;
+  document.body.appendChild(menu);
+
+  const rect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(
+    rect.right - menuRect.width,
+    window.innerWidth - menuRect.width - 8,
+  );
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, left)}px`;
+
+  menu.querySelector('[data-action="add"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeRowMenu();
+    onAddChild(taskId);
+  });
+  menu.querySelector('[data-action="delete"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeRowMenu();
+    if (window.confirm("Delete this task? Any subtasks under it will be deleted too.")) {
+      onDelete(taskId);
+    }
+  });
+
+  openRowMenuEl = menu;
+}
+
 const GanttChartView: React.FC<GanttChartViewProps> = ({
   tasks,
   links,
@@ -133,26 +186,56 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   onLinkDelete,
   onTaskChange,
   onAddChildTask,
+  onDeleteTask,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(0);
-  
+
   const finestScaleUnitRef = useRef<string>("day");
-  
+
   const onLinkCreateRef = useRef(onLinkCreate);
   const onLinkDeleteRef = useRef(onLinkDelete);
   const onTaskChangeRef = useRef(onTaskChange);
   const onAddChildTaskRef = useRef(onAddChildTask);
+  const onDeleteTaskRef = useRef(onDeleteTask);
   const editableRef = useRef(editable);
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
     onLinkDeleteRef.current = onLinkDelete;
     onTaskChangeRef.current = onTaskChange;
     onAddChildTaskRef.current = onAddChildTask;
+    onDeleteTaskRef.current = onDeleteTask;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, editable]);
+  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, onDeleteTask, editable]);
 
+
+  // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
+  useEffect(() => {
+    const handleDocMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        openRowMenuEl &&
+        !openRowMenuEl.contains(target) &&
+        !target.closest(".gantt-row-menu-btn")
+      ) {
+        closeRowMenu();
+      }
+    };
+    const handleScroll = () => closeRowMenu();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeRowMenu();
+    };
+    document.addEventListener("mousedown", handleDocMouseDown, true);
+    document.addEventListener("scroll", handleScroll, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleDocMouseDown, true);
+      document.removeEventListener("scroll", handleScroll, true);
+      document.removeEventListener("keydown", handleKeyDown);
+      closeRowMenu();
+    };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -207,11 +290,20 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       gantt.attachEvent("onTaskClick", (id: string | number, e: MouseEvent) => {
         if (!editableRef.current) return true;
         const target = e.target as HTMLElement;
-        const addChildBtn = target.closest<HTMLElement>(".gantt-add-child-btn");
-        if (addChildBtn) {
-          onAddChildTaskRef.current?.(
-            addChildBtn.dataset.addChildId ?? String(id),
-          );
+        const menuBtn = target.closest<HTMLElement>(".gantt-row-menu-btn");
+        if (menuBtn) {
+          const rowId = menuBtn.dataset.rowMenuId ?? String(id);
+          if (openRowMenuEl && openRowMenuEl.dataset.forId === rowId) {
+            closeRowMenu();
+          } else {
+            openRowMenu(
+              menuBtn,
+              rowId,
+              (tid) => onAddChildTaskRef.current?.(tid),
+              (tid) => onDeleteTaskRef.current?.(tid),
+            );
+            if (openRowMenuEl) openRowMenuEl.dataset.forId = rowId;
+          }
           return false;
         }
         if (target.closest(".gantt_tree_icon")) return true; // expand/collapse arrow
@@ -455,13 +547,13 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           text-align: inherit;
           background: #fff;
         }
-        /* The "+" next to a task's # id (edit mode only) that adds a
-           subtask under that row — see the "wbs" column's render + the
-           onAddChildTask handler in onTaskClick. */
+        /* The "⋮" next to a task's # id (edit mode only) that opens the
+           row-options menu (Add subtask / Delete task) — see the "wbs"
+           column's render + the openRowMenu/onTaskClick wiring above. */
         .gantt-wbs-label {
-          margin-right: 4px;
+          margin-right: 3px;
         }
-        .gantt-add-child-btn {
+        .gantt-row-menu-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -469,18 +561,70 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           height: 16px;
           padding: 0;
           line-height: 1;
-          font-size: 12px;
-          font-weight: 600;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: -1px;
           border-radius: 3px;
-          border: 1px solid #cbd5e1;
-          background: #fff;
+          border: 1px solid transparent;
+          background: transparent;
           color: #64748b;
           cursor: pointer;
         }
-        .gantt-add-child-btn:hover {
+        .gantt-row-menu-btn:hover {
           background: #eff6ff;
           border-color: #2563eb;
           color: #2563eb;
+        }
+        /* Floating dropdown opened by .gantt-row-menu-btn — appended to
+           <body> (see openRowMenu in GanttChartView) so it isn't clipped by
+           the narrow, scrollable grid column it's triggered from. */
+        .gantt-row-menu {
+          position: fixed;
+          z-index: 1000;
+          display: flex;
+          flex-direction: column;
+          min-width: 140px;
+          padding: 4px;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+        }
+        .gantt-row-menu-item {
+          display: block;
+          width: 100%;
+          padding: 6px 10px;
+          text-align: left;
+          font-size: 12.5px;
+          font-weight: 500;
+          color: #334155;
+          background: transparent;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .gantt-row-menu-item:hover {
+          background: #f1f5f9;
+        }
+        .gantt-row-menu-item-danger {
+          color: #dc2626;
+        }
+        .gantt-row-menu-item-danger:hover {
+          background: #fef2f2;
+        }
+        /* Subtask rows in the "Task Name" tree column — indent each nesting
+           level by ~10px relative to its parent (dhtmlx's default is 15px).
+           The expand/collapse arrow (.gantt_open/.gantt_close, 20px) and the
+           leaf placeholder (.gantt_blank, 18px) differ in width by default,
+           which partly cancels the indent out — equalized here so the full
+           10px actually shows up as the visual gap between levels. */
+        .gantt_tree_indent {
+          width: 10px !important;
+        }
+        .gantt_tree_icon.gantt_open,
+        .gantt_tree_icon.gantt_close,
+        .gantt_tree_icon.gantt_blank {
+          width: 18px !important;
         }
       `}</style>
       <div ref={containerRef} style={{ width: "100%" }} />

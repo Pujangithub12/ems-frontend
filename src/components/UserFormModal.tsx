@@ -9,7 +9,6 @@ import {
   Calendar,
   Shield,
   MapPin,
-  Lock,
   Loader2,
   Send,
 } from "lucide-react";
@@ -227,24 +226,6 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               />
             </div>
           </div>
-
-          {editingUser && (
-            <div className="space-y-2 max-w-md">
-              <Eyebrow>Account Password</Eyebrow>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  name="new-user-password"
-                  autoComplete="new-password"
-                  value={userForm.password}
-                  onChange={(e) => onFieldChange("password", e.target.value)}
-                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                  placeholder="Leave empty to keep current"
-                />
-              </div>
-            </div>
-          )}
 
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
             <button
