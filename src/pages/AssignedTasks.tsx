@@ -228,6 +228,8 @@ const AssignedTasks: React.FC = () => {
   const [filterEmployee, setFilterEmployee] = useState("");
   const [projectFilterOpen, setProjectFilterOpen] = useState(false);
   const projectFilterRef = useRef<HTMLDivElement>(null);
+  const [employeeFilterOpen, setEmployeeFilterOpen] = useState(false);
+  const employeeFilterRef = useRef<HTMLDivElement>(null);
 
   // Who the current user is allowed to assign a task to: themselves, plus
   // anyone below them in the hierarchy tree (any depth) — mirrors the
@@ -250,6 +252,12 @@ const AssignedTasks: React.FC = () => {
         !projectFilterRef.current.contains(e.target as Node)
       ) {
         setProjectFilterOpen(false);
+      }
+      if (
+        employeeFilterRef.current &&
+        !employeeFilterRef.current.contains(e.target as Node)
+      ) {
+        setEmployeeFilterOpen(false);
       }
       if (
         addMemberRef.current &&
@@ -1053,7 +1061,7 @@ const AssignedTasks: React.FC = () => {
     <>
     <div className="p-6 space-y-6">
       {/* Search + Filters + Expand/Collapse toggle + Create Task */}
-      <div className="flex flex-wrap items-center gap-3 p-3 bg-white border rounded-lg shadow-sm border-slate-200">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[140px] max-w-[220px]">
           <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
           <input
@@ -1061,20 +1069,20 @@ const AssignedTasks: React.FC = () => {
             placeholder="Search tasks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-900 transition-colors"
           />
         </div>
         <div ref={projectFilterRef} className="relative">
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-900 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
             <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
-            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
               <div className="max-h-[180px] overflow-y-auto">
                 <button
                   type="button"
@@ -1115,7 +1123,7 @@ const AssignedTasks: React.FC = () => {
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
           >
             <option value="">All Priorities</option>
             <option value="high">High</option>
@@ -1128,7 +1136,7 @@ const AssignedTasks: React.FC = () => {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -1138,24 +1146,59 @@ const AssignedTasks: React.FC = () => {
           </select>
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
         </div>
-        <div className="relative">
-          <select
-            value={filterEmployee}
-            onChange={(e) => setFilterEmployee(e.target.value)}
-            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+        <div ref={employeeFilterRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setEmployeeFilterOpen((o) => !o)}
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-900 transition-colors min-w-[160px]"
           >
-            <option value="">All Employees</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id.toString()}>
-                {user.fullName}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <span className="truncate">
+              {users.find((u) => u.id.toString() === filterEmployee)?.fullName ||
+                "All Employees"}
+            </span>
+            <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+          </button>
+          {employeeFilterOpen && (
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+              <div className="max-h-[180px] overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterEmployee("");
+                    setEmployeeFilterOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-[13px] transition-colors hover:bg-slate-50 ${
+                    !filterEmployee
+                      ? "font-semibold text-blue-900 bg-blue-50"
+                      : "text-slate-700"
+                  }`}
+                >
+                  All Employees
+                </button>
+                {users.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      setFilterEmployee(u.id.toString());
+                      setEmployeeFilterOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-[13px] truncate transition-colors hover:bg-slate-50 ${
+                      filterEmployee === u.id.toString()
+                        ? "font-semibold text-blue-900 bg-blue-50"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {u.fullName}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -1166,7 +1209,7 @@ const AssignedTasks: React.FC = () => {
         </button>
         <button
           onClick={() => openAddTaskModal()}
-          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Create Task
         </button>
@@ -1276,10 +1319,18 @@ const AssignedTasks: React.FC = () => {
                       {group.tasks.map((task) => {
                         const overdue = isOverdue(task.dueDate, task.status);
                         const completed = task.status === "completed";
+                        const statusColor =
+                          task.status === "completed"
+                            ? "text-emerald-600"
+                            : task.status === "in_progress"
+                              ? "text-amber-600"
+                              : task.status === "on_hold"
+                                ? "text-orange-600"
+                                : "text-slate-500";
                         return (
                           <div
                             key={task.id}
-                            className={`flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50 transition-colors ${
+                            className={`group flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50/60 transition-colors ${
                               completed ? "opacity-60" : ""
                             }`}
                           >
@@ -1290,16 +1341,16 @@ const AssignedTasks: React.FC = () => {
                                   completed ? "pending" : "completed",
                                 )
                               }
-                              className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                              className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                                 completed
-                                  ? "bg-slate-900 border-slate-900"
-                                  : "border-slate-300 hover:border-slate-400"
+                                  ? "bg-emerald-600 border-emerald-600"
+                                  : "border-slate-300 hover:border-blue-900"
                               }`}
                               title="Mark as completed"
                             >
                               {completed && (
                                 <Check
-                                  className="w-2.5 h-2.5 text-white"
+                                  className="w-3 h-3 text-white"
                                   strokeWidth={3}
                                 />
                               )}
@@ -1337,22 +1388,13 @@ const AssignedTasks: React.FC = () => {
                             <div className="flex-shrink-0">
                               <StatusPill type="priority" value={task.priority} />
                             </div>
-                            <div className="items-center flex-shrink-0 hidden gap-1.5 sm:flex">
-                              <div className="h-1 overflow-hidden rounded-full bg-slate-100 w-14">
-                                <div
-                                  className="h-full rounded-full bg-blue-900"
-                                  style={{ width: `${task.progress}%` }}
-                                />
-                              </div>
+                            <div className="flex-shrink-0 hidden sm:block">
                               <select
                                 value={task.status}
                                 onChange={(e) =>
                                   handleStatusChange(task.id, e.target.value)
                                 }
-                                className="text-[11px] text-slate-600 bg-transparent outline-none appearance-none cursor-pointer"
-                                style={{
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}
+                                className={`text-[12px] font-medium bg-transparent outline-none appearance-none cursor-pointer text-right ${statusColor}`}
                               >
                                 <option value="pending">Pending</option>
                                 <option value="in_progress">In Progress</option>
@@ -1377,7 +1419,7 @@ const AssignedTasks: React.FC = () => {
                                 ))
                               )}
                             </div>
-                            <div className="flex items-center flex-shrink-0 gap-1">
+                            <div className="items-center flex-shrink-0 hidden gap-1 sm:flex">
                               <button
                                 onClick={() => handleShowTaskFeedback(task.id)}
                                 className="p-1.5 transition-colors rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
@@ -1407,7 +1449,7 @@ const AssignedTasks: React.FC = () => {
                         onClick={() =>
                           openAddTaskModal(group.projectId ?? undefined)
                         }
-                        className="flex items-center w-full gap-1.5 px-2.5 py-2 text-[12px] text-slate-500 border border-dashed border-slate-200 rounded-md hover:text-slate-700 hover:border-slate-300 transition-colors"
+                        className="flex items-center w-full gap-1.5 px-2.5 py-2.5 mt-1 text-[12px] text-slate-500 border-t border-slate-100 hover:text-blue-900 hover:bg-slate-50/60 transition-colors"
                       >
                         <Plus className="w-3.5 h-3.5" /> Add task to{" "}
                         {group.name}

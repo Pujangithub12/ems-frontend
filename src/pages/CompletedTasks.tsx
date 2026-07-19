@@ -196,7 +196,7 @@ const CompletedTasks: React.FC = () => {
     <>
     <div className="p-6 space-y-6">
       {/* Search + Filters + Expand/Collapse toggle */}
-      <div className="flex flex-wrap items-center gap-3 p-3 bg-white border rounded-lg shadow-sm border-slate-200">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[180px] max-w-md">
           <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
           <input
@@ -204,20 +204,20 @@ const CompletedTasks: React.FC = () => {
             placeholder="Search completed tasks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-900 transition-colors"
           />
         </div>
         <div ref={projectFilterRef} className="relative">
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-900 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
             <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
-            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded shadow-lg overflow-hidden">
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
               <div className="max-h-[180px] overflow-y-auto">
                 <button
                   type="button"
@@ -254,7 +254,7 @@ const CompletedTasks: React.FC = () => {
         </div>
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded hover:border-slate-300 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -339,14 +339,14 @@ const CompletedTasks: React.FC = () => {
                       {group.tasks.map((task) => (
                         <div
                           key={task.id}
-                          className="flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50 transition-colors opacity-70"
+                          className="flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50/60 transition-colors opacity-70"
                         >
                           <button
                             onClick={() => handleUnComplete(task.id)}
-                            className="w-[18px] h-[18px] rounded-full border flex items-center justify-center flex-shrink-0 transition-colors bg-slate-900 border-slate-900"
+                            className="w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors bg-emerald-600 border-emerald-600"
                             title="Mark as pending"
                           >
-                            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                            <Check className="w-3 h-3 text-white" strokeWidth={3} />
                           </button>
                           <button
                             onClick={() =>
