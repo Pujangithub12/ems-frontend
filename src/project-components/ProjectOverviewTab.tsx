@@ -1,21 +1,24 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
-  Calendar,
-  Users,
-  ListChecks,
+  Pencil,
+  Loader2,
+  X,
+  FileSignature,
+  Flag,
+  Wallet,
+  Receipt,
   TrendingUp,
-  CheckCircle2,
-  Circle,
-  Mail,
-  Plus,
-  UserRound,
+  TrendingDown,
 } from "lucide-react";
 import { Project } from "../types";
-import { Eyebrow } from "./ProjectSharedComponents";
 import { flattenProjectTasks } from "./taskUtils";
-import { useActivities } from "../hooks/useActivities";
-import { useScheduleQuery } from "../hooks/useSchedule";
-import { dtoToRows } from "./scheduleApi";
+import { useAuth } from "../context/AuthProvider";
+import { useUpdateProject } from "../hooks/useProjects";
+import { useProcurementItemsQuery } from "../hooks/useProcurement";
+import { formatCost, toNumber } from "./procurementApi";
+import { useMonthlyPerformanceQuery } from "../hooks/useMonthlyPerformance";
+import { MONTH_NAMES, formatEnergy } from "./monthlyPerformanceApi";
+import { getErrorMessage } from "../lib/errors";
 
 interface ProjectOverviewTabProps {
   project: Project;
@@ -24,19 +27,6 @@ interface ProjectOverviewTabProps {
    * those flows here. */
   onNavigateTab?: (tab: string) => void;
 }
-
-const PRIORITY_META: Record<string, { fg: string; label: string }> = {
-  high: { fg: "#B91C1C", label: "High" },
-  medium: { fg: "#B45309", label: "Medium" },
-  low: { fg: "#64748B", label: "Low" },
-};
-
-const STATUS_META: Record<string, { fg: string; label: string }> = {
-  pending: { fg: "#B45309", label: "Pending" },
-  in_progress: { fg: "#1E3A8A", label: "In Progress" },
-  on_hold: { fg: "#B91C1C", label: "On Hold" },
-  completed: { fg: "#15803D", label: "Completed" },
-};
 
 /** Task-status buckets that make up the "Task Overview" donut — a status
  * (state) dataset, so it takes the app's existing status colors rather than
@@ -67,25 +57,7 @@ function formatDate(date: string | Date): string {
   });
 }
 
-function timeAgo(dateString: string): string {
-  const diffMs = Date.now() - new Date(dateString).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-function dueDateInfo(dueDate?: string): { label: string; tone: string } | null {
-  if (!dueDate) return null;
-  const diffMs = new Date(dueDate).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
-  const days = Math.round(diffMs / 86400000);
-  if (days < 0) return { label: `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`, tone: "text-red-600" };
-  if (days === 0) return { label: "Due today", tone: "text-amber-600" };
-  return { label: `${days} day${days === 1 ? "" : "s"} remaining`, tone: "text-slate-500" };
-}
+const dateInputValue = (value?: string | null) => (value ? value.slice(0, 10) : "");
 
 /** Small local presentational card shell — every section in this tab shares
  * this same bordered-card language. */
@@ -200,143 +172,299 @@ const TaskStatusDonut: React.FC<{
 };
 
 const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavigateTab }) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
   const allTasks = flattenProjectTasks(project);
   const total = project.tasksCount ?? allTasks.length;
-  const completedCount = allTasks.filter((t) => (t.status || "pending") === "completed").length;
-  const remaining = Math.max(0, total - completedCount);
-  const progress = project.progress ?? (total > 0 ? Math.round((completedCount / total) * 100) : 0);
-  const deadline = dueDateInfo(project.dueDate);
   const projectManager = project.assignees?.[0];
-  const priority = PRIORITY_META[project.priority || "medium"] || PRIORITY_META.medium;
-  const status = STATUS_META[project.status] || { fg: "#475569", label: project.status };
 
   const donutCounts = DONUT_BUCKETS.reduce<Record<string, number>>((acc, bucket) => {
     acc[bucket.key] = allTasks.filter((t) => bucket.statuses.includes(t.status || "pending")).length;
     return acc;
   }, {});
 
-  const activitiesQuery = useActivities({ projectId: project.id });
-  const recentActivity = (activitiesQuery.data || []).slice(0, 4);
+  // Project Financials + Procurement Budget Usage (moved here from the Procurement tab)
+  const procurementQuery = useProcurementItemsQuery(String(project.id));
+  const procurementItems = procurementQuery.data ?? [];
+  const totalSpend = useMemo(
+    () => procurementItems.reduce((sum, it) => sum + toNumber(it.estimatedCost), 0),
+    [procurementItems],
+  );
 
-  const scheduleQuery = useScheduleQuery(String(project.id));
-  const milestones = (dtoToRows(scheduleQuery.data || []) || [])
-    .filter((row) => row.duration.trim() === "0" && row.startDate.trim() !== "")
-    .map((row) => ({ id: row.id, name: row.taskName, date: new Date(row.startDate) }))
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const today = new Date().setHours(0, 0, 0, 0);
-  const nextUpcomingIdx = milestones.findIndex((m) => m.date.getTime() >= today);
+  const updateProjectMutation = useUpdateProject();
+  const [showFinancials, setShowFinancials] = useState(false);
+  const [financialsForm, setFinancialsForm] = useState({
+    contractDate: dateInputValue(project.contractDate),
+    kickoffDate: dateInputValue(project.kickoffDate),
+    estimatedTotalCost: project.estimatedTotalCost ?? "",
+    sellingPrice: project.sellingPrice ?? "",
+  });
+  const [financialsSubmitting, setFinancialsSubmitting] = useState(false);
+  const [financialsError, setFinancialsError] = useState<string | null>(null);
 
-  const teamMembers = project.assignees || [];
+  const estimatedTotalCost = toNumber(project.estimatedTotalCost);
+  const sellingPrice = toNumber(project.sellingPrice);
+  const hasBudget = project.estimatedTotalCost !== null && project.estimatedTotalCost !== undefined;
+  const hasFinancials =
+    hasBudget || (project.sellingPrice !== null && project.sellingPrice !== undefined);
+  const profitMargin = sellingPrice - estimatedTotalCost;
+  const budgetPct = estimatedTotalCost > 0 ? Math.round((totalSpend / estimatedTotalCost) * 100) : 0;
+  const budgetBarColor =
+    budgetPct >= 100 ? "bg-red-600" : budgetPct >= 80 ? "bg-amber-500" : "bg-blue-900";
+
+  // Energy Performance glimpse — most recent month (this calendar year) with any recorded data.
+  const currentYear = new Date().getFullYear();
+  const performanceQuery = useMonthlyPerformanceQuery(String(project.id), currentYear);
+  const performanceRows = performanceQuery.data ?? [];
+  const latestPerformanceRow = useMemo(() => {
+    const withData = performanceRows.filter(
+      (r) => r.contractEnergy != null || r.actualGeneration != null || r.incomeReceived != null,
+    );
+    if (withData.length === 0) return null;
+    return withData.reduce((latest, r) => (r.month > latest.month ? r : latest));
+  }, [performanceRows]);
+
+  const openFinancialsForm = () => {
+    setFinancialsForm({
+      contractDate: dateInputValue(project.contractDate),
+      kickoffDate: dateInputValue(project.kickoffDate),
+      estimatedTotalCost: project.estimatedTotalCost ?? "",
+      sellingPrice: project.sellingPrice ?? "",
+    });
+    setFinancialsError(null);
+    setShowFinancials(true);
+  };
+
+  const handleSubmitFinancials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFinancialsSubmitting(true);
+    setFinancialsError(null);
+    try {
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        payload: {
+          contractDate: financialsForm.contractDate || null,
+          kickoffDate: financialsForm.kickoffDate || null,
+          estimatedTotalCost:
+            financialsForm.estimatedTotalCost === "" ? null : Number(financialsForm.estimatedTotalCost),
+          sellingPrice:
+            financialsForm.sellingPrice === "" ? null : Number(financialsForm.sellingPrice),
+        },
+      });
+      setShowFinancials(false);
+    } catch (err) {
+      setFinancialsError(getErrorMessage(err, "Failed to save project financials."));
+    } finally {
+      setFinancialsSubmitting(false);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      {/* Stat row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5">
-          <Eyebrow>Progress</Eyebrow>
-          <div className="mt-2 font-bold text-[26px] tracking-tight text-slate-900">
-            {progress}%
-          </div>
-          <div className="w-full h-1.5 mt-3 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full transition-all rounded-full bg-blue-600"
-              style={{ width: `${Math.min(100, progress)}%` }}
-            />
-          </div>
-          <div className="mt-2 text-[12px] text-slate-500">
-            {completedCount} of {total} tasks completed
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-start justify-between">
-            <Eyebrow>Tasks</Eyebrow>
-            <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50">
-              <ListChecks className="w-4 h-4 text-indigo-600" />
-            </div>
-          </div>
-          <div className="mt-2 font-bold text-[26px] tracking-tight text-slate-900">
-            {completedCount} <span className="text-slate-300">/</span> {total}
-          </div>
-          <div className="mt-2 text-[12px] text-slate-500">{remaining} tasks remaining</div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-start justify-between">
-            <Eyebrow>Team</Eyebrow>
-            <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-emerald-50">
-              <Users className="w-4 h-4 text-emerald-600" />
-            </div>
-          </div>
-          <div className="mt-2 font-bold text-[26px] tracking-tight text-slate-900">
-            {project.membersCount ?? teamMembers.length}
-          </div>
-          <div className="mt-2 text-[12px] text-slate-500">Members</div>
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-start justify-between">
-            <Eyebrow>Due Date</Eyebrow>
-            <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-amber-50">
-              <Calendar className="w-4 h-4 text-amber-600" />
-            </div>
-          </div>
-          <div className="mt-2 font-bold text-[17px] tracking-tight text-slate-900">
-            {project.dueDate ? formatDate(project.dueDate) : "Not set"}
-          </div>
-          {deadline && (
-            <div className={`mt-2 text-[12px] ${deadline.tone}`}>{deadline.label}</div>
-          )}
-        </Card>
+    <div className="space-y-5">
+      {/* Project Description */}
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-semibold tracking-[0.08em] uppercase text-slate-400">
+          Project Description
+        </span>
+        <p className="text-[13px] text-slate-600 leading-relaxed">
+          {project.description || "No description provided."}
+        </p>
       </div>
 
-      {/* Summary + Task Overview + Milestones */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader title="Project Summary" />
-          <div className="p-5 space-y-4">
-            <p className="text-[13px] text-slate-600 leading-relaxed">
-              {project.description || "No description provided."}
-            </p>
-            <div className="pt-1 space-y-3 text-[13px] border-t border-slate-100">
-              <div className="flex items-center justify-between pt-3">
-                <span className="text-slate-500">Project Manager</span>
-                {projectManager ? (
-                  <span className="flex items-center gap-2 font-medium text-slate-900">
-                    <span className="flex items-center justify-center flex-shrink-0 w-6 h-6 text-[10px] font-semibold text-white rounded-full bg-blue-900">
-                      {initials(projectManager.fullName)}
-                    </span>
-                    {projectManager.fullName}
-                  </span>
-                ) : (
-                  <span className="text-slate-400">Unassigned</span>
-                )}
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Start Date</span>
-                <span className="font-medium text-slate-900">
-                  {project.createdAt ? formatDate(project.createdAt) : "—"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Priority</span>
-                <span className="flex items-center gap-1.5 font-medium text-slate-900">
-                  <span className="w-2 h-2 rounded-full" style={{ background: priority.fg }} />
-                  {priority.label}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Status</span>
-                <span className="flex items-center gap-1.5 font-medium text-slate-900">
-                  <span className="w-2 h-2 rounded-full" style={{ background: status.fg }} />
-                  {status.label}
-                </span>
+      {/* Project Summary — a single inline row, no card chrome */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 text-[13px] border-t border-slate-100">
+        <div className="flex items-center flex-shrink-0 gap-2">
+          <span className="text-slate-400">Manager</span>
+          {projectManager ? (
+            <span className="flex items-center gap-1.5 font-medium text-slate-900">
+              <span className="flex items-center justify-center flex-shrink-0 w-5 h-5 text-[9px] font-semibold text-white rounded-full bg-blue-900">
+                {initials(projectManager.fullName)}
+              </span>
+              {projectManager.fullName}
+            </span>
+          ) : (
+            <span className="text-slate-400">Unassigned</span>
+          )}
+        </div>
+        <div className="flex items-center flex-shrink-0 gap-2 pl-6 border-l border-slate-200">
+          <span className="text-slate-400">Started</span>
+          <span className="font-medium text-slate-900">
+            {project.createdAt ? formatDate(project.createdAt) : "—"}
+          </span>
+        </div>
+      </div>
+
+      {/* Project Financials */}
+      <div className="flex flex-col gap-3 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold tracking-[0.08em] uppercase text-slate-400">
+            Project Financials
+          </span>
+          {isAdmin && (
+            <button
+              onClick={openFinancialsForm}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <Pencil size={12} /> Edit Financials
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="p-3 bg-white border rounded-lg border-slate-200">
+            <div className="flex items-start justify-between">
+              <span className="text-[12px] font-medium text-slate-500">Contract Date</span>
+              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-slate-100">
+                <FileSignature className="w-4 h-4 text-slate-600" />
               </div>
             </div>
+            <div className="mt-2 text-[16px] font-bold leading-none tracking-tight text-slate-900">
+              {project.contractDate ? formatDate(project.contractDate) : "Not set"}
+            </div>
+          </div>
+
+          <div className="p-3 bg-white border rounded-lg border-slate-200">
+            <div className="flex items-start justify-between">
+              <span className="text-[12px] font-medium text-slate-500">Project Kickoff</span>
+              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+                <Flag className="w-4 h-4 text-blue-900" />
+              </div>
+            </div>
+            <div className="mt-2 text-[16px] font-bold leading-none tracking-tight text-slate-900">
+              {project.kickoffDate ? formatDate(project.kickoffDate) : "Not set"}
+            </div>
+          </div>
+
+          <div className="p-3 bg-white border rounded-lg border-slate-200">
+            <div className="flex items-start justify-between">
+              <span className="text-[12px] font-medium text-slate-500">Est. Total Project Cost</span>
+              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-orange-50">
+                <Wallet className="w-4 h-4 text-orange-700" />
+              </div>
+            </div>
+            <div className="mt-2 text-[16px] font-bold leading-none tracking-tight text-slate-900">
+              {formatCost(project.estimatedTotalCost)}
+            </div>
+          </div>
+
+          <div className="p-3 bg-white border rounded-lg border-slate-200">
+            <div className="flex items-start justify-between">
+              <span className="text-[12px] font-medium text-slate-500">Selling Price</span>
+              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
+                <Receipt className="w-4 h-4 text-emerald-700" />
+              </div>
+            </div>
+            <div className="mt-2 text-[16px] font-bold leading-none tracking-tight text-slate-900">
+              {formatCost(project.sellingPrice)}
+            </div>
+          </div>
+        </div>
+
+        {/* Bonus KPI: computed profit margin */}
+        {hasFinancials && (
+          <div
+            className={`flex items-center justify-between px-4 py-3 rounded-lg border ${
+              profitMargin >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {profitMargin >= 0 ? (
+                <TrendingUp className="w-4 h-4 text-emerald-700" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-red-700" />
+              )}
+              <span
+                className={`text-[12px] font-semibold uppercase tracking-[0.05em] ${
+                  profitMargin >= 0 ? "text-emerald-800" : "text-red-800"
+                }`}
+              >
+                Estimated Profit Margin
+              </span>
+            </div>
+            <span
+              className={`text-[16px] font-bold tracking-tight ${
+                profitMargin >= 0 ? "text-emerald-700" : "text-red-700"
+              }`}
+            >
+              {profitMargin >= 0 ? "+" : ""}
+              {formatCost(profitMargin)}
+            </span>
+          </div>
+        )}
+
+        {/* Procurement Budget Usage */}
+        <div className="p-4 bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] font-semibold text-slate-700">Procurement Budget Usage</span>
+            <span className="text-[14px] font-bold text-slate-900">
+              {formatCost(totalSpend)}
+              {hasBudget && (
+                <span className="font-medium text-slate-500"> of {formatCost(project.estimatedTotalCost)}</span>
+              )}
+            </span>
+          </div>
+          {hasBudget ? (
+            <>
+              <div className="w-full h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-2 rounded-full transition-all duration-500 ${budgetBarColor}`}
+                  style={{ width: `${Math.min(budgetPct, 100)}%` }}
+                />
+              </div>
+              <div className="mt-1.5 text-[11px] text-slate-400">
+                {budgetPct}% of estimated project cost committed to procurement items
+                {budgetPct >= 100 ? " — over budget" : ""}
+              </div>
+            </>
+          ) : (
+            <p className="text-[12px] text-slate-400">
+              Set an estimated total project cost in Project Financials to track budget usage.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Team glimpse + Task Overview */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-1">
+          <CardHeader
+            title="Team"
+            action={{ label: "View team", onClick: () => onNavigateTab?.("team") }}
+          />
+          <div className="p-5">
+            {project.assignees && project.assignees.length > 0 ? (
+              <div className="space-y-3">
+                {project.assignees.slice(0, 5).map((member) => (
+                  <div key={member.id} className="flex items-center gap-2.5">
+                    <span className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[10px] font-semibold text-white rounded-full bg-blue-900">
+                      {initials(member.fullName)}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-slate-900 truncate">
+                        {member.fullName}
+                      </div>
+                      {member.jobPosition && (
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {member.jobPosition}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {project.assignees.length > 5 && (
+                  <div className="pt-1 text-[12px] text-slate-400">
+                    +{project.assignees.length - 5} more
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-slate-400">No team members assigned yet.</p>
+            )}
           </div>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader
             title="Task Overview"
             action={{ label: "View all tasks", onClick: () => onNavigateTab?.("tasks") }}
@@ -345,131 +473,151 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
             <TaskStatusDonut counts={donutCounts} total={total} />
           </div>
         </Card>
-
-        <Card>
-          <CardHeader
-            title="Upcoming Milestones"
-            action={{ label: "View full schedule", onClick: () => onNavigateTab?.("schedule") }}
-          />
-          <div className="p-5">
-            {milestones.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-[12px]">
-                No milestones scheduled yet.
-              </div>
-            ) : (
-              <div className="space-y-0">
-                {milestones.slice(0, 4).map((m, idx) => {
-                  const isDone = nextUpcomingIdx === -1 ? true : idx < nextUpcomingIdx;
-                  const isCurrent = idx === nextUpcomingIdx;
-                  const isLast = idx === milestones.slice(0, 4).length - 1;
-                  return (
-                    <div key={m.id} className="flex gap-3">
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        {isDone ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : isCurrent ? (
-                          <span className="w-4 h-4 rounded-full border-2 border-blue-600 bg-blue-50 flex-shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-slate-300" />
-                        )}
-                        {!isLast && <div className="w-px flex-1 my-1 bg-slate-200 min-h-[20px]" />}
-                      </div>
-                      <div className={`min-w-0 ${isLast ? "" : "pb-4"}`}>
-                        <div className="text-[13px] font-medium text-slate-900 truncate">
-                          {m.name}
-                        </div>
-                        <div className="text-[12px] text-slate-500 mt-0.5">
-                          {formatDate(m.date)}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </Card>
       </div>
 
-      {/* Recent Activity + Team Members */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader title="Recent Activity" />
-          <div className="p-5">
-            {activitiesQuery.isLoading ? (
-              <div className="py-8 text-center text-slate-400 text-[12px]">Loading activity...</div>
-            ) : recentActivity.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-[12px]">
-                No activity recorded for this project yet.
+      {/* Energy Performance glimpse */}
+      <Card>
+        <CardHeader
+          title="Energy Performance"
+          action={{ label: "View details", onClick: () => onNavigateTab?.("performance") }}
+        />
+        <div className="p-5">
+          {latestPerformanceRow ? (
+            <>
+              <div className="mb-3 text-[12px] text-slate-500">
+                {MONTH_NAMES[latestPerformanceRow.month - 1]} {latestPerformanceRow.year}
               </div>
-            ) : (
-              <div className="space-y-4">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3">
-                    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[11px] font-semibold text-white rounded-full bg-slate-400">
-                      {activity.user ? initials(activity.user.fullName) : <UserRound className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0 pt-1">
-                      <span className="text-[13px] text-slate-700">{activity.description}</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 whitespace-nowrap flex-shrink-0 pt-1">
-                      {timeAgo(activity.createdAt)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Team Members"
-            action={{ label: "View all team", onClick: () => onNavigateTab?.("team") }}
-          />
-          <div className="p-5 space-y-3">
-            {teamMembers.slice(0, 4).map((member) => (
-              <div key={member.id} className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                  {initials(member.fullName)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium text-slate-900 truncate">
-                    {member.fullName}
-                  </div>
-                  <div className="text-[11px] text-slate-500 truncate">
-                    {member.jobPosition || "Member"}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-[11px] text-slate-500">Contract Energy</div>
+                  <div className="mt-1 text-[15px] font-semibold text-slate-900">
+                    {formatEnergy(latestPerformanceRow.contractEnergy)}
                   </div>
                 </div>
-                {member.email && (
-                  <a
-                    href={`mailto:${member.email}`}
-                    className="flex-shrink-0 p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-50 rounded transition-colors"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                  </a>
-                )}
+                <div>
+                  <div className="text-[11px] text-slate-500">Actual Generation</div>
+                  <div className="mt-1 text-[15px] font-semibold text-slate-900">
+                    {formatEnergy(latestPerformanceRow.actualGeneration)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-500">Income Received</div>
+                  <div className="mt-1 text-[15px] font-semibold text-slate-900">
+                    {formatCost(latestPerformanceRow.incomeReceived)}
+                  </div>
+                </div>
               </div>
-            ))}
-            {teamMembers.length === 0 && (
-              <div className="py-4 text-center text-slate-400 text-[12px]">No members yet.</div>
-            )}
+            </>
+          ) : (
+            <p className="text-[12px] text-slate-400">
+              No energy performance data recorded yet for {currentYear}.
+            </p>
+          )}
+        </div>
+      </Card>
 
-            <button
-              onClick={() => onNavigateTab?.("team")}
-              className="flex items-center w-full gap-2.5 pt-3 mt-1 border-t border-slate-100 text-left"
-            >
-              <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 border rounded-full border-dashed border-slate-300 text-slate-400">
-                <Plus className="w-4 h-4" />
+      {/* Edit financials modal */}
+      {showFinancials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Edit Project Financials</h3>
+              <button
+                onClick={() => setShowFinancials(false)}
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitFinancials} className="p-4 space-y-3">
+              {financialsError && (
+                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+                  {financialsError}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-500">
+                    Contract date
+                  </label>
+                  <input
+                    type="date"
+                    value={financialsForm.contractDate}
+                    onChange={(e) =>
+                      setFinancialsForm({ ...financialsForm, contractDate: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-500">
+                    Project kickoff
+                  </label>
+                  <input
+                    type="date"
+                    value={financialsForm.kickoffDate}
+                    onChange={(e) =>
+                      setFinancialsForm({ ...financialsForm, kickoffDate: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
               </div>
-              <div>
-                <div className="text-[13px] font-medium text-slate-700">Invite Member</div>
-                <div className="text-[11px] text-slate-400">Add to project</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-500">
+                    Est. total project cost
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={financialsForm.estimatedTotalCost}
+                    onChange={(e) =>
+                      setFinancialsForm({ ...financialsForm, estimatedTotalCost: e.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-500">
+                    Selling price
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={financialsForm.sellingPrice}
+                    onChange={(e) =>
+                      setFinancialsForm({ ...financialsForm, sellingPrice: e.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
               </div>
-            </button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFinancials(false)}
+                  className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={financialsSubmitting}
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                >
+                  {financialsSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </form>
           </div>
-        </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

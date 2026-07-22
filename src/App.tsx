@@ -8,12 +8,15 @@ import AcceptInvite from "./pages/AcceptInvite";
 import Dashboard from "./pages/Dashboard";
 import Announcements from "./pages/Announcements";
 import Documents from "./pages/Documents";
+import Inventory from "./pages/Inventory";
+import Procurement from "./pages/Procurement";
 import Users from "./pages/Users";
 import ProjectPage from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
 import CalendarPage from "./pages/Calendar";
 import Approvals from "./pages/Approvals";
 import Activities from "./pages/Activities";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import DashboardLayout from "./layout/DashboardLayout";
@@ -127,6 +130,22 @@ function App() {
             }
           />
           <Route
+            path="/:workspaceId/inventory"
+            element={
+              <DashboardLayout>
+                <Inventory />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/:workspaceId/procurement"
+            element={
+              <DashboardLayout>
+                <Procurement />
+              </DashboardLayout>
+            }
+          />
+          <Route
             path="/:workspaceId/task"
             element={
               <DashboardLayout>
@@ -163,6 +182,14 @@ function App() {
             element={
               <DashboardLayout>
                 <Activities />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/:workspaceId/reports"
+            element={
+              <DashboardLayout>
+                <Reports />
               </DashboardLayout>
             }
           />

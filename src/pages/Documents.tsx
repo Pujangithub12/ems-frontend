@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FolderOpen,
   Folder,
+  Briefcase,
   FileText,
   Plus,
   Upload,
@@ -109,6 +110,7 @@ const FolderTree: React.FC<{
         const isExpanded = expanded.has(folder.id);
         const isSelected = selectedFolderId === folder.id;
         const isMenuOpen = openMenuId === folder.id;
+        const isProjectManaged = folder.projectId != null;
         return (
           <div key={folder.id} className="relative">
             <div
@@ -122,6 +124,7 @@ const FolderTree: React.FC<{
                 onClick={() => onSelect(folder.id)}
                 style={{ paddingLeft: `${12 + depth * 14}px` }}
                 className="flex items-center flex-1 min-w-0 gap-1.5 text-left"
+                title={folder.isProjectRoot ? "Project — Documents tab" : undefined}
               >
                 {hasChildren ? (
                   <span
@@ -141,24 +144,30 @@ const FolderTree: React.FC<{
                 ) : (
                   <span className="w-3.5 shrink-0" />
                 )}
-                <Folder size={14} className="shrink-0 text-slate-400" />
+                {folder.isProjectRoot ? (
+                  <Briefcase size={14} className="shrink-0 text-blue-900" />
+                ) : (
+                  <Folder size={14} className="shrink-0 text-slate-400" />
+                )}
                 <span className="truncate">{folder.name}</span>
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleMenu(folder.id);
-                }}
-                className={`flex items-center justify-center w-5 h-5 rounded shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-opacity ${
-                  isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                }`}
-                title="Folder options"
-              >
-                <MoreVertical size={13} />
-              </button>
+              {!isProjectManaged && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMenu(folder.id);
+                  }}
+                  className={`flex items-center justify-center w-5 h-5 rounded shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-opacity ${
+                    isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  title="Folder options"
+                >
+                  <MoreVertical size={13} />
+                </button>
+              )}
             </div>
 
-            {isMenuOpen && (
+            {isMenuOpen && !isProjectManaged && (
               <div
                 ref={menuRef}
                 className="absolute z-20 overflow-hidden bg-white border rounded-md shadow-lg right-1 top-8 w-36 border-slate-200"
@@ -291,12 +300,22 @@ const Documents: React.FC = () => {
   };
 
   const currentParentId = selectedFolderId === ALL_DOCUMENTS ? null : selectedFolderId;
+  const currentFolder =
+    selectedFolderId === ALL_DOCUMENTS ? null : filesById.get(selectedFolderId);
+  // Anything mirrored from a project's Documents tab (the project's own
+  // synthetic root folder, or a real folder/file nested under it) is
+  // read-only here — uploads/new folders/renames/deletes for it happen on
+  // the project's Documents tab instead.
+  const isProjectScoped = currentFolder?.projectId != null;
 
-  const handleUploadClick = () => fileInputRef.current?.click();
+  const handleUploadClick = () => {
+    if (isProjectScoped) return;
+    fileInputRef.current?.click();
+  };
 
   const handleFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const chosen = e.target.files;
-    if (!chosen || chosen.length === 0) return;
+    if (!chosen || chosen.length === 0 || isProjectScoped) return;
     setActionError(null);
     setUploading(true);
     try {
@@ -314,7 +333,7 @@ const Documents: React.FC = () => {
 
   const handleCreateFolder = async () => {
     const trimmedName = newFolderName.trim();
-    if (!trimmedName) return;
+    if (!trimmedName || isProjectScoped) return;
 
     // Fast local check so the user doesn't have to wait on a round trip for
     // the common case; the backend re-checks this to be authoritative.
@@ -448,7 +467,8 @@ const Documents: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleUploadClick}
-                disabled={uploading}
+                disabled={uploading || isProjectScoped}
+                title={isProjectScoped ? "Managed from the project's Documents tab" : undefined}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors disabled:opacity-60"
               >
                 {uploading ? (
@@ -463,7 +483,9 @@ const Documents: React.FC = () => {
                   setFolderError(null);
                   setShowNewFolder(true);
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-[12px] font-medium hover:bg-slate-50 transition-colors"
+                disabled={isProjectScoped}
+                title={isProjectScoped ? "Managed from the project's Documents tab" : undefined}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-[12px] font-medium hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:hover:bg-white"
               >
                 <Plus size={14} /> New Folder
               </button>
@@ -530,7 +552,7 @@ const Documents: React.FC = () => {
             </div>
 
             {/* Table */}
-            <div className="flex-1 min-w-0 overflow-hidden border rounded border-slate-200">
+            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded border-slate-200">
               {crumb.length > 0 && (
                 <div className="flex items-center gap-1 px-3 py-2 text-[12px] text-slate-500 border-b border-slate-200 bg-slate-50">
                   <button
@@ -550,6 +572,13 @@ const Documents: React.FC = () => {
                       </button>
                     </React.Fragment>
                   ))}
+                </div>
+              )}
+
+              {isProjectScoped && (
+                <div className="flex items-center gap-2 px-3 py-2 text-[12px] border-b text-blue-900 bg-blue-50 border-slate-200">
+                  <Briefcase size={13} className="shrink-0" />
+                  Mirrored from this project's Documents tab — manage uploads and folders there.
                 </div>
               )}
 
@@ -643,13 +672,15 @@ const Documents: React.FC = () => {
                                   <Download size={14} />
                                 </a>
                               )}
-                              <button
-                                onClick={() => setDeleteTarget(row)}
-                                className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100"
-                                title="Delete"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              {row.projectId == null && (
+                                <button
+                                  onClick={() => setDeleteTarget(row)}
+                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

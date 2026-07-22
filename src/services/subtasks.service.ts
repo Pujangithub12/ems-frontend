@@ -27,7 +27,7 @@ export async function createSubtask(
 export async function updateSubtask(
   taskId: number,
   subTaskId: number,
-  payload: { title?: string; progress?: number },
+  payload: { title?: string; progress?: number; status?: string },
 ): Promise<any> {
   const res = await api.put(`/api/tasks/${taskId}/subtasks/${subTaskId}`, payload);
   return res.data;

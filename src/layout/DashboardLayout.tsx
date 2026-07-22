@@ -9,12 +9,15 @@ import {
   Megaphone,
   Users as UsersIcon,
   FolderOpen,
+  Package,
+  ShoppingCart,
   Calendar,
   ClipboardCheck,
   LogOut,
   Menu,
   X,
   History,
+  BarChart3,
   Bell,
   ChevronDown,
   Settings,
@@ -234,6 +237,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "documents",
     },
     {
+      path: `${prefix}/inventory`,
+      label: "Inventory",
+      icon: Package,
+      id: "inventory",
+    },
+    {
+      path: `${prefix}/procurement`,
+      label: "Procurement",
+      icon: ShoppingCart,
+      id: "procurement",
+    },
+    {
       path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
@@ -258,6 +273,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   ];
 
   const reports = [
+    {
+      path: `${prefix}/reports`,
+      label: "Reports",
+      icon: BarChart3,
+      id: "reports",
+    },
     {
       path: `${prefix}/activities`,
       label: "Activity History",
@@ -300,10 +321,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const sectionDescriptions: Record<string, string> = {
     project: "Track and manage all your projects",
     documents: "Browse and manage workspace files",
+    inventory: "Stock items across all your projects",
+    procurement: "Purchase requests across all your projects",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     leaverequests: "Review and approve requests",
+    reports: "Inventory & procurement analytics",
     activities: "Recent workspace activity log",
     users: "Manage people and permissions",
     settings: "Workspace configuration and preferences",

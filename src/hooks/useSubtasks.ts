@@ -29,11 +29,13 @@ export function useUpdateSubtask() {
       subTaskId,
       title,
       progress,
+      status,
     }: {
       taskId: number;
       subTaskId: number;
       title?: string;
       progress?: number;
-    }) => updateSubtask(taskId, subTaskId, { title, progress }),
+      status?: string;
+    }) => updateSubtask(taskId, subTaskId, { title, progress, status }),
   });
 }

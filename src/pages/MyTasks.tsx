@@ -336,6 +336,48 @@ const MyTasks: React.FC = () => {
     return count === 0 ? 0 : Math.round(sum / count);
   };
 
+  const updateSubTaskProgressInTree = (
+    list: DetailedSubTask[],
+    subTaskId: string | number,
+    progress: number,
+  ): DetailedSubTask[] =>
+    list.map((st) =>
+      String(st.id) === String(subTaskId)
+        ? { ...st, progress }
+        : { ...st, subTasks: updateSubTaskProgressInTree(st.subTasks || [], subTaskId, progress) },
+    );
+
+  const handleToggleSubTaskComplete = async (st: DetailedSubTask) => {
+    if (!selectedTask) return;
+    const taskId = selectedTask.id;
+    const newProgress = (st.progress || 0) >= 100 ? 0 : 100;
+
+    const optimistic = updateSubTaskProgressInTree(taskSubTasks[taskId] || [], st.id, newProgress);
+    setTaskSubTasks((prev) => ({ ...prev, [taskId]: optimistic }));
+    const optimisticAvg = computeAverageLeafProgress(optimistic);
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, progress: optimisticAvg } : t)),
+    );
+    setSelectedTask((prev) => (prev && prev.id === taskId ? { ...prev, progress: optimisticAvg } : prev));
+
+    try {
+      await updateSubtaskMutation.mutateAsync({
+        taskId,
+        subTaskId: Number(st.id),
+        progress: newProgress,
+        status: newProgress === 100 ? "completed" : "pending",
+      });
+      const data = await subtasksFetchMutation.mutateAsync(taskId);
+      const detailed = convertToDetailed(data);
+      setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
+      const avg = computeAverageLeafProgress(detailed);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, progress: avg } : t)));
+      setSelectedTask((prev) => (prev && prev.id === taskId ? { ...prev, progress: avg } : prev));
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to update sub-task."));
+    }
+  };
+
   const buildSubTasksMap = (taskList: Task[]) => {
     const subTasksMap: Record<number, DetailedSubTask[]> = {};
     taskList.forEach((task) => {
@@ -679,6 +721,20 @@ const MyTasks: React.FC = () => {
           style={{ paddingLeft: `${level * 16 + 10}px` }}
         >
           <div className="flex items-center min-w-0 gap-2">
+            {safeChildren.length === 0 && (
+              <button
+                type="button"
+                onClick={() => handleToggleSubTaskComplete(st)}
+                className={`flex-shrink-0 flex items-center justify-center w-4 h-4 rounded border transition-colors ${
+                  (st.progress || 0) >= 100
+                    ? "bg-emerald-600 border-emerald-600 text-white"
+                    : "border-slate-300 hover:border-emerald-500"
+                }`}
+                title={(st.progress || 0) >= 100 ? "Mark as incomplete" : "Mark as complete"}
+              >
+                {(st.progress || 0) >= 100 && <Check className="w-3 h-3" />}
+              </button>
+            )}
             {safeChildren.length > 0 ? (
               <button
                 type="button"
@@ -702,7 +758,11 @@ const MyTasks: React.FC = () => {
             ) : (
               <div className="flex-shrink-0 w-4 h-4" />
             )}
-            <span className="text-[13px] text-slate-700 truncate">
+            <span
+              className={`text-[13px] truncate ${
+                (st.progress || 0) >= 100 ? "text-slate-400 line-through" : "text-slate-700"
+              }`}
+            >
               {st.title}
             </span>
           </div>
