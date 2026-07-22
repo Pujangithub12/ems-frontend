@@ -13,7 +13,7 @@ import {
   createWorkspace as createWorkspaceService,
   updateWorkspace as updateWorkspaceService,
   deleteWorkspace as deleteWorkspaceService,
-} from "../services/workspaces.service";
+} from "../features/settings/api/workspaces.api";
 
 export type User = {
   id: string;

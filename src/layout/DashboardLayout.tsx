@@ -28,12 +28,12 @@ import {
 
 import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
 import SidebarLink from "../components/SidebarLink";
-import { useLeaveRequests } from "../hooks/useLeaveRequests";
-import { useSiteVisitRequests } from "../hooks/useSiteVisitRequests";
-import { useExpenseRequests } from "../hooks/useExpenseRequests";
-import { useHierarchy } from "../hooks/useHierarchy";
-import { useTasks } from "../hooks/useTasks";
-import { useAnnouncements } from "../hooks/useAnnouncements";
+import { useLeaveRequests } from "../features/approvals/hooks/useLeaveRequests";
+import { useSiteVisitRequests } from "../features/approvals/hooks/useSiteVisitRequests";
+import { useExpenseRequests } from "../features/approvals/hooks/useExpenseRequests";
+import { useHierarchy } from "../features/hierarchy/hooks/useHierarchy";
+import { useTasks } from "../features/tasks/hooks/useTasks";
+import { useAnnouncements } from "../features/announcements/hooks/useAnnouncements";
 import { canApprove as hierarchyCanApprove } from "../lib/hierarchyAuthority";
 
 type DashboardLayoutProps = {
