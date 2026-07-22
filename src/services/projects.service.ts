@@ -7,6 +7,10 @@ export type ProjectPayload = Partial<{
   dueDate: string;
   status: string;
   assigneeIds: number[];
+  contractDate: string | null;
+  kickoffDate: string | null;
+  estimatedTotalCost: number | null;
+  sellingPrice: number | null;
 }>;
 
 /** GET /api/projects — the workspace's project list (lighter shape, no headings/files). */

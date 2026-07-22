@@ -13,14 +13,17 @@ import {
   FolderKanban,
   Calendar,
   Users as UsersIcon,
-  TrendingUp,
   MoreVertical,
+  ListChecks,
+  AlertTriangle,
+  Clock3,
 } from "lucide-react";
 import ConfirmationModal from "../components/ConfirmationModal";
 import ErrorBanner from "../components/ErrorBanner";
 import { getErrorMessage } from "../lib/errors";
 import { Project } from "../types";
 import { flattenProjectTasks } from "../project-components/taskUtils";
+import { PriorityPill } from "../project-components";
 import { useUsers } from "../hooks/useUsers";
 import {
   useProjects,
@@ -70,6 +73,25 @@ const StatusPill: React.FC<{ status: string }> = ({ status }) => {
     </span>
   );
 };
+
+/** Small labeled stat used in the project row's meta strip. */
+const StatBlock: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+  valueClassName?: string;
+}> = ({ icon: Icon, label, children, className = "", valueClassName = "text-slate-700" }) => (
+  <div className={`flex items-center gap-2 ${className}`}>
+    <div className="flex items-center justify-center flex-shrink-0 rounded-md w-7 h-7 bg-slate-50">
+      <Icon className="w-3.5 h-3.5 text-slate-400" />
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="text-[10px] uppercase tracking-[0.05em] text-slate-400">{label}</div>
+      <div className={`text-[12.5px] font-medium truncate ${valueClassName}`}>{children}</div>
+    </div>
+  </div>
+);
 
 const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -209,12 +231,25 @@ const ProjectsPage: React.FC = () => {
   };
 
   const projectsWithProgress = useMemo(() => {
+    const startOfToday = new Date(new Date().toDateString()).getTime();
     return projects.map((p) => {
       const tasks = flattenProjectTasks(p);
       const doneCount = tasks.filter((t) => t.status === "completed").length;
+      const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
+      const overdueCount = tasks.filter((t) => {
+        if (t.status === "completed" || !t.dueDate) return false;
+        return new Date(t.dueDate).getTime() < startOfToday;
+      }).length;
       const progress =
         tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
-      return { ...p, progress, tasksCount: tasks.length };
+      return {
+        ...p,
+        progress,
+        tasksCount: tasks.length,
+        doneCount,
+        inProgressCount,
+        overdueCount,
+      };
     });
   }, [projects]);
 
@@ -229,7 +264,7 @@ const ProjectsPage: React.FC = () => {
   }, [projectsWithProgress, searchQuery, statusFilter]);
 
   return (
-    <div className="max-w-6xl px-6 py-8 mx-auto lg:px-8 lg:py-10">
+    <div className="w-full px-6 py-8 lg:px-8 lg:py-10">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
         <div>
@@ -289,18 +324,18 @@ const ProjectsPage: React.FC = () => {
         />
       )}
 
-      {/* Grid */}
+      {/* List */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="flex flex-col gap-2">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div
               key={i}
-              className="bg-white border border-slate-200 rounded-lg aspect-square max-w-[250px] mx-auto animate-pulse"
+              className="h-[68px] bg-white border border-slate-200 rounded-lg animate-pulse"
             />
           ))}
         </div>
       ) : filteredProjects.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="flex flex-col gap-2">
           {filteredProjects.map((project) => {
             const iconStyle =
               PROJECT_ICON_STYLES[project.status] || PROJECT_ICON_STYLES.pending;
@@ -316,18 +351,39 @@ const ProjectsPage: React.FC = () => {
                   navigate(`/${workspace?.id}/project/${project.id}/details`);
                 }
               }}
-              className="relative flex flex-col w-full max-w-[250px] mx-auto p-3.5 text-left bg-white border rounded-lg cursor-pointer aspect-square border-slate-200 hover:border-blue-300 hover:shadow-md transition-shadow group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              className="relative flex flex-col w-full gap-3 px-5 py-4 text-left transition-shadow bg-white border rounded-lg shadow-sm cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
-              {/* 3-dot menu (Admin Only) */}
-              {isAdmin && (
-                <div className="absolute z-10 top-2.5 right-2.5">
+              {/* Top band: icon, name, status/priority, menu */}
+              <div className="flex items-start gap-3">
+                <div
+                  className={`flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-lg ${iconStyle.bg}`}
+                >
+                  <FolderKanban className={`w-5 h-5 ${iconStyle.text}`} />
+                </div>
+
+                <div className="flex-1 min-w-0 pr-8">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-[15px] tracking-tight text-slate-900 truncate">
+                      {project.name}
+                    </h3>
+                    <StatusPill status={project.status} />
+                    {project.priority && <PriorityPill priority={project.priority} />}
+                  </div>
+                  <p className="mt-1 text-slate-500 text-[12.5px] line-clamp-1">
+                    {project.description || "No description provided."}
+                  </p>
+                </div>
+
+                {/* 3-dot menu (Admin Only) */}
+                {isAdmin && (
+                  <div className="absolute z-10 flex-shrink-0 top-3.5 right-4">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setOpenMenuId((id) => (id === project.id ? null : project.id));
                     }}
-                    className={`flex-shrink-0 flex items-center justify-center w-6 h-6 transition-colors rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 ${
+                    className={`flex-shrink-0 flex items-center justify-center w-7 h-7 transition-colors rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 ${
                       openMenuId === project.id ? "opacity-100 bg-slate-100" : "opacity-0 group-hover:opacity-100"
                     }`}
                     title="Project options"
@@ -371,95 +427,72 @@ const ProjectsPage: React.FC = () => {
                   )}
                 </div>
               )}
-
-              {/* Header: icon + status */}
-              <div className="flex items-center justify-between flex-shrink-0 gap-2 pr-6">
-                <div
-                  className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${iconStyle.bg}`}
-                >
-                  <FolderKanban className={`w-4 h-4 ${iconStyle.text}`} />
-                </div>
-                <StatusPill status={project.status} />
               </div>
 
-              {/* Name & description */}
-              <div className="flex-shrink-0 mt-2.5 min-w-0">
-                <h3 className="font-semibold text-[13.5px] tracking-tight text-slate-900 truncate">
-                  {project.name}
-                </h3>
-                <p className="mt-1 text-slate-500 text-[11px] line-clamp-2">
-                  {project.description || "No description provided."}
-                </p>
-              </div>
-
-              {/* Spacer pushes footer content down for a consistent square layout */}
-              <div className="flex-1 min-h-2" />
-
-              {/* Progress */}
-              <div className="flex-shrink-0">
-                <div className="flex items-baseline justify-between">
-                  <Eyebrow className="flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> Progress
-                  </Eyebrow>
-                  <div className="font-semibold text-[13px] text-blue-900 tracking-tight leading-none">
-                    {project.progress || 0}%
+              {/* Meta strip: progress, task breakdown, deadline, team */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-3 border-t border-slate-100">
+                <StatBlock icon={ListChecks} label="Progress" className="w-56">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
+                        style={{ width: `${project.progress || 0}%` }}
+                      ></div>
+                    </div>
+                    <span className="flex-shrink-0 text-[11px]">{project.progress || 0}%</span>
                   </div>
-                </div>
-                <div className="h-1.5 rounded-full mt-1.5 bg-slate-100 w-full">
-                  <div
-                    className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
-                    style={{ width: `${project.progress || 0}%` }}
-                  ></div>
-                </div>
-              </div>
+                </StatBlock>
 
-              {/* Deadline & tasks */}
-              <div className="flex items-center justify-between flex-shrink-0 mt-2 text-[10.5px]">
-                <div className="flex items-center gap-1 text-slate-500 min-w-0">
-                  <Calendar className="flex-shrink-0 w-3 h-3" />
-                  <span className="truncate">
-                    {project.dueDate
-                      ? new Date(project.dueDate).toLocaleDateString(
-                          undefined,
-                          { month: "short", day: "numeric", year: "numeric" },
-                        )
-                      : "No date"}
-                  </span>
-                </div>
-                <div className="flex-shrink-0 ml-2 text-slate-400">
-                  {project.tasksCount || 0} tasks
-                </div>
-              </div>
+                <StatBlock icon={Clock3} label="Tasks" className="w-36">
+                  {project.doneCount || 0}/{project.tasksCount || 0} done
+                  {(project.inProgressCount || 0) > 0 && (
+                    <span className="text-slate-400"> · {project.inProgressCount} active</span>
+                  )}
+                </StatBlock>
 
-              {/* Team */}
-              <div className="flex items-center justify-between flex-shrink-0 pt-2 mt-2 border-t border-slate-100">
-                {project.assignees && project.assignees.length > 0 ? (
-                  <>
+                <StatBlock
+                  icon={AlertTriangle}
+                  label="Overdue"
+                  className="w-24"
+                  valueClassName={(project.overdueCount || 0) > 0 ? "text-red-600" : "text-slate-700"}
+                >
+                  {project.overdueCount || 0}
+                </StatBlock>
+
+                <StatBlock icon={Calendar} label="Deadline" className="w-32">
+                  {project.dueDate
+                    ? new Date(project.dueDate).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "No date"}
+                </StatBlock>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  {project.assignees && project.assignees.length > 0 ? (
                     <div className="flex flex-shrink-0 -space-x-1.5">
-                      {project.assignees.slice(0, 3).map((u) => (
+                      {project.assignees.slice(0, 4).map((u) => (
                         <div
                           key={u.id}
-                          className="w-[22px] h-[22px] rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[9px] font-semibold"
+                          className="w-[26px] h-[26px] rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[10px] font-semibold"
                           title={u.fullName}
                         >
                           {u.fullName.charAt(0)}
                         </div>
                       ))}
-                      {project.assignees.length > 3 && (
-                        <div className="flex items-center justify-center w-[22px] h-[22px] text-[9px] font-semibold text-white border-2 border-white rounded-full bg-slate-400">
-                          +{project.assignees.length - 3}
+                      {project.assignees.length > 4 && (
+                        <div className="flex items-center justify-center w-[26px] h-[26px] text-[10px] font-semibold text-white border-2 border-white rounded-full bg-slate-400">
+                          +{project.assignees.length - 4}
                         </div>
                       )}
                     </div>
-                    <div className="text-slate-400 text-[10px] capitalize truncate ml-2">
-                      {project.priority}
+                  ) : (
+                    <div className="flex items-center gap-1 text-slate-400 text-[11px]">
+                      <UsersIcon className="w-3.5 h-3.5" /> Unassigned
                     </div>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-1 text-slate-400 text-[10.5px]">
-                    <UsersIcon className="w-3 h-3" /> Unassigned
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
             );

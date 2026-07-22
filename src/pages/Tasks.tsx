@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  ClipboardList,
+  ListTodo,
   UserRound,
   CheckCircle2,
   AlertTriangle,
@@ -17,7 +17,7 @@ import CompletedTasks from "./CompletedTasks";
 type TabKey = "assigned" | "my" | "completed";
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
-  { key: "assigned", label: "Assigned Tasks", icon: ClipboardList },
+  { key: "assigned", label: "Assigned Tasks", icon: ListTodo },
   { key: "my", label: "My Tasks", icon: UserRound },
   { key: "completed", label: "Completed", icon: CheckCircle2 },
 ];

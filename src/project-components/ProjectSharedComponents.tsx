@@ -1,4 +1,5 @@
 import React from "react";
+import { Flag } from "lucide-react";
 
 export const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -34,3 +35,43 @@ export const StatusPill: React.FC<{ status: string }> = ({ status }) => {
     </span>
   );
 };
+
+export const PriorityPill: React.FC<{ priority?: string }> = ({ priority }) => {
+  const styles: Record<string, { fg: string; label: string }> = {
+    high: { fg: "#B91C1C", label: "High" },
+    medium: { fg: "#B45309", label: "Medium" },
+    low: { fg: "#64748B", label: "Low" },
+  };
+  const p = styles[priority || "medium"] || styles.medium;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] font-medium"
+      style={{ color: p.fg }}
+    >
+      <Flag className="w-3 h-3" fill={p.fg} strokeWidth={1.5} />
+      {p.label}
+    </span>
+  );
+};
+
+export function formatDate(date: string | Date): string {
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function dueDateInfo(dueDate?: string | null): { label: string; tone: string } | null {
+  if (!dueDate) return null;
+  const diffMs = new Date(dueDate).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  const days = Math.round(diffMs / 86400000);
+  if (days < 0) {
+    return {
+      label: `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`,
+      tone: "text-red-600",
+    };
+  }
+  if (days === 0) return { label: "Due today", tone: "text-amber-600" };
+  return { label: `${days} day${days === 1 ? "" : "s"} remaining`, tone: "text-slate-500" };
+}

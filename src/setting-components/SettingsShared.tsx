@@ -134,6 +134,9 @@ export const PERMISSION_GROUPS: { category: string; items: PermissionItem[] }[] 
       { key: "projects.manage", label: "Create, edit & delete projects", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.schedule", label: "Manage project schedule (Gantt)", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.documents", label: "Upload & manage project documents", editable: true, roles: ["super_admin", "admin"] },
+      { key: "projects.procurement", label: "Add & manage procurement items", editable: true, roles: ["super_admin", "admin"] },
+      { key: "projects.performance", label: "Enter & edit monthly energy performance", editable: true, roles: ["super_admin", "admin"] },
+      { key: "projects.inventory", label: "Add & manage inventory items", editable: true, roles: ["super_admin", "admin"] },
     ],
   },
   {

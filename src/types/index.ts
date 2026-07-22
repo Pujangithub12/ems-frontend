@@ -52,6 +52,247 @@ export type ProjectFile = {
   version: string;
   uploadedBy?: { id: number; fullName: string } | null;
   createdAt: string;
+  /** Set only on the main Documents page: true for the synthetic per-project
+   * folder (not a real row — id is -projectId). */
+  isProjectRoot?: boolean;
+  /** Set only on the main Documents page: present on the synthetic project
+   * folder and every file/folder mirrored from that project's Documents tab —
+   * these are read-only there (no upload/new-folder/rename/delete). */
+  projectId?: number;
+};
+
+export type Warehouse = {
+  id: number;
+  name: string;
+  code?: string | null;
+  location?: string | null;
+  capacity: number;
+  createdAt: string;
+};
+
+export type Vendor = {
+  id: number;
+  name: string;
+  code?: string | null;
+  location?: string | null;
+  rating?: number | null;
+  contractExpiryDate?: string | null;
+  createdAt: string;
+};
+
+export type InventoryItem = {
+  id: number;
+  itemName: string;
+  category: "hardware" | "software" | "service";
+  quantity: number;
+  unit?: string | null;
+  status: "in_stock" | "low_stock" | "out_of_stock";
+  lastRestockedDate?: string | null;
+  notes?: string | null;
+  sku?: string | null;
+  warehouse?: { id: number; name: string } | null;
+  reservedQuantity: number;
+  incomingQuantity: number;
+  averageCost?: number | string | null;
+  supplier?: string | null;
+  vendor?: { id: number; name: string; code?: string | null; location?: string | null } | null;
+  imageUrl?: string | null;
+  warrantyExpiryDate?: string | null;
+  updatedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+  /** Set only on the workspace-wide Inventory page (aggregated across projects). */
+  projectId?: number;
+  projectName?: string;
+};
+
+export type InventoryBatch = {
+  id: number;
+  batchNumber: string;
+  quantity: number;
+  manufactureDate?: string | null;
+  expiryDate?: string | null;
+  createdAt: string;
+};
+
+export type InventorySerial = {
+  id: number;
+  serialNumber: string;
+  status: "available" | "allocated" | "damaged" | "sold";
+  warrantyExpiryDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
+};
+
+export type InventoryTransaction = {
+  id: number;
+  type: "receipt" | "issue" | "adjustment" | "transfer_in" | "transfer_out";
+  quantityChange: number;
+  resultingQuantity: number;
+  reason?: string | null;
+  performedBy?: { id: number; fullName: string } | null;
+  /** Only present on the workspace-wide feed (GET /workspace/inventory/transactions). */
+  inventoryItem?: { id: number; itemName: string };
+  createdAt: string;
+};
+
+export type StockTransfer = {
+  id: number;
+  quantity: number;
+  status: "pending" | "in_transit" | "completed" | "cancelled";
+  notes?: string | null;
+  fromWarehouse?: { id: number; name: string } | null;
+  toWarehouse: { id: number; name: string };
+  requestedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+  completedAt?: string | null;
+};
+
+export type InventoryAttachment = {
+  id: number;
+  fileName: string;
+  filePath: string;
+  uploadedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type InventoryItemDetail = {
+  item: InventoryItem;
+  batches: InventoryBatch[];
+  serials: InventorySerial[];
+  transactions: InventoryTransaction[];
+  transfers: StockTransfer[];
+  attachments: InventoryAttachment[];
+  purchaseHistory: ProcurementItem[];
+  projectAllocation: InventoryItem[];
+};
+
+export type ProcurementItem = {
+  id: number;
+  itemName: string;
+  poNumber?: string | null;
+  category: "hardware" | "software" | "service";
+  quantity: number;
+  estimatedCost?: number | string | null;
+  unitCost?: number | string | null;
+  vendorName?: string | null;
+  vendor?: { id: number; name: string } | null;
+  neededByDate?: string | null;
+  status: "pending" | "approved" | "ordered" | "delivered";
+  notes?: string | null;
+  requestedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+  /** Set only on the workspace-wide Procurement page (aggregated across projects). */
+  projectId?: number;
+  projectName?: string;
+};
+
+export type ProcurementStatusHistory = {
+  id: number;
+  fromStatus?: string | null;
+  toStatus: string;
+  notes?: string | null;
+  changedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type ProcurementAttachment = {
+  id: number;
+  fileName: string;
+  filePath: string;
+  uploadedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type ProcurementItemDetail = {
+  item: ProcurementItem;
+  statusHistory: ProcurementStatusHistory[];
+  attachments: ProcurementAttachment[];
+  projectAllocation: ProcurementItem[];
+};
+
+export type ReportKpi = {
+  value: number;
+  trendPct: number;
+  sparkline: { date: string; value: number }[];
+};
+
+export type ReportSummary = {
+  range: { start: string; end: string };
+  kpis: {
+    totalInventoryValue: ReportKpi;
+    monthlyProcurementCost: ReportKpi;
+    totalInventoryItems: ReportKpi;
+    lowStockItems: ReportKpi;
+    outOfStockItems: ReportKpi;
+    activePurchaseOrders: ReportKpi;
+    activeVendors: ReportKpi;
+    inventoryTurnover: ReportKpi;
+  };
+  procurementCostTrend: { month: string; value: number }[];
+  spendByCategory: { category: InventoryItem["category"]; value: number }[];
+  inventoryValueByCategory: { category: InventoryItem["category"]; value: number }[];
+  poStatusBreakdown: { status: ProcurementItem["status"]; count: number }[];
+  warehouseUtilization: { id: number; name: string; used: number; capacity: number }[];
+  stockMovementTrend: { month: string; receipt: number; issue: number; adjustment: number; transferred: number }[];
+  topPurchasedItems: { id: number; itemName: string; value: number }[];
+  projectMaterialConsumption: { projectName: string; value: number }[];
+  inventoryAging: Record<string, number | string>[];
+  vendorPerformance: { id: number; name: string; rating: number | null; avgDeliveryDays: number | null; purchaseVolume: number }[];
+  deadStock: {
+    id: number;
+    itemName: string;
+    sku: string | null;
+    warehouse: string | null;
+    quantity: number;
+    value: number;
+    daysSinceMovement: number;
+    category: InventoryItem["category"];
+    status: "Healthy" | "Slow Moving" | "Dead Stock" | "Critical";
+    suggestedAction: string;
+  }[];
+  alerts: {
+    delayedPOs: { id: number; itemName: string; neededByDate: string; vendorName: string | null }[];
+    vendorDelays: { itemName: string; vendorName: string; neededByDate: string; deliveredAt: string }[];
+    contractsExpiring: { id: number; name: string; contractExpiryDate: string }[];
+    pendingAudits: unknown[];
+  };
+  insights: {
+    inventoryValueTrendPct: number;
+    procurementCostTrendPct: number;
+    topVendorThisMonth: string | null;
+    highestConsumingProject: string | null;
+    lowestStockCategory: string | null;
+  };
+};
+
+export type ReportActivity = {
+  id: number;
+  reportType: string;
+  action: "viewed" | "exported";
+  format?: string | null;
+  performedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type ReportComment = {
+  id: number;
+  reportKey: string;
+  body: string;
+  createdBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type MonthlyPerformance = {
+  id: number;
+  year: number;
+  /** 1-12 (January = 1). */
+  month: number;
+  contractEnergy?: number | string | null;
+  actualGeneration?: number | string | null;
+  incomeReceived?: number | string | null;
+  monthlyExpenditure?: number | string | null;
+  sparePartPurchase?: number | string | null;
+  createdAt: string;
 };
 
 export type Project = {
@@ -65,6 +306,14 @@ export type Project = {
   status: string;
   priority?: "high" | "medium" | "low";
   createdAt?: string;
+  /** Date the client agreement was signed — Procurement tab financial summary. */
+  contractDate?: string | null;
+  /** Official project start date — Procurement tab financial summary. */
+  kickoffDate?: string | null;
+  /** Total estimated project budget — Procurement tab financial summary + budget bar denominator. */
+  estimatedTotalCost?: number | string | null;
+  /** Total contract value charged to the client — paired with estimatedTotalCost for profit margin. */
+  sellingPrice?: number | string | null;
   assignees?: Array<{
     id: number;
     fullName: string;
