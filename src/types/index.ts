@@ -80,9 +80,19 @@ export type Vendor = {
   createdAt: string;
 };
 
+/** A shared item-name + code catalog entry, selectable from both the Inventory and Procurement "Add item" forms. */
+export type CatalogItem = {
+  id: number;
+  name: string;
+  code?: string | null;
+  createdAt: string;
+};
+
 export type InventoryItem = {
   id: number;
   itemName: string;
+  /** References the shared item catalog — null for rows created before catalog-linking existed (or via CSV import). */
+  item?: { id: number; name: string; code?: string | null } | null;
   category: "hardware" | "software" | "service";
   quantity: number;
   unit?: string | null;
@@ -169,6 +179,8 @@ export type InventoryItemDetail = {
 export type ProcurementItem = {
   id: number;
   itemName: string;
+  /** References the shared item catalog — null for rows created before catalog-linking existed (or via CSV import). */
+  item?: { id: number; name: string; code?: string | null } | null;
   poNumber?: string | null;
   category: "hardware" | "software" | "service";
   quantity: number;

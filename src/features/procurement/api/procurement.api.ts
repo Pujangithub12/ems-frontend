@@ -3,6 +3,8 @@ import { ProcurementItem, ProcurementItemDetail } from "../../../types";
 
 export interface ProcurementItemInput {
   itemName: string;
+  /** References the shared item catalog — when set, the backend derives itemName from it. */
+  itemId?: number | null;
   category?: ProcurementItem["category"];
   quantity: number;
   estimatedCost?: number | null;

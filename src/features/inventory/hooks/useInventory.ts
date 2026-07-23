@@ -24,6 +24,8 @@ import {
   fetchWorkspaceVendors,
   createVendor,
   updateVendor,
+  fetchWorkspaceItems,
+  createCatalogItem,
   InventoryItemInput,
 } from "../api/inventory.api";
 import { InventorySerial } from "../../../types";
@@ -222,5 +224,21 @@ export function useCreateVendorMutation() {
   return useMutation({
     mutationFn: (input: { name: string; code?: string; location?: string; rating?: number; contractExpiryDate?: string }) =>
       createVendor(input),
+  });
+}
+
+/** The shared item catalog — used by both the Inventory and Procurement "Add item" forms to keep item naming consistent. */
+export function useWorkspaceItemCatalogQuery() {
+  const wsId = useWorkspaceId();
+  return useQuery({
+    queryKey: queryKeys.workspaceItemCatalog(wsId),
+    queryFn: () => fetchWorkspaceItems(),
+    enabled: Number.isFinite(wsId),
+  });
+}
+
+export function useCreateCatalogItemMutation() {
+  return useMutation({
+    mutationFn: (input: { name: string; code?: string }) => createCatalogItem(input),
   });
 }

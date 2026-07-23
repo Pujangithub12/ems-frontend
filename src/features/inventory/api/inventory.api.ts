@@ -4,6 +4,7 @@ import {
   InventoryItemDetail,
   Warehouse,
   Vendor,
+  CatalogItem,
   InventorySerial,
   StockTransfer,
   InventoryTransaction,
@@ -11,6 +12,8 @@ import {
 
 export interface InventoryItemInput {
   itemName: string;
+  /** References the shared item catalog — when set, the backend derives itemName/sku from it. */
+  itemId?: number | null;
   category?: InventoryItem["category"];
   quantity: number;
   unit?: string;
@@ -198,4 +201,16 @@ export async function updateVendor(
 ): Promise<Vendor> {
   const res = await api.put<{ vendor: Vendor }>(`/api/workspace/vendors/${vendorId}`, input);
   return res.data.vendor;
+}
+
+/** GET the shared item catalog (name + code) — used by both the Inventory and Procurement "Add item" forms. */
+export async function fetchWorkspaceItems(): Promise<CatalogItem[]> {
+  const res = await api.get<{ items: CatalogItem[] }>("/api/workspace/items");
+  return res.data.items ?? [];
+}
+
+/** POST add a new item to the shared catalog. */
+export async function createCatalogItem(input: { name: string; code?: string }): Promise<CatalogItem> {
+  const res = await api.post<{ item: CatalogItem }>("/api/workspace/items", input);
+  return res.data.item;
 }

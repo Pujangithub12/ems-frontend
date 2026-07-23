@@ -52,6 +52,7 @@ export const queryKeys = {
   workspaceFiles: (wsId: number) => [...queryKeys.all(wsId), "workspaceFiles"] as const,
   workspaceWarehouses: (wsId: number) => [...queryKeys.all(wsId), "workspaceWarehouses"] as const,
   workspaceVendors: (wsId: number) => [...queryKeys.all(wsId), "workspaceVendors"] as const,
+  workspaceItemCatalog: (wsId: number) => [...queryKeys.all(wsId), "workspaceItemCatalog"] as const,
   workspacePendingTransfers: (wsId: number) =>
     [...queryKeys.all(wsId), "workspacePendingTransfers"] as const,
   workspaceInventoryTransactions: (wsId: number) =>

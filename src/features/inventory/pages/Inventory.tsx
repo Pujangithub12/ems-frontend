@@ -47,7 +47,7 @@ import { useWorkspaceProcurementQuery } from "../../procurement/hooks/useProcure
 import { toNumber, formatCost } from "../../procurement/api/procurement.api";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
-import ComboBoxInput from "../../../components/ComboBoxInput";
+import ItemNameField from "../components/ItemNameField";
 import Pagination from "../../../components/Pagination";
 import { useRowSelection } from "../../../hooks/useRowSelection";
 import InventoryItemDrawer from "../components/InventoryItemDrawer";
@@ -101,6 +101,7 @@ const CategoryPill: React.FC<{ category: InventoryItem["category"] }> = ({ categ
 
 const emptyForm: InventoryItemInput = {
   itemName: "",
+  itemId: null,
   category: "hardware",
   quantity: 0,
   unit: "",
@@ -270,6 +271,7 @@ const InventoryPage: React.FC = () => {
     setFormProjectId(item.projectId ?? "");
     setForm({
       itemName: item.itemName,
+      itemId: item.item?.id ?? null,
       category: item.category,
       quantity: item.quantity,
       unit: item.unit || "",
@@ -297,13 +299,10 @@ const InventoryPage: React.FC = () => {
     setFormError(null);
   };
 
-  const itemNameOptions = useMemo(() => items.map((i) => i.itemName), [items]);
-
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = form.itemName.trim();
-    if (!trimmedName) {
-      setFormError("Item name is required.");
+    if (!form.itemId) {
+      setFormError("Select an item from the catalog (or add a new one).");
       return;
     }
     if (!editingItem && !formProjectId) {
@@ -314,7 +313,8 @@ const InventoryPage: React.FC = () => {
     setFormError(null);
     try {
       const payload: InventoryItemInput = {
-        itemName: trimmedName,
+        itemName: form.itemName.trim(),
+        itemId: form.itemId,
         category: form.category || "hardware",
         quantity: form.quantity && form.quantity > 0 ? form.quantity : 0,
         unit: form.unit?.trim() || undefined,
@@ -906,11 +906,13 @@ const InventoryPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block mb-1 text-[11px] font-medium text-slate-500">Item name</label>
-                  <ComboBoxInput
+                  <ItemNameField
                     autoFocus
-                    value={form.itemName}
-                    onChange={(v) => setForm({ ...form, itemName: v })}
-                    options={itemNameOptions}
+                    itemId={form.itemId ?? null}
+                    currentName={form.itemName}
+                    onSelect={(item) =>
+                      setForm((f) => ({ ...f, itemId: item.id, itemName: item.name, sku: item.code || "" }))
+                    }
                     placeholder="e.g. Solar panel mounting brackets"
                     className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                   />
@@ -919,9 +921,10 @@ const InventoryPage: React.FC = () => {
                   <label className="block mb-1 text-[11px] font-medium text-slate-500">SKU</label>
                   <input
                     value={form.sku || ""}
+                    disabled={!!form.itemId}
                     onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                    placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    placeholder={form.itemId ? "From catalog" : "Optional"}
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400"
                   />
                 </div>
               </div>
@@ -1018,7 +1021,7 @@ const InventoryPage: React.FC = () => {
                     type="date"
                     value={form.lastRestockedDate || ""}
                     onChange={(e) => setForm({ ...form, lastRestockedDate: e.target.value })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.lastRestockedDate ? "" : "text-slate-400"}`}
                   />
                 </div>
               </div>
@@ -1045,7 +1048,7 @@ const InventoryPage: React.FC = () => {
                     type="date"
                     value={form.warrantyExpiryDate || ""}
                     onChange={(e) => setForm({ ...form, warrantyExpiryDate: e.target.value })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.warrantyExpiryDate ? "" : "text-slate-400"}`}
                   />
                 </div>
               </div>
