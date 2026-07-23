@@ -36,7 +36,7 @@ import {
 import { useWorkspaceVendorsQuery } from "../../inventory/hooks/useInventory";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
-import ComboBoxInput from "../../../components/ComboBoxInput";
+import ItemNameField from "../../inventory/components/ItemNameField";
 import Pagination from "../../../components/Pagination";
 import { useRowSelection } from "../../../hooks/useRowSelection";
 import ProcurementItemDrawer from "../components/ProcurementItemDrawer";
@@ -82,6 +82,7 @@ const CategoryPill: React.FC<{ category: ProcurementItem["category"] }> = ({ cat
 
 const emptyForm: ProcurementItemInput = {
   itemName: "",
+  itemId: null,
   category: "hardware",
   quantity: 1,
   estimatedCost: undefined,
@@ -202,7 +203,6 @@ const ProcurementPage: React.FC = () => {
     };
   }, [items]);
 
-  const itemNameOptions = useMemo(() => items.map((i) => i.itemName), [items]);
 
   const openCreateForm = () => {
     setEditingItem(null);
@@ -217,6 +217,7 @@ const ProcurementPage: React.FC = () => {
     setFormProjectId(item.projectId ?? "");
     setForm({
       itemName: item.itemName,
+      itemId: item.item?.id ?? null,
       category: item.category,
       quantity: item.quantity,
       estimatedCost: item.estimatedCost != null ? toNumber(item.estimatedCost) : undefined,
@@ -239,9 +240,8 @@ const ProcurementPage: React.FC = () => {
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = form.itemName.trim();
-    if (!trimmedName) {
-      setFormError("Item name is required.");
+    if (!form.itemId) {
+      setFormError("Select an item from the catalog (or add a new one).");
       return;
     }
     if (!editingItem && !formProjectId) {
@@ -252,7 +252,8 @@ const ProcurementPage: React.FC = () => {
     setFormError(null);
     try {
       const payload: ProcurementItemInput = {
-        itemName: trimmedName,
+        itemName: form.itemName.trim(),
+        itemId: form.itemId,
         category: form.category || "hardware",
         quantity: form.quantity && form.quantity > 0 ? form.quantity : 1,
         estimatedCost:
@@ -798,11 +799,11 @@ const ProcurementPage: React.FC = () => {
               )}
               <div>
                 <label className="block mb-1 text-[11px] font-medium text-slate-500">Item name</label>
-                <ComboBoxInput
+                <ItemNameField
                   autoFocus
-                  value={form.itemName}
-                  onChange={(v) => setForm({ ...form, itemName: v })}
-                  options={itemNameOptions}
+                  itemId={form.itemId ?? null}
+                  currentName={form.itemName}
+                  onSelect={(item) => setForm((f) => ({ ...f, itemId: item.id, itemName: item.name }))}
                   placeholder="e.g. Solar panel mounting brackets"
                   className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                 />
