@@ -1,42 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, X } from "lucide-react";
-import { CatalogItem } from "../../../types";
-import { useWorkspaceItemCatalogQuery, useCreateCatalogItemMutation } from "../hooks/useInventory";
+import { getErrorMessage } from "../../../lib/errors";
+import { useWorkspaceVendorsQuery, useCreateVendorMutation } from "../hooks/useInventory";
 
-interface ItemNameFieldProps {
-  /** The linked catalog item's id, or null if this row isn't linked to the catalog (e.g. a legacy row, or nothing picked yet). */
-  itemId: number | null;
-  /** Fires when the user picks an existing catalog entry or adds a new one. */
-  onSelect: (item: CatalogItem) => void;
-  /** The row's current free-text name, shown as a placeholder option when itemId is null but a legacy name exists (e.g. editing a pre-catalog row). */
-  currentName?: string;
-  placeholder?: string;
-  autoFocus?: boolean;
-  className?: string;
+interface VendorFieldProps {
+  /** The selected vendor's id, or null for "No vendor". */
+  vendorId: number | null;
+  /** Fires with the picked vendor's id (or null for "No vendor"), including right after adding a new one. */
+  onSelect: (vendorId: number | null) => void;
 }
 
 /**
- * Item Name field backed by the shared workspace item catalog (name + code),
- * so item naming stays consistent between the Inventory and Procurement
- * "Add item" forms — the value is a reference to a CatalogItem row, not
- * freehand text. The "Add new item" link opens a floating popover, rendered
- * via a portal into document.body and positioned `fixed` off the trigger
- * button's own rect — needed because this field is normally used inside a
- * modal with `overflow-hidden`, which would otherwise clip an
+ * Vendor field for the Add/Edit Inventory Item form — select-only (never
+ * free text), backed by the workspace's existing vendors. The "Add vendor"
+ * link opens a floating popover (mirrors ItemNameField/WarehouseField),
+ * rendered via a portal into document.body and positioned `fixed` off the
+ * trigger button's own rect — needed because this field is normally used
+ * inside a modal with `overflow-hidden`, which would otherwise clip an
  * absolutely-positioned popover that overflows the modal's bounds.
  */
-const ItemNameField: React.FC<ItemNameFieldProps> = ({
-  itemId,
-  onSelect,
-  currentName,
-  placeholder,
-  autoFocus,
-  className,
-}) => {
-  const itemsQuery = useWorkspaceItemCatalogQuery();
-  const items = itemsQuery.data ?? [];
-  const createMutation = useCreateCatalogItemMutation();
+const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect }) => {
+  const vendorsQuery = useWorkspaceVendorsQuery();
+  const vendors = vendorsQuery.data ?? [];
+  const createMutation = useCreateVendorMutation();
 
   const [showAdd, setShowAdd] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
@@ -81,39 +68,27 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
         name: trimmedName,
         code: newCode.trim() || undefined,
       });
-      await itemsQuery.refetch();
-      onSelect(created);
+      await vendorsQuery.refetch();
+      onSelect(created.id);
       setShowAdd(false);
       setNewName("");
       setNewCode("");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to add item");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to add vendor"));
     }
   };
-
-  const showLegacyOption = !itemId && currentName;
 
   return (
     <div className="flex items-center gap-1.5">
       <div className="relative flex-1 min-w-0">
         <select
-          autoFocus={autoFocus}
-          value={itemId ?? ""}
-          onChange={(e) => {
-            const id = Number(e.target.value);
-            const match = items.find((i) => i.id === id);
-            if (match) onSelect(match);
-          }}
-          className={`${className ?? ""} appearance-none cursor-pointer pr-8 ${itemId ? "" : "text-slate-400"}`}
+          value={vendorId ?? ""}
+          onChange={(e) => onSelect(e.target.value ? Number(e.target.value) : null)}
+          className={`w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400 ${vendorId ? "" : "text-slate-400"}`}
         >
-          <option value="" disabled>
-            {showLegacyOption ? `${currentName} (not linked)` : placeholder || "Select an item"}
-          </option>
-          {items.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.name}
-              {i.code ? ` (${i.code})` : ""}
-            </option>
+          <option value="">No vendor</option>
+          {vendors.map((v) => (
+            <option key={v.id} value={v.id}>{v.name}</option>
           ))}
         </select>
         <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -124,7 +99,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
         onClick={() => (showAdd ? setShowAdd(false) : openAdd())}
         className="flex items-center flex-shrink-0 gap-1 px-1 py-1 text-[11px] font-medium whitespace-nowrap text-blue-700 hover:text-blue-800 hover:underline"
       >
-        <Plus size={11} /> Add new item
+        <Plus size={11} /> Add vendor
       </button>
 
       {showAdd && anchor && createPortal(
@@ -134,7 +109,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
           className="z-[60] p-2 space-y-2 bg-white border rounded-lg shadow-lg w-60 border-slate-200"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Add new item</span>
+            <span className="text-[11px] font-medium text-slate-500">Add vendor</span>
             <button
               type="button"
               onClick={() => setShowAdd(false)}
@@ -147,13 +122,13 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Item name"
+            placeholder="Vendor name"
             className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
           />
           <input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
-            placeholder="Item code (optional)"
+            placeholder="Code (optional)"
             className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
           />
           {error && <p className="text-[11px] text-red-600">{error}</p>}
@@ -163,7 +138,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
             onClick={handleAdd}
             className="w-full px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-50"
           >
-            {createMutation.isPending ? "Adding..." : "Add item"}
+            {createMutation.isPending ? "Adding..." : "Add vendor"}
           </button>
         </div>,
         document.body,
@@ -172,4 +147,4 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
   );
 };
 
-export default ItemNameField;
+export default VendorField;

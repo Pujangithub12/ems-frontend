@@ -13,6 +13,8 @@ export interface ScheduleRow {
   parentId: string;
   predecessorId: string;
   progress: string;
+  /** "pending" | "in_progress" | "on_hold" | "completed", or "" (treated as "pending"). */
+  status: string;
 }
 
 export function emptyScheduleRow(): ScheduleRow {
@@ -24,12 +26,15 @@ export function emptyScheduleRow(): ScheduleRow {
     parentId: "",
     predecessorId: "",
     progress: "",
+    status: "",
   };
 }
 
 // ---- Gantt chart data shapes (shared by ProjectScheduleTab and GanttChartView) ----
 
-export type ScheduleStatus = "completed" | "in_progress" | "delayed" | "not_started";
+/** Manually set per task (not derived from progress/dates) — drives both the
+ * Status column pill and the Gantt bar color. */
+export type ScheduleStatus = "pending" | "in_progress" | "on_hold" | "completed";
 
 export interface GanttTask {
   id: string;
@@ -45,8 +50,6 @@ export interface GanttTask {
   wbs: string;
   durationLabel: string;
   startLabel: string;
-  /** 0-3, cycled per task in row order — drives the Gantt bar's rotating color (not status-based). */
-  colorIndex: number;
 }
 
 export interface GanttLink {
@@ -56,12 +59,37 @@ export interface GanttLink {
   type: "e2s" | "s2s" | "e2e" | "s2e";
 }
 
-/** Colors + labels for each derived status — shared by the Status column, the
- * legend, the stat tiles, and the Gantt chart bar coloring. */
+/** Colors + labels for each manual status — shared by the Status column pill,
+ * the filter dropdown, and the Gantt chart bar coloring. Pending stays the
+ * "default" blue; the others each get their own distinct color. */
 export const STATUS_META: Record<
   ScheduleStatus,
   { label: string; bar: string; barBorder: string; pillBg: string; pillText: string; dot: string }
 > = {
+  pending: {
+    label: "Pending",
+    bar: "#60a5fa",
+    barBorder: "#3b82f6",
+    pillBg: "#dbeafe",
+    pillText: "#1d4ed8",
+    dot: "#60a5fa",
+  },
+  in_progress: {
+    label: "In Progress",
+    bar: "#8b5cf6",
+    barBorder: "#7c3aed",
+    pillBg: "#ede9fe",
+    pillText: "#6d28d9",
+    dot: "#8b5cf6",
+  },
+  on_hold: {
+    label: "On Hold",
+    bar: "#f59e0b",
+    barBorder: "#d97706",
+    pillBg: "#fef3c7",
+    pillText: "#b45309",
+    dot: "#f59e0b",
+  },
   completed: {
     label: "Completed",
     bar: "#10b981",
@@ -69,29 +97,5 @@ export const STATUS_META: Record<
     pillBg: "#d1fae5",
     pillText: "#047857",
     dot: "#10b981",
-  },
-  in_progress: {
-    label: "In Progress",
-    bar: "#3b82f6",
-    barBorder: "#2563eb",
-    pillBg: "#dbeafe",
-    pillText: "#1d4ed8",
-    dot: "#3b82f6",
-  },
-  delayed: {
-    label: "Delayed",
-    bar: "#f43f5e",
-    barBorder: "#e11d48",
-    pillBg: "#ffe4e6",
-    pillText: "#be123c",
-    dot: "#f43f5e",
-  },
-  not_started: {
-    label: "Not Started",
-    bar: "#cbd5e1",
-    barBorder: "#94a3b8",
-    pillBg: "#f1f5f9",
-    pillText: "#475569",
-    dot: "#94a3b8",
   },
 };

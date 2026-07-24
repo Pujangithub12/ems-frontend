@@ -19,11 +19,13 @@ import {
   deleteInventoryAttachment,
   fetchWorkspaceWarehouses,
   createWarehouse,
+  deleteWarehouse,
   fetchWorkspacePendingTransfers,
   fetchWorkspaceInventoryTransactions,
   fetchWorkspaceVendors,
   createVendor,
   updateVendor,
+  deleteVendor,
   fetchWorkspaceItems,
   createCatalogItem,
   InventoryItemInput,
@@ -181,6 +183,12 @@ export function useCreateWarehouseMutation() {
   });
 }
 
+export function useDeleteWarehouseMutation() {
+  return useMutation({
+    mutationFn: (warehouseId: number) => deleteWarehouse(warehouseId),
+  });
+}
+
 export function useUpdateVendorMutation() {
   return useMutation({
     mutationFn: ({
@@ -224,6 +232,12 @@ export function useCreateVendorMutation() {
   return useMutation({
     mutationFn: (input: { name: string; code?: string; location?: string; rating?: number; contractExpiryDate?: string }) =>
       createVendor(input),
+  });
+}
+
+export function useDeleteVendorMutation() {
+  return useMutation({
+    mutationFn: (vendorId: number) => deleteVendor(vendorId),
   });
 }
 

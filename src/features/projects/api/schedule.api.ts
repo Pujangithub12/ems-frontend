@@ -10,6 +10,7 @@ export interface ScheduleTaskDto {
   parentId: string | null;
   predecessorId: string | null;
   progress: number | null;
+  status: string;
 }
 
 /** ScheduleRow (all-string, form-friendly) -> ScheduleTaskDto (typed, for the wire). */
@@ -29,6 +30,7 @@ export function rowsToDto(rows: ScheduleRow[]): ScheduleTaskDto[] {
       row.progress.trim() === "" || Number.isNaN(Number(row.progress))
         ? null
         : Math.max(0, Math.min(100, Number(row.progress))),
+    status: row.status.trim() === "" ? "pending" : row.status.trim(),
   }));
 }
 
@@ -42,6 +44,7 @@ export function dtoToRows(dtos: ScheduleTaskDto[]): ScheduleRow[] {
     parentId: dto.parentId ?? "",
     predecessorId: dto.predecessorId ?? "",
     progress: dto.progress != null ? String(dto.progress) : "",
+    status: dto.status ?? "",
   }));
 }
 
