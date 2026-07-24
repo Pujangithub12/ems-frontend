@@ -37,6 +37,7 @@ import { useWorkspaceVendorsQuery } from "../../inventory/hooks/useInventory";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import ItemNameField from "../../inventory/components/ItemNameField";
+import VendorField from "../../inventory/components/VendorField";
 import Pagination from "../../../components/Pagination";
 import { useRowSelection } from "../../../hooks/useRowSelection";
 import ProcurementItemDrawer from "../components/ProcurementItemDrawer";
@@ -781,7 +782,7 @@ const ProcurementPage: React.FC = () => {
               )}
               {!editingItem && (
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Project</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Project</label>
                   <div className="relative">
                     <select
                       value={formProjectId}
@@ -798,7 +799,7 @@ const ProcurementPage: React.FC = () => {
                 </div>
               )}
               <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Item name</label>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Item name</label>
                 <ItemNameField
                   autoFocus
                   itemId={form.itemId ?? null}
@@ -810,7 +811,7 @@ const ProcurementPage: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Category</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Category</label>
                   <div className="relative">
                     <select
                       value={form.category || "hardware"}
@@ -825,7 +826,7 @@ const ProcurementPage: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Quantity</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Quantity</label>
                   <input
                     type="number"
                     min={1}
@@ -835,7 +836,7 @@ const ProcurementPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Unit cost</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Unit cost</label>
                   <input
                     type="number"
                     min={0}
@@ -849,23 +850,14 @@ const ProcurementPage: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Vendor</label>
-                  <div className="relative">
-                    <select
-                      value={form.vendorId ?? ""}
-                      onChange={(e) => setForm({ ...form, vendorId: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="">No vendor</option>
-                      {vendors.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Vendor</label>
+                  <VendorField
+                    vendorId={form.vendorId ?? null}
+                    onSelect={(vendorId) => setForm({ ...form, vendorId })}
+                  />
                 </div>
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Needed by</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Needed by</label>
                   <input
                     type="date"
                     value={form.neededByDate || ""}
@@ -875,7 +867,7 @@ const ProcurementPage: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Notes</label>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Notes</label>
                 <textarea
                   value={form.notes || ""}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}

@@ -162,6 +162,11 @@ export async function createWarehouse(input: {
   return res.data.warehouse;
 }
 
+/** DELETE a warehouse. */
+export async function deleteWarehouse(warehouseId: number): Promise<void> {
+  await api.delete(`/api/workspace/warehouses/${warehouseId}`);
+}
+
 /** GET pending/in-transit transfers across the workspace, for the KPI strip. */
 export async function fetchWorkspacePendingTransfers(): Promise<StockTransfer[]> {
   const res = await api.get<{ transfers: StockTransfer[] }>("/api/workspace/inventory/transfers");
@@ -201,6 +206,11 @@ export async function updateVendor(
 ): Promise<Vendor> {
   const res = await api.put<{ vendor: Vendor }>(`/api/workspace/vendors/${vendorId}`, input);
   return res.data.vendor;
+}
+
+/** DELETE a vendor. */
+export async function deleteVendor(vendorId: number): Promise<void> {
+  await api.delete(`/api/workspace/vendors/${vendorId}`);
 }
 
 /** GET the shared item catalog (name + code) — used by both the Inventory and Procurement "Add item" forms. */

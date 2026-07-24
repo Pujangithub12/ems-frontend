@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
-import { InventoryItem } from "../../../types";
+import { InventoryItem, Vendor, Warehouse } from "../../../types";
 import { InventoryItemInput } from "../api/inventory.api";
 import {
   useWorkspaceInventoryQuery,
@@ -38,16 +38,20 @@ import {
   useDeleteInventoryItemMutation,
   useWorkspaceWarehousesQuery,
   useCreateWarehouseMutation,
+  useDeleteWarehouseMutation,
   useWorkspacePendingTransfersQuery,
   useWorkspaceVendorsQuery,
   useCreateVendorMutation,
   useUpdateVendorMutation,
+  useDeleteVendorMutation,
 } from "../hooks/useInventory";
 import { useWorkspaceProcurementQuery } from "../../procurement/hooks/useProcurement";
 import { toNumber, formatCost } from "../../procurement/api/procurement.api";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import ItemNameField from "../components/ItemNameField";
+import WarehouseField from "../components/WarehouseField";
+import VendorField from "../components/VendorField";
 import Pagination from "../../../components/Pagination";
 import { useRowSelection } from "../../../hooks/useRowSelection";
 import InventoryItemDrawer from "../components/InventoryItemDrawer";
@@ -157,8 +161,10 @@ const InventoryPage: React.FC = () => {
   const updateMutation = useUpdateInventoryItemMutation();
   const deleteMutation = useDeleteInventoryItemMutation();
   const createWarehouseMutation = useCreateWarehouseMutation();
+  const deleteWarehouseMutation = useDeleteWarehouseMutation();
   const createVendorMutation = useCreateVendorMutation();
   const updateVendorMutation = useUpdateVendorMutation();
+  const deleteVendorMutation = useDeleteVendorMutation();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -368,6 +374,29 @@ const InventoryPage: React.FC = () => {
       setActionError(getErrorMessage(err, "Failed to delete inventory item."));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteVendor = async (vendor: Vendor) => {
+    if (!window.confirm(`Delete vendor "${vendor.name}"? Items using it will just show no vendor.`)) return;
+    setActionError(null);
+    try {
+      await deleteVendorMutation.mutateAsync(vendor.id);
+      await Promise.all([vendorsQuery.refetch(), itemsQuery.refetch()]);
+      if (editingVendorId === vendor.id) setEditingVendorId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete vendor."));
+    }
+  };
+
+  const handleDeleteWarehouse = async (warehouse: Warehouse) => {
+    if (!window.confirm(`Delete warehouse "${warehouse.name}"? Items stored there will just show no warehouse.`)) return;
+    setActionError(null);
+    try {
+      await deleteWarehouseMutation.mutateAsync(warehouse.id);
+      await Promise.all([warehousesQuery.refetch(), itemsQuery.refetch()]);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete warehouse."));
     }
   };
 
@@ -873,202 +902,203 @@ const InventoryPage: React.FC = () => {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h3 className="text-[14px] font-semibold text-slate-900">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-[15px] font-semibold text-slate-900">
                 {editingItem ? "Edit Inventory Item" : "Add Inventory Item"}
               </h3>
               <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmitForm} className="p-4 space-y-3 overflow-y-auto">
+            <form onSubmit={handleSubmitForm} className="p-5 space-y-5 overflow-y-auto">
               {formError && (
                 <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>
               )}
-              {!editingItem && (
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Project</label>
-                  <div className="relative">
-                    <select
-                      value={formProjectId}
-                      onChange={(e) => setFormProjectId(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="" disabled>Choose a project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+
+              {/* Basic Info */}
+              <div className="space-y-3">
+                <h4 className="text-[11px] font-semibold tracking-wide uppercase text-slate-400">Basic Info</h4>
+                {!editingItem && (
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Project</label>
+                    <div className="relative">
+                      <select
+                        value={formProjectId}
+                        onChange={(e) => setFormProjectId(Number(e.target.value))}
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
+                      >
+                        <option value="" disabled>Choose a project</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Item name</label>
+                    <ItemNameField
+                      autoFocus
+                      itemId={form.itemId ?? null}
+                      currentName={form.itemName}
+                      onSelect={(item) =>
+                        setForm((f) => ({ ...f, itemId: item.id, itemName: item.name, sku: item.code || "" }))
+                      }
+                      placeholder="e.g. Solar panel mounting brackets"
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">SKU</label>
+                    <input
+                      value={form.sku || ""}
+                      disabled={!!form.itemId}
+                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                      placeholder={form.itemId ? "From catalog" : "Optional"}
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400"
+                    />
                   </div>
                 </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Item name</label>
-                  <ItemNameField
-                    autoFocus
-                    itemId={form.itemId ?? null}
-                    currentName={form.itemName}
-                    onSelect={(item) =>
-                      setForm((f) => ({ ...f, itemId: item.id, itemName: item.name, sku: item.code || "" }))
-                    }
-                    placeholder="e.g. Solar panel mounting brackets"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">SKU</label>
-                  <input
-                    value={form.sku || ""}
-                    disabled={!!form.itemId}
-                    onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                    placeholder={form.itemId ? "From catalog" : "Optional"}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Category</label>
-                  <div className="relative">
-                    <select
-                      value={form.category || "hardware"}
-                      onChange={(e) => setForm({ ...form, category: e.target.value as InventoryItem["category"] })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="hardware">Hardware</option>
-                      <option value="software">Software</option>
-                      <option value="service">Service</option>
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Category</label>
+                    <div className="relative">
+                      <select
+                        value={form.category || "hardware"}
+                        onChange={(e) => setForm({ ...form, category: e.target.value as InventoryItem["category"] })}
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
+                      >
+                        <option value="hardware">Hardware</option>
+                        <option value="software">Software</option>
+                        <option value="service">Service</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Quantity</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.quantity}
+                      onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Unit</label>
+                    <input
+                      value={form.unit || ""}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                      placeholder="meter, kg, etc"
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
                   </div>
                 </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Quantity</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Unit</label>
-                  <input
-                    value={form.unit || ""}
-                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    placeholder="meter, kg, etc"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Warehouse</label>
-                  <div className="relative">
-                    <select
-                      value={form.warehouseId ?? ""}
-                      onChange={(e) => setForm({ ...form, warehouseId: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="">Unassigned</option>
-                      {warehouses.map((w) => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+
+              {/* Stock & Location */}
+              <div className="pt-5 space-y-3 border-t border-slate-100">
+                <h4 className="text-[11px] font-semibold tracking-wide uppercase text-slate-400">Stock & Location</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Warehouse</label>
+                    <WarehouseField
+                      warehouseId={form.warehouseId ?? null}
+                      onSelect={(warehouseId) => setForm({ ...form, warehouseId })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Average cost</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.averageCost ?? ""}
+                      onChange={(e) => setForm({ ...form, averageCost: e.target.value === "" ? null : Number(e.target.value) })}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
                   </div>
                 </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Average cost</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.averageCost ?? ""}
-                    onChange={(e) => setForm({ ...form, averageCost: e.target.value === "" ? null : Number(e.target.value) })}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Reserved qty</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.reservedQuantity || 0}
-                    onChange={(e) => setForm({ ...form, reservedQuantity: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Incoming qty</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.incomingQuantity || 0}
-                    onChange={(e) => setForm({ ...form, incomingQuantity: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Date</label>
-                  <input
-                    type="date"
-                    value={form.lastRestockedDate || ""}
-                    onChange={(e) => setForm({ ...form, lastRestockedDate: e.target.value })}
-                    className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.lastRestockedDate ? "" : "text-slate-400"}`}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Vendor</label>
-                  <div className="relative">
-                    <select
-                      value={form.vendorId ?? ""}
-                      onChange={(e) => setForm({ ...form, vendorId: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="">No vendor</option>
-                      {vendors.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Reserved qty</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.reservedQuantity || 0}
+                      onChange={(e) => setForm({ ...form, reservedQuantity: Number(e.target.value) })}
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Incoming qty</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.incomingQuantity || 0}
+                      onChange={(e) => setForm({ ...form, incomingQuantity: Number(e.target.value) })}
+                      className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Last restocked</label>
+                    <input
+                      type="date"
+                      value={form.lastRestockedDate || ""}
+                      onChange={(e) => setForm({ ...form, lastRestockedDate: e.target.value })}
+                      className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.lastRestockedDate ? "" : "text-slate-400"}`}
+                    />
                   </div>
                 </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Warranty until</label>
-                  <input
-                    type="date"
-                    value={form.warrantyExpiryDate || ""}
-                    onChange={(e) => setForm({ ...form, warrantyExpiryDate: e.target.value })}
-                    className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.warrantyExpiryDate ? "" : "text-slate-400"}`}
-                  />
+              </div>
+
+              {/* Vendor & Status */}
+              <div className="pt-5 space-y-3 border-t border-slate-100">
+                <h4 className="text-[11px] font-semibold tracking-wide uppercase text-slate-400">Vendor & Status</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Vendor</label>
+                    <VendorField
+                      vendorId={form.vendorId ?? null}
+                      onSelect={(vendorId) => setForm({ ...form, vendorId })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Warranty until</label>
+                    <input
+                      type="date"
+                      value={form.warrantyExpiryDate || ""}
+                      onChange={(e) => setForm({ ...form, warrantyExpiryDate: e.target.value })}
+                      className={`w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 ${form.warrantyExpiryDate ? "" : "text-slate-400"}`}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block mb-1 text-[12px] font-medium text-slate-900">Status</label>
+                    <div className="relative">
+                      <select
+                        value={form.status || "in_stock"}
+                        onChange={(e) => setForm({ ...form, status: e.target.value as InventoryItem["status"] })}
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
+                      >
+                        <option value="in_stock">In Stock</option>
+                        <option value="low_stock">Low Stock</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Status</label>
-                <div className="relative">
-                  <select
-                    value={form.status || "in_stock"}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as InventoryItem["status"] })}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                  >
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Notes</label>
+
+              {/* Notes */}
+              <div className="pt-5 space-y-3 border-t border-slate-100">
+                <h4 className="text-[11px] font-semibold tracking-wide uppercase text-slate-400">Notes</h4>
                 <textarea
                   value={form.notes || ""}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -1077,6 +1107,7 @@ const InventoryPage: React.FC = () => {
                   className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 resize-none"
                 />
               </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeForm} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50">
                   Cancel
@@ -1106,13 +1137,30 @@ const InventoryPage: React.FC = () => {
               </button>
             </div>
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+              {actionError && (
+                <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+                  <span>{actionError}</span>
+                  <button onClick={() => setActionError(null)}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               {warehouses.length === 0 ? (
                 <p className="text-[12px] text-slate-400">No warehouses yet.</p>
               ) : (
                 warehouses.map((w) => (
                   <div key={w.id} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-[13px]">
                     <span className="text-slate-700">{w.name}{w.location ? ` · ${w.location}` : ""}</span>
-                    <span className="text-slate-400">cap. {w.capacity}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">cap. {w.capacity}</span>
+                      <button
+                        onClick={() => handleDeleteWarehouse(w)}
+                        title="Delete warehouse"
+                        className="text-[11px] font-medium text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1177,6 +1225,14 @@ const InventoryPage: React.FC = () => {
               </button>
             </div>
             <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+              {actionError && (
+                <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+                  <span>{actionError}</span>
+                  <button onClick={() => setActionError(null)}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               {vendors.length === 0 ? (
                 <p className="text-[12px] text-slate-400">No vendors yet.</p>
               ) : (
@@ -1205,6 +1261,13 @@ const InventoryPage: React.FC = () => {
                           className="text-[11px] font-medium text-blue-900 hover:underline"
                         >
                           {editingVendorId === v.id ? "Cancel" : "Edit"}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteVendor(v)}
+                          title="Delete vendor"
+                          className="text-[11px] font-medium text-red-600 hover:underline"
+                        >
+                          Delete
                         </button>
                       </div>
                     </div>
