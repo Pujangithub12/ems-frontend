@@ -254,13 +254,17 @@ const ProjectsPage: React.FC = () => {
   }, [projects]);
 
   const filteredProjects = useMemo(() => {
-    return projectsWithProgress.filter((p) => {
+    const matched = projectsWithProgress.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || p.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
+    // Completed projects sink to the bottom of the grid; everything else
+    // (pending/in_progress/on_hold) stays above, in its existing order —
+    // a stable sort that only distinguishes "completed" from everything else.
+    return [...matched].sort((a, b) => Number(a.status === "completed") - Number(b.status === "completed"));
   }, [projectsWithProgress, searchQuery, statusFilter]);
 
   return (

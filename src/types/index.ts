@@ -59,6 +59,18 @@ export type ProjectFile = {
    * folder and every file/folder mirrored from that project's Documents tab —
    * these are read-only there (no upload/new-folder/rename/delete). */
   projectId?: number;
+  /** The requesting user's resolved access on this node ("write" for
+   * admin/super_admin always). Nodes the user can't see at all are already
+   * filtered out server-side, so this only ever comes back "read" or "write". */
+  myAccessLevel?: "none" | "read" | "write";
+};
+
+export type FileAccessGrant = {
+  id: number;
+  granteeType: "user" | "role";
+  user?: { id: number; fullName: string; email: string } | null;
+  role?: string;
+  level: "none" | "read" | "write";
 };
 
 export type Warehouse = {
@@ -75,7 +87,7 @@ export type Vendor = {
   name: string;
   code?: string | null;
   location?: string | null;
-  rating?: number | null;
+  contact?: string | null;
   contractExpiryDate?: string | null;
   createdAt: string;
 };
@@ -184,8 +196,13 @@ export type ProcurementItem = {
   poNumber?: string | null;
   category: "hardware" | "software" | "service";
   quantity: number;
+  unit?: string | null;
   estimatedCost?: number | string | null;
   unitCost?: number | string | null;
+  taxPercent?: number | string | null;
+  discountPercent?: number | string | null;
+  transportCost?: number | string | null;
+  customsCost?: number | string | null;
   vendorName?: string | null;
   vendor?: { id: number; name: string } | null;
   neededByDate?: string | null;
@@ -249,7 +266,7 @@ export type ReportSummary = {
   topPurchasedItems: { id: number; itemName: string; value: number }[];
   projectMaterialConsumption: { projectName: string; value: number }[];
   inventoryAging: Record<string, number | string>[];
-  vendorPerformance: { id: number; name: string; rating: number | null; avgDeliveryDays: number | null; purchaseVolume: number }[];
+  vendorPerformance: { id: number; name: string; avgDeliveryDays: number | null; purchaseVolume: number }[];
   deadStock: {
     id: number;
     itemName: string;

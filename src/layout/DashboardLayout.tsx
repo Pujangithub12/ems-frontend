@@ -16,7 +16,6 @@ import {
   LogOut,
   Menu,
   X,
-  History,
   BarChart3,
   Bell,
   ChevronDown,
@@ -24,10 +23,13 @@ import {
   RefreshCcw,
   User as UserRoundIcon,
   UserPlus,
+  Truck,
+  Building2,
 } from "lucide-react";
 
 import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
 import SidebarLink from "../components/SidebarLink";
+import SidebarDropdown from "../components/SidebarDropdown";
 import { useLeaveRequests } from "../features/approvals/hooks/useLeaveRequests";
 import { useSiteVisitRequests } from "../features/approvals/hooks/useSiteVisitRequests";
 import { useExpenseRequests } from "../features/approvals/hooks/useExpenseRequests";
@@ -244,9 +246,21 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     },
     {
       path: `${prefix}/procurement`,
-      label: "Procurement",
+      label: "Purchase Order",
       icon: ShoppingCart,
       id: "procurement",
+    },
+    {
+      path: `${prefix}/goods-received`,
+      label: "Goods Received",
+      icon: Truck,
+      id: "goods-received",
+    },
+    {
+      path: `${prefix}/vendors`,
+      label: "Vendors",
+      icon: Building2,
+      id: "vendors",
     },
     {
       path: `${prefix}/tasks`,
@@ -278,12 +292,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       label: "Reports",
       icon: BarChart3,
       id: "reports",
-    },
-    {
-      path: `${prefix}/activities`,
-      label: "Activity History",
-      icon: History,
-      id: "activities",
     },
   ];
 
@@ -323,12 +331,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     documents: "Browse and manage workspace files",
     inventory: "Stock items across all your projects",
     procurement: "Purchase requests across all your projects",
+    "goods-received": "Purchase orders received across all your projects",
+    vendors: "Suppliers and vendors across all your projects",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     leaverequests: "Review and approve requests",
     reports: "Inventory & procurement analytics",
-    activities: "Recent workspace activity log",
     users: "Manage people and permissions",
     settings: "Workspace configuration and preferences",
   };
@@ -366,15 +375,34 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         <nav className="flex-1 px-3 overflow-y-auto">
           <Eyebrow>Operations</Eyebrow>
           <div className="h-1.5" />
-          {navItems.map((it) => (
-            <SidebarLink
-              key={it.id}
-              to={it.path}
-              icon={it.icon}
-              label={it.label}
-              badgeCount={it.badgeCount}
-            />
-          ))}
+          {navItems.map((it) => {
+            if (it.id === "goods-received" || it.id === "vendors") return null;
+            if (it.id === "procurement") {
+              const goodsReceived = navItems.find((n) => n.id === "goods-received")!;
+              const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+              return (
+                <SidebarDropdown
+                  key="purchase"
+                  icon={ShoppingCart}
+                  label="Procurement"
+                  items={[
+                    { to: it.path, label: "Purchase Order" },
+                    { to: goodsReceived.path, label: "Goods Received" },
+                    { to: vendorsItem.path, label: "Vendors" },
+                  ]}
+                />
+              );
+            }
+            return (
+              <SidebarLink
+                key={it.id}
+                to={it.path}
+                icon={it.icon}
+                label={it.label}
+                badgeCount={it.badgeCount}
+              />
+            );
+          })}
           <div className="h-3" />
           <Eyebrow>Reports</Eyebrow>
           <div className="h-1.5" />
@@ -382,19 +410,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
           ))}
         </nav>
-
-        {/* User footer */}
-        <div className="flex items-center gap-3 p-4 border-t border-slate-800">
-          <Avatar name={user?.fullName || "Guest"} size={32} dark />
-          <div className="flex-1 min-w-0">
-            <div className="font-medium truncate text-[13px] text-white">
-              {user?.fullName || "Guest"}
-            </div>
-            <div className="text-[11px] text-slate-400 truncate capitalize">
-              {user?.role || "No role"}
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Mobile sidebar */}
@@ -424,16 +439,36 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             <nav className="flex-1 px-3 py-3 overflow-y-auto">
               <Eyebrow>Operations</Eyebrow>
               <div className="h-1.5" />
-              {navItems.map((it) => (
-                <SidebarLink
-                  key={it.id}
-                  to={it.path}
-                  icon={it.icon}
-                  label={it.label}
-                  badgeCount={it.badgeCount}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                />
-              ))}
+              {navItems.map((it) => {
+                if (it.id === "goods-received" || it.id === "vendors") return null;
+                if (it.id === "procurement") {
+                  const goodsReceived = navItems.find((n) => n.id === "goods-received")!;
+                  const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+                  return (
+                    <SidebarDropdown
+                      key="purchase"
+                      icon={ShoppingCart}
+                      label="Procurement"
+                      items={[
+                        { to: it.path, label: "Purchase Order" },
+                        { to: goodsReceived.path, label: "Goods Received" },
+                        { to: vendorsItem.path, label: "Vendors" },
+                      ]}
+                      onNavigate={() => setIsMobileMenuOpen(false)}
+                    />
+                  );
+                }
+                return (
+                  <SidebarLink
+                    key={it.id}
+                    to={it.path}
+                    icon={it.icon}
+                    label={it.label}
+                    badgeCount={it.badgeCount}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                );
+              })}
               <div className="h-3" />
               <Eyebrow>Reports</Eyebrow>
               <div className="h-1.5" />
@@ -447,17 +482,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 />
               ))}
             </nav>
-            <div className="flex items-center gap-3 p-4 border-t border-slate-800">
-              <Avatar name={user?.fullName || "Guest"} size={32} dark />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate text-[13px] text-white">
-                  {user?.fullName || "Guest"}
-                </div>
-                <div className="text-[11px] text-slate-400 truncate capitalize">
-                  {user?.role || "No role"}
-                </div>
-              </div>
-            </div>
           </aside>
         </>
       )}

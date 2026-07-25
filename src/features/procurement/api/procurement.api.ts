@@ -7,8 +7,13 @@ export interface ProcurementItemInput {
   itemId?: number | null;
   category?: ProcurementItem["category"];
   quantity: number;
+  unit?: string;
   estimatedCost?: number | null;
   unitCost?: number | null;
+  taxPercent?: number | null;
+  discountPercent?: number | null;
+  transportCost?: number | null;
+  customsCost?: number | null;
   vendorName?: string;
   vendorId?: number | null;
   neededByDate?: string | null;
@@ -87,10 +92,50 @@ export function toNumber(value?: number | string | null): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-/** Human-readable currency, e.g. "$1,250.00". Falls back to "--" when absent. */
+/** Human-readable Nepali Rupee amount, e.g. "Rs 1,250.00". Falls back to "--" when absent. */
 export function formatCost(value?: number | string | null): string {
   if (value === null || value === undefined || value === "") return "--";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (Number.isNaN(num)) return "--";
-  return num.toLocaleString(undefined, { style: "currency", currency: "USD" });
+  return `Rs ${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export type ItemCostBreakdown = {
+  unitCost: number;
+  subtotal: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxPercent: number;
+  taxAmount: number;
+  transportCost: number;
+  customsCost: number;
+  total: number;
+};
+
+/**
+ * The single source of truth for a purchase request's "landed cost" —
+ * (unitCost x quantity) minus discount, plus tax, plus flat transport and
+ * customs costs. Used everywhere a procurement total is shown or summed
+ * (tables, CSV exports, drawers) so they never drift from each other.
+ */
+export function computeItemCostBreakdown(item: {
+  unitCost?: number | string | null;
+  estimatedCost?: number | string | null;
+  quantity: number;
+  discountPercent?: number | string | null;
+  taxPercent?: number | string | null;
+  transportCost?: number | string | null;
+  customsCost?: number | string | null;
+}): ItemCostBreakdown {
+  const unitCost = toNumber(item.unitCost ?? item.estimatedCost);
+  const subtotal = unitCost * item.quantity;
+  const discountPercent = toNumber(item.discountPercent);
+  const taxPercent = toNumber(item.taxPercent);
+  const discountAmount = subtotal * (discountPercent / 100);
+  const taxableAmount = subtotal - discountAmount;
+  const taxAmount = taxableAmount * (taxPercent / 100);
+  const transportCost = toNumber(item.transportCost);
+  const customsCost = toNumber(item.customsCost);
+  const total = taxableAmount + taxAmount + transportCost + customsCost;
+  return { unitCost, subtotal, discountPercent, discountAmount, taxPercent, taxAmount, transportCost, customsCost, total };
 }

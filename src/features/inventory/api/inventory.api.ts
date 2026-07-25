@@ -192,7 +192,7 @@ export async function createVendor(input: {
   name: string;
   code?: string;
   location?: string;
-  rating?: number;
+  contact?: string;
   contractExpiryDate?: string;
 }): Promise<Vendor> {
   const res = await api.post<{ vendor: Vendor }>("/api/workspace/vendors", input);
@@ -202,7 +202,7 @@ export async function createVendor(input: {
 /** PUT update a vendor. */
 export async function updateVendor(
   vendorId: number,
-  input: { name?: string; code?: string; location?: string; rating?: number | null; contractExpiryDate?: string | null },
+  input: { name?: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string | null },
 ): Promise<Vendor> {
   const res = await api.put<{ vendor: Vendor }>(`/api/workspace/vendors/${vendorId}`, input);
   return res.data.vendor;

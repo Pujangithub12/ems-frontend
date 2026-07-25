@@ -1,5 +1,5 @@
 import api from "../../../api/axios";
-import { ProjectFile } from "../../../types";
+import { ProjectFile, FileAccessGrant } from "../../../types";
 
 /** GET all files/folders for a project's Documents tab (flat list; nesting is via parentId). */
 export async function fetchProjectFiles(
@@ -58,6 +58,26 @@ export async function renameFile(
     { name },
   );
   return res.data.file;
+}
+
+/** GET the explicit access grants set directly on a file/folder (admin/super_admin only). */
+export async function fetchFileAccess(fileId: number): Promise<FileAccessGrant[]> {
+  const res = await api.get<{ grants: FileAccessGrant[] }>(
+    `/api/projects/files/${fileId}/access`,
+  );
+  return res.data.grants ?? [];
+}
+
+/** PUT full-replace the access grants on a file/folder (admin/super_admin only). */
+export async function setFileAccess(
+  fileId: number,
+  grants: { granteeType: "user" | "role"; userId?: number; role?: string; level: "none" | "read" | "write" }[],
+): Promise<FileAccessGrant[]> {
+  const res = await api.put<{ grants: FileAccessGrant[] }>(
+    `/api/projects/files/${fileId}/access`,
+    { grants },
+  );
+  return res.data.grants ?? [];
 }
 
 /** Direct download URL for a file (opened in a new tab / set as href). */

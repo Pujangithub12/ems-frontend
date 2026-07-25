@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 
-/** Bulk-select state for a table of rows keyed by numeric id. No prior in-app convention. */
-export function useRowSelection(visibleIds: number[]) {
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+/** Bulk-select state for a table of rows keyed by id — numeric by default, but
+ * accepts any id type (e.g. string group keys for a grouped table). No prior
+ * in-app convention. */
+export function useRowSelection<T = number>(visibleIds: T[]) {
+  const [selected, setSelected] = useState<Set<T>>(new Set());
 
   const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someSelected = selected.size > 0;
 
-  const toggle = (id: number) => {
+  const toggle = (id: T) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);

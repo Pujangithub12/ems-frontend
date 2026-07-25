@@ -191,9 +191,9 @@ const InventoryPage: React.FC = () => {
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [newWarehouse, setNewWarehouse] = useState({ name: "", code: "", location: "", capacity: "" });
   const [showVendorModal, setShowVendorModal] = useState(false);
-  const [newVendor, setNewVendor] = useState({ name: "", code: "", location: "", rating: "", contractExpiryDate: "" });
+  const [newVendor, setNewVendor] = useState({ name: "", code: "", location: "", contact: "", contractExpiryDate: "" });
   const [editingVendorId, setEditingVendorId] = useState<number | null>(null);
-  const [editVendor, setEditVendor] = useState({ rating: "", contractExpiryDate: "" });
+  const [editVendor, setEditVendor] = useState({ contact: "", contractExpiryDate: "" });
   const [importing, setImporting] = useState(false);
   const [importProjectId, setImportProjectId] = useState<number | "">("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1242,7 +1242,7 @@ const InventoryPage: React.FC = () => {
                       <span className="text-slate-700">
                         {v.name}
                         {v.location ? ` · ${v.location}` : ""}
-                        {v.rating ? ` · ${v.rating}★` : ""}
+                        {v.contact ? ` · ${v.contact}` : ""}
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">{v.code || ""}</span>
@@ -1253,7 +1253,7 @@ const InventoryPage: React.FC = () => {
                             } else {
                               setEditingVendorId(v.id);
                               setEditVendor({
-                                rating: v.rating ? String(v.rating) : "",
+                                contact: v.contact || "",
                                 contractExpiryDate: v.contractExpiryDate ? v.contractExpiryDate.slice(0, 10) : "",
                               });
                             }
@@ -1279,17 +1279,14 @@ const InventoryPage: React.FC = () => {
                     {editingVendorId === v.id && (
                       <div className="flex items-end gap-2 mt-2">
                         <div className="flex-1">
-                          <label className="block mb-1 text-[10px] font-medium text-slate-500">Rating</label>
-                          <select
-                            value={editVendor.rating}
-                            onChange={(e) => setEditVendor({ ...editVendor, rating: e.target.value })}
-                            className="w-full px-2 py-1.5 text-[12px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
-                          >
-                            <option value="">No rating</option>
-                            {[1, 2, 3, 4, 5].map((r) => (
-                              <option key={r} value={r}>{r}★</option>
-                            ))}
-                          </select>
+                          <label className="block mb-1 text-[10px] font-medium text-slate-500">Contact</label>
+                          <input
+                            type="tel"
+                            value={editVendor.contact}
+                            onChange={(e) => setEditVendor({ ...editVendor, contact: e.target.value })}
+                            placeholder="Phone number"
+                            className="w-full px-2 py-1.5 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                          />
                         </div>
                         <div className="flex-1">
                           <label className="block mb-1 text-[10px] font-medium text-slate-500">Contract expiry</label>
@@ -1305,7 +1302,7 @@ const InventoryPage: React.FC = () => {
                             await updateVendorMutation.mutateAsync({
                               vendorId: v.id,
                               input: {
-                                rating: editVendor.rating ? Number(editVendor.rating) : null,
+                                contact: editVendor.contact,
                                 contractExpiryDate: editVendor.contractExpiryDate || null,
                               },
                             });
@@ -1341,16 +1338,13 @@ const InventoryPage: React.FC = () => {
                     placeholder="Location"
                     className="col-span-2 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                   />
-                  <select
-                    value={newVendor.rating}
-                    onChange={(e) => setNewVendor({ ...newVendor, rating: e.target.value })}
-                    className="px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
-                  >
-                    <option value="">No rating</option>
-                    {[1, 2, 3, 4, 5].map((r) => (
-                      <option key={r} value={r}>{r}★</option>
-                    ))}
-                  </select>
+                  <input
+                    type="tel"
+                    value={newVendor.contact}
+                    onChange={(e) => setNewVendor({ ...newVendor, contact: e.target.value })}
+                    placeholder="Contact number"
+                    className="px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
                   <input
                     type="date"
                     value={newVendor.contractExpiryDate}
@@ -1366,10 +1360,10 @@ const InventoryPage: React.FC = () => {
                       name: newVendor.name.trim(),
                       code: newVendor.code.trim() || undefined,
                       location: newVendor.location.trim() || undefined,
-                      rating: newVendor.rating ? Number(newVendor.rating) : undefined,
+                      contact: newVendor.contact.trim() || undefined,
                       contractExpiryDate: newVendor.contractExpiryDate || undefined,
                     });
-                    setNewVendor({ name: "", code: "", location: "", rating: "", contractExpiryDate: "" });
+                    setNewVendor({ name: "", code: "", location: "", contact: "", contractExpiryDate: "" });
                     await vendorsQuery.refetch();
                   }}
                   className="w-full px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"

@@ -86,7 +86,7 @@ export const ROLE_INFO: Record<
     color: "#B45309",
     badge: "Mid-tier",
     description:
-      "Sits between Administrator and Standard User. Starts with document access on top of standard viewing; a super admin can grant it more from the matrix below as real finance/procurement features are added.",
+      "Sits between Administrator and Standard User. Starts with document access on top of standard viewing; a super admin can grant it more permissions below as real finance/procurement features are added.",
   },
   user: {
     label: "Standard User",
@@ -204,12 +204,6 @@ export const PERMISSION_GROUPS: { category: string; items: PermissionItem[] }[] 
     items: [
       { key: "hierarchy.view", label: "View org chart", editable: false, roles: [...ALL_ROLES] },
       { key: "hierarchy.manage", label: "Edit org chart & reassign", editable: true, roles: ["super_admin", "admin"] },
-    ],
-  },
-  {
-    category: "Activity History",
-    items: [
-      { key: "activity.view", label: "View activity log", editable: false, roles: [...ALL_ROLES] },
     ],
   },
 ];

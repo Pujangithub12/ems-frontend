@@ -73,7 +73,7 @@ export const DrawerSection: React.FC<{ title: string; action?: React.ReactNode; 
   <div className="p-5 border-b border-slate-100 last:border-0">
     <div className="flex items-center justify-between mb-3">
       <span
-        className="text-[10px] tracking-[0.1em] uppercase text-slate-400"
+        className="text-[10px] tracking-[0.1em] uppercase text-slate-900 font-semibold"
         style={{ fontFamily: "'JetBrains Mono', monospace" }}
       >
         {title}

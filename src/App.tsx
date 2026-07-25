@@ -10,12 +10,13 @@ import Announcements from "./features/announcements/pages/Announcements";
 import Documents from "./features/documents/pages/Documents";
 import Inventory from "./features/inventory/pages/Inventory";
 import Procurement from "./features/procurement/pages/Procurement";
+import GoodsReceived from "./features/procurement/pages/GoodsReceived";
+import Vendors from "./features/procurement/pages/Vendors";
 import Users from "./features/users/pages/Users";
 import ProjectPage from "./features/projects/pages/Projects";
 import ProjectDetails from "./features/projects/pages/ProjectDetails";
 import CalendarPage from "./features/calendar/pages/Calendar";
 import Approvals from "./features/approvals/pages/Approvals";
-import Activities from "./features/activities/pages/Activities";
 import Reports from "./features/reports/pages/Reports";
 import Settings from "./features/settings/pages/Settings";
 import Profile from "./features/users/pages/Profile";
@@ -146,6 +147,22 @@ function App() {
             }
           />
           <Route
+            path="/:workspaceId/goods-received"
+            element={
+              <DashboardLayout>
+                <GoodsReceived />
+              </DashboardLayout>
+            }
+          />
+          <Route
+            path="/:workspaceId/vendors"
+            element={
+              <DashboardLayout>
+                <Vendors />
+              </DashboardLayout>
+            }
+          />
+          <Route
             path="/:workspaceId/task"
             element={
               <DashboardLayout>
@@ -174,14 +191,6 @@ function App() {
             element={
               <DashboardLayout>
                 <Approvals />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:workspaceId/activities"
-            element={
-              <DashboardLayout>
-                <Activities />
               </DashboardLayout>
             }
           />
