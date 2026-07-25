@@ -245,6 +245,11 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   const [containerWidth, setContainerWidth] = useState(0);
 
   const finestScaleUnitRef = useRef<string>("day");
+  // Scrolls the chart to today (with a few days of lead-in) exactly once per
+  // mount, so entering the Schedule tab always lands near "now" instead of
+  // wherever dhtmlx's own default happens to land — see the tasks-parse
+  // effect below.
+  const didAutoScrollToTodayRef = useRef(false);
 
   const onLinkCreateRef = useRef(onLinkCreate);
   const onLinkDeleteRef = useRef(onLinkDelete);
@@ -750,6 +755,20 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.clearAll();
     gantt.parse({ data, links: linkData });
     renderTodayLine(containerRef.current, showChart);
+
+    // Land the initial view on today (with a few days of lead-in) instead of
+    // wherever dhtmlx defaults to — also what makes the today-line reliably
+    // show up in day mode, since dhtmlx only renders DOM cells near the
+    // current scroll position and otherwise today's cell may simply never
+    // get created.
+    if (!didAutoScrollToTodayRef.current && readyRef.current) {
+      didAutoScrollToTodayRef.current = true;
+      const leadIn = new Date();
+      leadIn.setHours(0, 0, 0, 0);
+      leadIn.setDate(leadIn.getDate() - 5);
+      gantt.showDate(leadIn);
+      renderTodayLine(containerRef.current, showChart);
+    }
   }, [tasks, links, showChart]);
 
   return (

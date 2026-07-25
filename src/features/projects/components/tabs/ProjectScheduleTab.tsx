@@ -1244,20 +1244,27 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               <ToolbarButton icon={<Download className="w-3.5 h-3.5" />} label="Export" onClick={handleExportCsv} />
               <ToolbarButton icon={<X className="w-3.5 h-3.5" />} label="Clear" onClick={clearGantt} />
 
-              {editMode && (
-                <button
-                  onClick={handleAddTask}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-md hover:bg-blue-800"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Task
-                </button>
-              )}
+              {/* Always mounted (visibility toggled via `invisible` rather than
+                  conditional rendering) so this button's slot in the flex-wrap
+                  toolbar never appears/disappears — doing so would change the
+                  row's total content width and could flip whether it wraps to
+                  a second line, shifting the chart below it up/down. */}
+              <button
+                onClick={handleAddTask}
+                tabIndex={editMode ? 0 : -1}
+                aria-hidden={!editMode}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-md hover:bg-blue-800 ${
+                  editMode ? "" : "invisible"
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Task
+              </button>
 
               <button
                 onClick={handleToggleEditMode}
                 disabled={saveStatus === "saving"}
-                className={`flex items-center gap-1.5 ml-0.5 px-2.5 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-60 ${
+                className={`flex items-center justify-center gap-1.5 ml-0.5 px-2.5 py-1.5 min-w-[128px] text-[12px] font-medium rounded-md transition-colors disabled:opacity-60 ${
                   editMode
                     ? "text-white bg-blue-900 hover:bg-blue-800"
                     : "text-white bg-slate-800 hover:bg-slate-900"
