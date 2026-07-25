@@ -94,7 +94,7 @@ const ProjectDetails: React.FC = () => {
     );
   }
 
-  const deadline = dueDateInfo(project.dueDate);
+  const deadline = project.status === "completed" ? null : dueDateInfo(project.dueDate);
 
   const allTasks = flattenProjectTasks(project);
   const total = project.tasksCount ?? allTasks.length;

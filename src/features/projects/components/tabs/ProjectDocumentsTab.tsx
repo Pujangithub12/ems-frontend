@@ -16,6 +16,7 @@ import {
   Loader2,
   AlertCircle,
   X,
+  ShieldCheck,
 } from "lucide-react";
 import { ProjectFile } from "../../../../types";
 import { downloadUrl, formatFileSize } from "../../../documents/api/documents.api";
@@ -28,6 +29,8 @@ import {
 } from "../../../documents/hooks/useProjectFiles";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
+import ManageAccessModal from "../../../documents/components/ManageAccessModal";
+import { useAuth } from "../../../../context/AuthProvider";
 
 interface ProjectDocumentsTabProps {
   projectId: string;
@@ -73,6 +76,8 @@ const FolderTree: React.FC<{
   menuRef: React.RefObject<HTMLDivElement>;
   onRename: (folder: ProjectFile) => void;
   onDelete: (folder: ProjectFile) => void;
+  isAdmin: boolean;
+  onManageAccess: (folder: ProjectFile) => void;
 }> = ({
   files,
   childrenByParent,
@@ -85,6 +90,8 @@ const FolderTree: React.FC<{
   menuRef,
   onRename,
   onDelete,
+  isAdmin,
+  onManageAccess,
 }) => {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const folders = (childrenByParent.get(parentKey) || []).filter((f) => f.isFolder);
@@ -100,6 +107,7 @@ const FolderTree: React.FC<{
         const isExpanded = expanded.has(folder.id);
         const isSelected = selectedFolderId === folder.id;
         const isMenuOpen = openMenuId === folder.id;
+        const canWrite = isAdmin || folder.myAccessLevel === "write";
         return (
           <div key={folder.id} className="relative">
             <div
@@ -152,22 +160,35 @@ const FolderTree: React.FC<{
             {isMenuOpen && (
               <div
                 ref={menuRef}
-                className="absolute right-1 top-8 z-20 w-36 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden"
+                className="absolute right-1 top-8 z-20 w-40 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden"
               >
-                <button
-                  onClick={() => onRename(folder)}
-                  className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-slate-700 hover:bg-slate-50"
-                >
-                  <Pencil size={13} className="text-slate-400" />
-                  Rename
-                </button>
-                <button
-                  onClick={() => onDelete(folder)}
-                  className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 size={13} />
-                  Delete
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => onManageAccess(folder)}
+                    className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-slate-700 hover:bg-slate-50"
+                  >
+                    <ShieldCheck size={13} className="text-slate-400" />
+                    Manage Access
+                  </button>
+                )}
+                {canWrite && (
+                  <>
+                    <button
+                      onClick={() => onRename(folder)}
+                      className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-slate-700 hover:bg-slate-50"
+                    >
+                      <Pencil size={13} className="text-slate-400" />
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => onDelete(folder)}
+                      className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -184,6 +205,8 @@ const FolderTree: React.FC<{
                 menuRef={menuRef}
                 onRename={onRename}
                 onDelete={onDelete}
+                isAdmin={isAdmin}
+                onManageAccess={onManageAccess}
               />
             )}
           </div>
@@ -194,6 +217,9 @@ const FolderTree: React.FC<{
 };
 
 const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
   const filesQuery = useProjectFilesQuery(projectId);
   const files = filesQuery.data ?? [];
   const loading = filesQuery.isLoading;
@@ -218,6 +244,7 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
   const [deleteTarget, setDeleteTarget] = useState<ProjectFile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [accessTarget, setAccessTarget] = useState<ProjectFile | null>(null);
 
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [renameTarget, setRenameTarget] = useState<ProjectFile | null>(null);
@@ -282,6 +309,10 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
   };
 
   const currentParentId = selectedFolderId === ALL_DOCUMENTS ? null : selectedFolderId;
+  const currentFolderCanWrite =
+    isAdmin ||
+    selectedFolderId === ALL_DOCUMENTS ||
+    filesById.get(selectedFolderId)?.myAccessLevel === "write";
 
   const handleUploadClick = () => fileInputRef.current?.click();
 
@@ -444,7 +475,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
         <div className="flex items-center gap-2">
           <button
             onClick={handleUploadClick}
-            disabled={uploading}
+            disabled={uploading || !currentFolderCanWrite}
+            title={currentFolderCanWrite ? undefined : "You don't have write access to this folder"}
             className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors disabled:opacity-60"
           >
             {uploading ? (
@@ -459,7 +491,9 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
               setFolderError(null);
               setShowNewFolder(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-[12px] font-medium hover:bg-slate-50 transition-colors"
+            disabled={!currentFolderCanWrite}
+            title={currentFolderCanWrite ? undefined : "You don't have write access to this folder"}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-[12px] font-medium hover:bg-slate-50 transition-colors disabled:opacity-60"
           >
             <Plus size={14} /> New Folder
           </button>
@@ -521,6 +555,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
               menuRef={folderMenuRef}
               onRename={handleOpenRename}
               onDelete={handleOpenDeleteFromMenu}
+              isAdmin={isAdmin}
+              onManageAccess={(folder) => setAccessTarget(folder)}
             />
           </div>
         </div>
@@ -639,13 +675,24 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                               <Download size={14} />
                             </a>
                           )}
-                          <button
-                            onClick={() => setDeleteTarget(row)}
-                            className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setAccessTarget(row)}
+                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                              title="Manage Access"
+                            >
+                              <ShieldCheck size={14} />
+                            </button>
+                          )}
+                          {(isAdmin || row.myAccessLevel === "write") && (
+                            <button
+                              onClick={() => setDeleteTarget(row)}
+                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -783,6 +830,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
             : `Delete "${deleteTarget?.name}"? This cannot be undone.`
         }
       />
+
+      <ManageAccessModal file={accessTarget} onClose={() => setAccessTarget(null)} />
     </div>
   );
 };

@@ -21,10 +21,6 @@ export const queryKeys = {
   leaveRequests: (wsId: number) => [...queryKeys.all(wsId), "leaveRequests"] as const,
   siteVisitRequests: (wsId: number) => [...queryKeys.all(wsId), "siteVisitRequests"] as const,
   expenseRequests: (wsId: number) => [...queryKeys.all(wsId), "expenseRequests"] as const,
-  activities: (wsId: number, projectId?: string | number) =>
-    projectId
-      ? ([...queryKeys.all(wsId), "activities", projectId] as const)
-      : ([...queryKeys.all(wsId), "activities"] as const),
 
   tasks: (wsId: number, scope?: "mine" | "assigned" | "completed" | "all") =>
     scope
@@ -61,6 +57,8 @@ export const queryKeys = {
     [...queryKeys.all(wsId), "inventoryItemDetail", itemId] as const,
   procurementItemDetail: (wsId: number, itemId: number) =>
     [...queryKeys.all(wsId), "procurementItemDetail", itemId] as const,
+  fileAccess: (wsId: number, fileId: number) =>
+    [...queryKeys.all(wsId), "fileAccess", fileId] as const,
   reportSummary: (wsId: number, filters: Record<string, string | number | undefined>) =>
     [...queryKeys.all(wsId), "reportSummary", filters] as const,
   reportActivity: (wsId: number, action?: string) =>

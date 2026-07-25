@@ -196,7 +196,7 @@ export function useUpdateVendorMutation() {
       input,
     }: {
       vendorId: number;
-      input: { name?: string; code?: string; location?: string; rating?: number | null; contractExpiryDate?: string | null };
+      input: { name?: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string | null };
     }) => updateVendor(vendorId, input),
   });
 }
@@ -230,7 +230,7 @@ export function useWorkspaceVendorsQuery() {
 
 export function useCreateVendorMutation() {
   return useMutation({
-    mutationFn: (input: { name: string; code?: string; location?: string; rating?: number; contractExpiryDate?: string }) =>
+    mutationFn: (input: { name: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string }) =>
       createVendor(input),
   });
 }

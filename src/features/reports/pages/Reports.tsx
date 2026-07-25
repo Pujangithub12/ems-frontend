@@ -43,7 +43,6 @@ import LineChart from "../../../components/charts/LineChart";
 import DonutChart from "../../../components/charts/DonutChart";
 import HorizontalBarChart from "../../../components/charts/HorizontalBarChart";
 import StackedBarChart from "../../../components/charts/StackedBarChart";
-import ScatterChart from "../../../components/charts/ScatterChart";
 import ReportDrawer, { ReportDrawerColumn } from "../components/ReportDrawer";
 import InventoryItemDrawer from "../../inventory/components/InventoryItemDrawer";
 
@@ -280,7 +279,7 @@ const ReportsPage: React.FC = () => {
         title: "Vendor Performance",
         summary: summary.vendorPerformance.map((v) => ({
           label: v.name,
-          value: `${v.rating ?? "--"}★ · ${v.avgDeliveryDays ?? "--"}d · ${formatCost(v.purchaseVolume)}`,
+          value: `${v.avgDeliveryDays ?? "--"}d avg delivery · ${formatCost(v.purchaseVolume)}`,
         })),
         records: procRecords.filter((p) => p.vendor),
         columns: PROC_COLUMNS,
@@ -320,7 +319,6 @@ const ReportsPage: React.FC = () => {
     const vendorSheet = XLSX.utils.json_to_sheet(
       summary.vendorPerformance.map((v) => ({
         Vendor: v.name,
-        Rating: v.rating ?? "",
         "Avg Delivery Days": v.avgDeliveryDays ?? "",
         "Purchase Volume": v.purchaseVolume,
       })),
@@ -617,16 +615,16 @@ const ReportsPage: React.FC = () => {
               </div>
             </Card>
             <Card>
-              <CardHeader icon={Users} title="Vendor Performance" subtitle="Delivery time vs. rating" />
+              <CardHeader icon={Users} title="Vendor Performance" subtitle="Average delivery time by vendor" />
               <div className="p-5">
                 <ClickableCard onClick={() => setDrawerKey("vendor-performance")}>
-                  <ScatterChart
+                  <HorizontalBarChart
                     data={summary.vendorPerformance
-                      .filter((v) => v.avgDeliveryDays !== null && v.rating !== null)
-                      .map((v) => ({ label: v.name, x: v.avgDeliveryDays as number, y: v.rating as number, size: v.purchaseVolume }))}
-                    xLabel="Avg delivery days"
-                    yLabel="Rating"
-                    formatSize={formatCost}
+                      .filter((v) => v.avgDeliveryDays !== null)
+                      .sort((a, b) => (a.avgDeliveryDays as number) - (b.avgDeliveryDays as number))
+                      .map((v) => ({ label: v.name, value: v.avgDeliveryDays as number }))}
+                    formatValue={(v) => `${v}d`}
+                    color="#7C3AED"
                   />
                 </ClickableCard>
               </div>
@@ -764,7 +762,7 @@ const ReportsPage: React.FC = () => {
                 <button
                   onClick={() =>
                     handleQuickGenerate("vendor", "Vendor", () =>
-                      summary.vendorPerformance.map((v) => ({ Vendor: v.name, Rating: v.rating ?? "", "Avg Delivery Days": v.avgDeliveryDays ?? "", "Purchase Volume": v.purchaseVolume })),
+                      summary.vendorPerformance.map((v) => ({ Vendor: v.name, "Avg Delivery Days": v.avgDeliveryDays ?? "", "Purchase Volume": v.purchaseVolume })),
                     )
                   }
                   className="px-3 py-1.5 text-[11px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"

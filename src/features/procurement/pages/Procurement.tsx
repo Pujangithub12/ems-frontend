@@ -9,10 +9,7 @@ import {
   AlertCircle,
   X,
   ChevronDown,
-  MoreVertical,
   Eye,
-  Pencil,
-  Trash2,
   Download,
   Upload,
   DollarSign,
@@ -26,7 +23,7 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { ProcurementItem } from "../../../types";
-import { formatCost, toNumber, ProcurementItemInput } from "../api/procurement.api";
+import { formatCost, toNumber, computeItemCostBreakdown, ProcurementItemInput } from "../api/procurement.api";
 import {
   useWorkspaceProcurementQuery,
   useCreateProcurementItemMutation,
@@ -41,36 +38,13 @@ import VendorField from "../../inventory/components/VendorField";
 import Pagination from "../../../components/Pagination";
 import { useRowSelection } from "../../../hooks/useRowSelection";
 import ProcurementItemDrawer from "../components/ProcurementItemDrawer";
+import ProcurementItemGroupDrawer from "../components/ProcurementItemGroupDrawer";
+import { STATUS_STYLES, CATEGORY_STYLES } from "../components/statusStyles";
+import { groupProcurementItems } from "../utils/groupProcurementItems";
 
 type StatusFilter = "all" | ProcurementItem["status"];
 type CategoryFilter = "all" | ProcurementItem["category"];
 type SortBy = "name" | "cost" | "date" | "needed";
-
-const STATUS_STYLES: Record<ProcurementItem["status"], { bg: string; fg: string; label: string }> = {
-  pending: { bg: "#FEF3C7", fg: "#B45309", label: "Pending" },
-  approved: { bg: "#EDE9FE", fg: "#6D28D9", label: "Approved" },
-  ordered: { bg: "#DBEAFE", fg: "#1E3A8A", label: "Ordered" },
-  delivered: { bg: "#DCFCE7", fg: "#15803D", label: "Delivered" },
-};
-
-const CATEGORY_STYLES: Record<ProcurementItem["category"], { bg: string; fg: string; label: string }> = {
-  hardware: { bg: "#E0E7FF", fg: "#3730A3", label: "Hardware" },
-  software: { bg: "#F3E8FF", fg: "#7E22CE", label: "Software" },
-  service: { bg: "#CCFBF1", fg: "#0F766E", label: "Service" },
-};
-
-const StatusPill: React.FC<{ status: ProcurementItem["status"] }> = ({ status }) => {
-  const s = STATUS_STYLES[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
-      style={{ fontFamily: "'JetBrains Mono', monospace", background: s.bg, color: s.fg }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.fg }} />
-      {s.label}
-    </span>
-  );
-};
 
 const CategoryPill: React.FC<{ category: ProcurementItem["category"] }> = ({ category }) => {
   const c = CATEGORY_STYLES[category];
@@ -86,8 +60,13 @@ const emptyForm: ProcurementItemInput = {
   itemId: null,
   category: "hardware",
   quantity: 1,
+  unit: undefined,
   estimatedCost: undefined,
   unitCost: undefined,
+  taxPercent: undefined,
+  discountPercent: undefined,
+  transportCost: undefined,
+  customsCost: undefined,
   vendorId: null,
   neededByDate: "",
   notes: "",
@@ -141,8 +120,8 @@ const ProcurementPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
-  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [drawerItemId, setDrawerItemId] = useState<number | null>(null);
+  const [drawerGroupKey, setDrawerGroupKey] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importProjectId, setImportProjectId] = useState<number | "">("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,26 +148,37 @@ const ProcurementPage: React.FC = () => {
           (it.projectName || "").toLowerCase().includes(q),
       );
     }
-    const sorted = [...rows];
-    sorted.sort((a, b) => {
-      if (sortBy === "cost") return toNumber(b.estimatedCost) - toNumber(a.estimatedCost);
-      if (sortBy === "needed") return new Date(a.neededByDate || 0).getTime() - new Date(b.neededByDate || 0).getTime();
+    return rows;
+  }, [items, search, statusFilter, categoryFilter, projectFilter, vendorFilter]);
+
+  // Every purchase request for the same item (within the same project) folds
+  // into one summary row here — see groupProcurementItems — so repeat
+  // requests for "Solar Panel 550W" don't clutter the table as separate
+  // lines; the group's own drawer (ProcurementItemGroupDrawer) lists each
+  // underlying request individually.
+  const groupedItems = useMemo(() => {
+    const groups = groupProcurementItems(filteredItems);
+    groups.sort((a, b) => {
+      if (sortBy === "cost") return b.totalCost - a.totalCost;
+      if (sortBy === "needed")
+        return new Date(a.earliestNeededBy || 0).getTime() - new Date(b.earliestNeededBy || 0).getTime();
       if (sortBy === "name") return a.itemName.localeCompare(b.itemName);
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return new Date(b.latestCreatedAt).getTime() - new Date(a.latestCreatedAt).getTime();
     });
-    return sorted;
-  }, [items, search, statusFilter, categoryFilter, projectFilter, vendorFilter, sortBy]);
+    return groups;
+  }, [filteredItems, sortBy]);
 
   const pageItems = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredItems.slice(start, start + pageSize);
-  }, [filteredItems, page, pageSize]);
+    return groupedItems.slice(start, start + pageSize);
+  }, [groupedItems, page, pageSize]);
 
-  const rowSelection = useRowSelection(pageItems.map((it) => it.id));
+  const rowSelection = useRowSelection<string>(pageItems.map((g) => g.key));
+  const groupByKey = useMemo(() => new Map(groupedItems.map((g) => [g.key, g])), [groupedItems]);
 
   const kpis = useMemo(() => {
     const now = Date.now();
-    const totalValue = items.reduce((sum, i) => sum + toNumber(i.estimatedCost) * i.quantity, 0);
+    const totalValue = items.reduce((sum, i) => sum + computeItemCostBreakdown(i).total, 0);
     const overdue = items.filter(
       (i) => i.status !== "delivered" && i.neededByDate && new Date(i.neededByDate).getTime() < now,
     ).length;
@@ -221,15 +211,19 @@ const ProcurementPage: React.FC = () => {
       itemId: item.item?.id ?? null,
       category: item.category,
       quantity: item.quantity,
+      unit: item.unit || undefined,
       estimatedCost: item.estimatedCost != null ? toNumber(item.estimatedCost) : undefined,
       unitCost: item.unitCost != null ? toNumber(item.unitCost) : undefined,
+      taxPercent: item.taxPercent != null ? toNumber(item.taxPercent) : undefined,
+      discountPercent: item.discountPercent != null ? toNumber(item.discountPercent) : undefined,
+      transportCost: item.transportCost != null ? toNumber(item.transportCost) : undefined,
+      customsCost: item.customsCost != null ? toNumber(item.customsCost) : undefined,
       vendorId: item.vendor?.id ?? null,
       neededByDate: item.neededByDate ? item.neededByDate.slice(0, 10) : "",
       notes: item.notes || "",
     });
     setFormError(null);
     setShowForm(true);
-    setMenuOpenId(null);
   };
 
   const closeForm = () => {
@@ -257,6 +251,7 @@ const ProcurementPage: React.FC = () => {
         itemId: form.itemId,
         category: form.category || "hardware",
         quantity: form.quantity && form.quantity > 0 ? form.quantity : 1,
+        unit: form.unit?.trim() || undefined,
         estimatedCost:
           form.estimatedCost !== undefined && form.estimatedCost !== null && `${form.estimatedCost}` !== ""
             ? Number(form.estimatedCost)
@@ -264,6 +259,22 @@ const ProcurementPage: React.FC = () => {
         unitCost:
           form.unitCost !== undefined && form.unitCost !== null && `${form.unitCost}` !== ""
             ? Number(form.unitCost)
+            : null,
+        taxPercent:
+          form.taxPercent !== undefined && form.taxPercent !== null && `${form.taxPercent}` !== ""
+            ? Number(form.taxPercent)
+            : null,
+        discountPercent:
+          form.discountPercent !== undefined && form.discountPercent !== null && `${form.discountPercent}` !== ""
+            ? Number(form.discountPercent)
+            : null,
+        transportCost:
+          form.transportCost !== undefined && form.transportCost !== null && `${form.transportCost}` !== ""
+            ? Number(form.transportCost)
+            : null,
+        customsCost:
+          form.customsCost !== undefined && form.customsCost !== null && `${form.customsCost}` !== ""
+            ? Number(form.customsCost)
             : null,
         vendorId: form.vendorId || null,
         neededByDate: form.neededByDate || null,
@@ -311,11 +322,12 @@ const ProcurementPage: React.FC = () => {
   };
 
   const handleBulkDelete = async () => {
-    if (rowSelection.selectedIds.length === 0) return;
-    if (!window.confirm(`Delete ${rowSelection.selectedIds.length} selected item(s)? This cannot be undone.`)) return;
+    const requestIds = rowSelection.selectedIds.flatMap((key) => groupByKey.get(key)?.requests.map((r) => r.id) ?? []);
+    if (requestIds.length === 0) return;
+    if (!window.confirm(`Delete ${requestIds.length} selected request(s)? This cannot be undone.`)) return;
     setActionError(null);
     try {
-      for (const id of rowSelection.selectedIds) {
+      for (const id of requestIds) {
         await deleteMutation.mutateAsync(id);
       }
       await itemsQuery.refetch();
@@ -332,8 +344,13 @@ const ProcurementPage: React.FC = () => {
       Category: it.category,
       Project: it.projectName || "",
       Quantity: it.quantity,
+      Unit: it.unit || "",
       "Unit Cost": toNumber(it.unitCost ?? it.estimatedCost),
-      "Total Cost": toNumber(it.unitCost ?? it.estimatedCost) * it.quantity,
+      "Tax %": it.taxPercent != null ? toNumber(it.taxPercent) : "",
+      "Discount %": it.discountPercent != null ? toNumber(it.discountPercent) : "",
+      "Transport Cost": it.transportCost != null ? toNumber(it.transportCost) : "",
+      "Customs Cost": it.customsCost != null ? toNumber(it.customsCost) : "",
+      "Total Cost": computeItemCostBreakdown(it).total,
       Vendor: it.vendor?.name || it.vendorName || "",
       "Needed By": it.neededByDate || "",
       Status: it.status,
@@ -553,10 +570,14 @@ const ProcurementPage: React.FC = () => {
 
             {rowSelection.someSelected && isAdmin && (
               <div className="flex items-center justify-between px-3 py-2 text-[12px] border rounded bg-blue-50 border-blue-200 text-blue-900">
-                <span>{rowSelection.selectedIds.length} selected</span>
+                <span>{rowSelection.selectedIds.length} item(s) selected</span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleExport(items.filter((it) => rowSelection.selected.has(it.id)))}
+                    onClick={() =>
+                      handleExport(
+                        rowSelection.selectedIds.flatMap((key) => groupByKey.get(key)?.requests ?? []),
+                      )
+                    }
                     className="px-2 py-1 font-medium rounded hover:bg-blue-100"
                   >
                     Export Selected
@@ -571,7 +592,8 @@ const ProcurementPage: React.FC = () => {
               </div>
             )}
 
-            {/* Table */}
+            {/* Table — one row per item (see groupProcurementItems); each
+                row's individual purchase requests live in its group drawer. */}
             <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
               {filteredItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -603,103 +625,104 @@ const ProcurementPage: React.FC = () => {
                           </th>
                         )}
                         <th className="px-3 py-2 font-medium text-left">Item</th>
-                        <th className="px-3 py-2 font-medium text-left">PO Number</th>
                         <th className="px-3 py-2 font-medium text-left">Project</th>
                         <th className="px-3 py-2 font-medium text-left">Category</th>
-                        <th className="px-3 py-2 font-medium text-left">Qty</th>
-                        <th className="px-3 py-2 font-medium text-left">Unit Cost</th>
+                        <th className="px-3 py-2 font-medium text-left">Total Qty</th>
                         <th className="px-3 py-2 font-medium text-left">Total Cost</th>
                         <th className="px-3 py-2 font-medium text-left">Vendor</th>
                         <th className="px-3 py-2 font-medium text-left">Needed By</th>
-                        <th className="px-3 py-2 font-medium text-left">Requested By</th>
                         <th className="px-3 py-2 font-medium text-left">Status</th>
                         <th className="px-3 py-2 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {pageItems.map((item) => {
-                        const unitCost = toNumber(item.unitCost ?? item.estimatedCost);
-                        const totalCost = unitCost * item.quantity;
-                        return (
-                          <tr key={item.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                            {isAdmin && (
-                              <td className="px-3 py-2">
-                                <input
-                                  type="checkbox"
-                                  checked={rowSelection.selected.has(item.id)}
-                                  onChange={() => rowSelection.toggle(item.id)}
-                                  className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                                />
-                              </td>
-                            )}
+                      {pageItems.map((group) => (
+                        <tr key={group.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                          {isAdmin && (
                             <td className="px-3 py-2">
-                              <button
-                                onClick={() => setDrawerItemId(item.id)}
-                                className="font-medium text-left text-slate-800 hover:text-blue-900 hover:underline"
-                              >
-                                {item.itemName}
-                              </button>
-                              {item.notes && <div className="text-slate-400 text-[11px] truncate max-w-[200px]">{item.notes}</div>}
+                              <input
+                                type="checkbox"
+                                checked={rowSelection.selected.has(group.key)}
+                                onChange={() => rowSelection.toggle(group.key)}
+                                className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
+                              />
                             </td>
-                            <td className="px-3 py-2 text-slate-500">{item.poNumber || "--"}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.projectName || "--"}</td>
-                            <td className="px-3 py-2"><CategoryPill category={item.category} /></td>
-                            <td className="px-3 py-2 text-slate-600">{item.quantity}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatCost(unitCost)}</td>
-                            <td className="px-3 py-2 font-medium text-slate-800">{formatCost(totalCost)}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.vendor?.name || item.vendorName || "--"}</td>
-                            <td className="px-3 py-2 text-slate-600">
-                              {item.neededByDate
-                                ? new Date(item.neededByDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-                                : "--"}
-                            </td>
-                            <td className="px-3 py-2 text-slate-500">{item.requestedBy?.fullName || "--"}</td>
-                            <td className="px-3 py-2">
-                              {isAdmin ? (
+                          )}
+                          <td className="px-3 py-2">
+                            <button
+                              onClick={() => setDrawerGroupKey(group.key)}
+                              className="font-medium text-left text-slate-800 hover:text-blue-900 hover:underline"
+                            >
+                              {group.itemName}
+                            </button>
+                            <div className="text-slate-400 text-[11px]">
+                              {group.requests.length} request{group.requests.length === 1 ? "" : "s"}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{group.projectName || "--"}</td>
+                          <td className="px-3 py-2"><CategoryPill category={group.category} /></td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {group.totalQuantity}
+                            {group.unitLabel ? ` ${group.unitLabel}` : ""}
+                          </td>
+                          <td className="px-3 py-2 font-medium text-slate-800">{formatCost(group.totalCost)}</td>
+                          <td className="px-3 py-2 text-slate-600">{group.vendorLabel}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {group.earliestNeededBy
+                              ? new Date(group.earliestNeededBy).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                              : "--"}
+                          </td>
+                          <td className="px-3 py-2">
+                            {isAdmin && group.requests.length === 1 ? (
+                              <div className="flex items-center gap-1.5">
                                 <select
-                                  value={item.status}
-                                  disabled={statusUpdatingId === item.id}
-                                  onChange={(e) => handleStatusChange(item, e.target.value as ProcurementItem["status"])}
-                                  className="pr-6 py-1 pl-2 text-[11px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 disabled:opacity-60"
-                                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                                  value={group.requests[0].status}
+                                  disabled={statusUpdatingId === group.requests[0].id}
+                                  onChange={(e) => handleStatusChange(group.requests[0], e.target.value as ProcurementItem["status"])}
+                                  className="px-2 py-1 text-[11px] font-medium rounded appearance-none cursor-pointer outline-none disabled:opacity-60"
+                                  style={{
+                                    background: STATUS_STYLES[group.requests[0].status].bg,
+                                    color: STATUS_STYLES[group.requests[0].status].fg,
+                                  }}
                                 >
                                   <option value="pending">Pending</option>
                                   <option value="approved">Approved</option>
                                   <option value="ordered">Ordered</option>
                                   <option value="delivered">Delivered</option>
                                 </select>
-                              ) : (
-                                <StatusPill status={item.status} />
-                              )}
-                            </td>
-                            <td className="relative px-3 py-2 text-right">
-                              <button
-                                onClick={() => setMenuOpenId(menuOpenId === item.id ? null : item.id)}
-                                className="flex items-center justify-center w-7 h-7 ml-auto rounded text-slate-500 hover:bg-slate-100"
-                              >
-                                <MoreVertical size={14} />
-                              </button>
-                              {menuOpenId === item.id && (
-                                <div className="absolute right-3 top-9 z-10 w-36 bg-white border rounded-lg shadow-lg border-slate-200 py-1">
-                                  <button onClick={() => { setDrawerItemId(item.id); setMenuOpenId(null); }} className="flex items-center w-full gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50">
-                                    <Eye size={13} /> View
-                                  </button>
-                                  {isAdmin && (
-                                    <>
-                                      <button onClick={() => openEditForm(item)} className="flex items-center w-full gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50">
-                                        <Pencil size={13} /> Edit
-                                      </button>
-                                      <button onClick={() => { setDeleteTarget(item); setMenuOpenId(null); }} className="flex items-center w-full gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-red-50">
-                                        <Trash2 size={13} /> Delete
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                {statusUpdatingId === group.requests[0].id && (
+                                  <Loader2 size={12} className="animate-spin text-slate-400" />
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-1 max-w-[160px]">
+                                {(Object.keys(group.statusCounts) as ProcurementItem["status"][]).map((status) => {
+                                  const count = group.statusCounts[status];
+                                  if (!count) return null;
+                                  const s = STATUS_STYLES[status];
+                                  return (
+                                    <span
+                                      key={status}
+                                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                                      style={{ background: s.bg, color: s.fg }}
+                                    >
+                                      {count} {s.label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => setDrawerGroupKey(group.key)}
+                              className="flex items-center gap-1 px-2 py-1 ml-auto rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                            >
+                              <Eye size={13} /> View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -707,7 +730,7 @@ const ProcurementPage: React.FC = () => {
               <Pagination
                 page={page}
                 pageSize={pageSize}
-                total={filteredItems.length}
+                total={groupedItems.length}
                 onPageChange={setPage}
                 onPageSizeChange={setPageSize}
               />
@@ -848,6 +871,69 @@ const ProcurementPage: React.FC = () => {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Unit</label>
+                  <input
+                    value={form.unit || ""}
+                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                    placeholder="e.g. pcs, kg, box"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Tax %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={form.taxPercent ?? ""}
+                    onChange={(e) => setForm({ ...form, taxPercent: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Discount %</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={form.discountPercent ?? ""}
+                    onChange={(e) => setForm({ ...form, discountPercent: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Transport cost (Rs)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.transportCost ?? ""}
+                    onChange={(e) => setForm({ ...form, transportCost: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Customs cost (Rs)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.customsCost ?? ""}
+                    onChange={(e) => setForm({ ...form, customsCost: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block mb-1 text-[11px] font-medium text-slate-900">Vendor</label>
@@ -893,6 +979,23 @@ const ProcurementPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ProcurementItemGroupDrawer
+        group={drawerGroupKey ? groupByKey.get(drawerGroupKey) ?? null : null}
+        onClose={() => setDrawerGroupKey(null)}
+        isAdmin={isAdmin}
+        onViewRequest={(id) => setDrawerItemId(id)}
+        onEditRequest={(item) => {
+          setDrawerGroupKey(null);
+          openEditForm(item);
+        }}
+        onDeleteRequest={(item) => {
+          setDrawerGroupKey(null);
+          setDeleteTarget(item);
+        }}
+        onStatusChange={handleStatusChange}
+        statusUpdatingId={statusUpdatingId}
+      />
 
       <ProcurementItemDrawer itemId={drawerItemId} onClose={() => setDrawerItemId(null)} isAdmin={isAdmin} />
 

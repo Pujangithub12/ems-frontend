@@ -13,14 +13,12 @@ import {
   CheckCircle2,
   Clock,
   Lock,
-  History,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { getPasswordStrengthError } from "../../auth/utils/passwordPolicy";
 import { useChangeMyPassword, useUpdateMyProfile } from "../hooks/useUsers";
 import { useLeaveRequests } from "../../approvals/hooks/useLeaveRequests";
-import { useActivities } from "../../activities/hooks/useActivities";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -58,17 +56,6 @@ const formatDate = (value?: string) =>
       })
     : "—";
 
-const formatActivityDate = (value: string) =>
-  new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  }) +
-  ", " +
-  new Date(value).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
 const Panel: React.FC<{
   title: string;
   action?: React.ReactNode;
@@ -88,14 +75,9 @@ const Profile: React.FC = () => {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const prefix = `/${workspaceId}`;
 
-  const { data: allLeaveRequests = [], isLoading: leaveLoading } = useLeaveRequests();
-  const { data: allActivity = [], isLoading: activityLoading } = useActivities();
-  const loadingExtras = leaveLoading || activityLoading;
+  const { data: allLeaveRequests = [], isLoading: loadingExtras } = useLeaveRequests();
   const leaveRequests = allLeaveRequests.filter(
     (lr) => String(lr.user?.id) === String(user?.id),
-  );
-  const activity = allActivity.filter(
-    (a) => String(a.user?.id) === String(user?.id),
   );
 
   const [showEditContact, setShowEditContact] = useState(false);
@@ -122,8 +104,6 @@ const Profile: React.FC = () => {
   );
   const approvedCount = leaveThisYear.filter((lr) => lr.status === "approved").length;
   const pendingCount = leaveThisYear.filter((lr) => lr.status === "pending").length;
-
-  const recentActivity = activity.slice(0, 5);
 
   const openEditContact = () => {
     setEditPhone(user.phoneNumber || "");
@@ -301,47 +281,6 @@ const Profile: React.FC = () => {
 
         {/* Right column */}
         <div className="flex flex-col gap-5 lg:col-span-8">
-          <Panel
-            title="Recent Activity"
-            action={
-              <Link
-                to={`${prefix}/activities`}
-                className="text-[12px] font-medium text-blue-900 hover:underline"
-              >
-                View all
-              </Link>
-            }
-          >
-            {loadingExtras ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />
-              </div>
-            ) : recentActivity.length === 0 ? (
-              <p className="py-6 text-center text-slate-400 text-[12.5px]">
-                No recent activity yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {recentActivity.map((a) => (
-                  <div key={a.id} className="flex items-start gap-3">
-                    <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 mt-0.5 rounded-full bg-slate-100">
-                      <History className="w-3.5 h-3.5 text-slate-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] text-slate-800">{a.description}</p>
-                      <p
-                        className="text-[11px] text-slate-400 mt-0.5"
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {formatActivityDate(a.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
-
           <Panel title="Sign-in & Security">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
