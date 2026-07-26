@@ -122,6 +122,16 @@ const isOverdue = (dueDate: string, status: string) =>
   status !== "completed" &&
   new Date(dueDate).getTime() < new Date(new Date().toDateString()).getTime();
 
+/** "3 days left" / "Due today" / "Overdue by 2 days" — mirrors dueDateInfo() in ProjectSharedComponents.tsx for consistent wording app-wide. */
+const daysRemainingLabel = (dueDate: string, status: string): string | null => {
+  if (!dueDate || status === "completed") return null;
+  const diffMs = new Date(dueDate).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  const days = Math.round(diffMs / 86400000);
+  if (days < 0) return `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`;
+  if (days === 0) return "Due today";
+  return `${days} day${days === 1 ? "" : "s"} left`;
+};
+
 
 // --- Design System Components ---
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -347,6 +357,13 @@ const AssignedTasks: React.FC = () => {
   const [editingSubTask, setEditingSubTask] = useState<DetailedSubTask | null>(
     null,
   );
+  // Inline rename of the sub-task's own name — separate from the
+  // progress-update popup above, which edits progress + a free-text update
+  // note, not the sub-task's title.
+  const [editingSubTaskNameId, setEditingSubTaskNameId] = useState<
+    string | number | null
+  >(null);
+  const [subTaskNameDraft, setSubTaskNameDraft] = useState("");
   const [newSubTaskUpdateTitle, setNewSubTaskUpdateTitle] = useState("");
   const [subTaskProgress, setSubTaskProgress] = useState(0);
   const [subTaskUpdateFiles, setSubTaskUpdateFiles] = useState<FileList | null>(
@@ -516,6 +533,46 @@ const AssignedTasks: React.FC = () => {
       );
     } catch (err) {
       setActionError(getErrorMessage(err, "Failed to update sub-task."));
+    }
+  };
+
+  const updateSubTaskTitleInTree = (
+    list: DetailedSubTask[],
+    subTaskId: string | number,
+    title: string,
+  ): DetailedSubTask[] =>
+    list.map((st) =>
+      String(st.id) === String(subTaskId)
+        ? { ...st, title }
+        : { ...st, subTasks: updateSubTaskTitleInTree(st.subTasks || [], subTaskId, title) },
+    );
+
+  const handleRenameSubTask = async (st: DetailedSubTask, rawName: string) => {
+    setEditingSubTaskNameId(null);
+    if (!expandedTaskId) return;
+    const taskId = expandedTaskId;
+    const trimmed = rawName.trim();
+    if (!trimmed || trimmed === st.title) return;
+
+    const optimistic = updateSubTaskTitleInTree(taskSubTasks[taskId] || [], st.id, trimmed);
+    setTaskSubTasks((prev) => ({ ...prev, [taskId]: optimistic }));
+
+    try {
+      await updateSubtaskMutation.mutateAsync({
+        taskId,
+        subTaskId: Number(st.id),
+        name: trimmed,
+      });
+      const subTasksData = await subtasksFetchMutation.mutateAsync(taskId);
+      setTaskSubTasks((prev) => ({ ...prev, [taskId]: convertToDetailed(subTasksData) }));
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to rename sub-task."));
+      try {
+        const subTasksData = await subtasksFetchMutation.mutateAsync(taskId);
+        setTaskSubTasks((prev) => ({ ...prev, [taskId]: convertToDetailed(subTasksData) }));
+      } catch {
+        // Keep the optimistic value if even the revert fetch fails.
+      }
     }
   };
 
@@ -1065,13 +1122,39 @@ const AssignedTasks: React.FC = () => {
             ) : (
               <div className="flex-shrink-0 w-4 h-4" />
             )}
-            <span
-              className={`text-[13px] truncate ${
-                (st.progress || 0) >= 100 ? "text-slate-400 line-through" : "text-slate-700"
-              }`}
-            >
-              {st.title}
-            </span>
+            {editingSubTaskNameId === st.id ? (
+              <input
+                autoFocus
+                value={subTaskNameDraft}
+                onChange={(e) => setSubTaskNameDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={() => handleRenameSubTask(st, subTaskNameDraft)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditingSubTaskNameId(null);
+                  }
+                }}
+                className="min-w-0 text-[13px] text-slate-700 px-1 py-0.5 -my-0.5 border border-blue-300 rounded outline-none focus:border-blue-500"
+              />
+            ) : (
+              <span
+                className={`text-[13px] truncate cursor-text hover:underline decoration-dotted decoration-slate-300 underline-offset-2 ${
+                  (st.progress || 0) >= 100 ? "text-slate-400 line-through" : "text-slate-700"
+                }`}
+                title="Click to rename"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingSubTaskNameId(st.id);
+                  setSubTaskNameDraft(st.title);
+                }}
+              >
+                {st.title}
+              </span>
+            )}
           </div>
           <div className="flex flex-shrink-0 gap-1">
             <button
@@ -1439,6 +1522,12 @@ const AssignedTasks: React.FC = () => {
                               >
                                 <Calendar className="w-3 h-3" /> Due{" "}
                                 {formatDate(task.dueDate)}
+                                {daysRemainingLabel(task.dueDate, task.status) && (
+                                  <span className="font-medium text-red-600">
+                                    {" "}
+                                    · {daysRemainingLabel(task.dueDate, task.status)}
+                                  </span>
+                                )}
                                 {task.createdBy && (
                                   <span className="text-slate-400">
                                     {" "}
@@ -2091,6 +2180,14 @@ const AssignedTasks: React.FC = () => {
                         <Calendar className="w-3 h-3" />
                         Due {formatLongDate(t.dueDate)}
                       </span>
+                      {daysRemainingLabel(t.dueDate, t.status) && (
+                        <>
+                          <span>·</span>
+                          <span className="font-medium text-red-600">
+                            {daysRemainingLabel(t.dueDate, t.status)}
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="flex flex-col items-end flex-shrink-0 gap-1.5">
