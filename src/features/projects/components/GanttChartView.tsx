@@ -737,7 +737,8 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     
     gantt.config.scales = scales as unknown as typeof gantt.config.scales;
     finestScaleUnitRef.current = scales[scales.length - 1]?.unit ?? "day";
-    gantt.config.min_column_width = 34;
+    // Week columns get a bit more breathing room than day/month ones.
+    gantt.config.min_column_width = finestScaleUnitRef.current === "week" ? 120 : 34;
     applyDayRangePadding(tasks, finestScaleUnitRef.current === "day");
     if (readyRef.current) gantt.render();
     renderTodayLine(containerRef.current, showChart);
