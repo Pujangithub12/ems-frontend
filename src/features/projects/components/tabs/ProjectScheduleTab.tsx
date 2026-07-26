@@ -1302,10 +1302,14 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               shared by every tab) so the chart genuinely spans the full
               content width instead of sitting inset within it. Scoped to
               just this card, not the whole tab, so the toolbar/legend above
-              and below stay normally aligned with the rest of the page. */}
+              and below stay normally aligned with the rest of the page.
+              Only horizontal overflow is handled here — vertical scrolling
+              happens *inside* GanttChartView itself (a fixed/content-aware
+              height there, not this wrapper) so the grid/date-scale header
+              rows stay fixed in place while the rows beneath scroll, instead
+              of scrolling away along with everything else. */}
           <div
-            className={`overflow-auto bg-white border-y border-slate-200 -mx-6 ${editMode ? "relative z-40" : ""}`}
-            style={{ maxHeight: 560 }}
+            className={`overflow-x-auto bg-white border-y border-slate-200 -mx-6 ${editMode ? "relative z-40" : ""}`}
           >
             <div className="min-w-[600px]">
               <GanttChartView
