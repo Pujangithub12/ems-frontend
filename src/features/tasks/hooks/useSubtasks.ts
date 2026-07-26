@@ -28,14 +28,16 @@ export function useUpdateSubtask() {
       taskId,
       subTaskId,
       title,
+      name,
       progress,
       status,
     }: {
       taskId: number;
       subTaskId: number;
       title?: string;
+      name?: string;
       progress?: number;
       status?: string;
-    }) => updateSubtask(taskId, subTaskId, { title, progress, status }),
+    }) => updateSubtask(taskId, subTaskId, { title, name, progress, status }),
   });
 }
