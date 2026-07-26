@@ -59,6 +59,15 @@ interface GanttChartViewProps {
 
 const GRID_WIDTH_RATIO = 0.32;
 
+// Row/scale-header pixel sizes, kept as named constants (instead of the
+// previous inline literals) since the chart-height calculation below has to
+// stay in exact sync with whatever gantt.config.row_height/scale_height are
+// set to at init time.
+const ROW_HEIGHT = 38;
+const SCALE_HEIGHT = 50;
+const MAX_CHART_HEIGHT = 560;
+const MIN_CHART_HEIGHT = 160;
+
 const LINK_TYPE_MAP: Record<GanttLink["type"], string> = {
   e2s: "0", // finish_to_start
   s2s: "1", // start_to_start
@@ -356,11 +365,17 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.order_branch = true;
     gantt.config.order_branch_free = true;
     gantt.config.show_progress = true;
-    gantt.config.row_height = 38;
+    gantt.config.row_height = ROW_HEIGHT;
     gantt.config.bar_height = 22;
-    gantt.config.scale_height = 50;
+    gantt.config.scale_height = SCALE_HEIGHT;
     gantt.config.min_column_width = 34;
-    gantt.config.autosize = "y";
+    // Deliberately no autosize: the container below gets an explicit,
+    // content-aware height (see chartHeight) capped at MAX_CHART_HEIGHT, so
+    // dhtmlx scrolls its rows internally past that point — which is what
+    // keeps the grid/date-scale header rows fixed in place while scrolling
+    // (autosize's "fit everything, let an outer element scroll" mode
+    // defeats that, since the header rows scroll away with everything else
+    // once an ancestor other than dhtmlx's own scroller does the scrolling).
 
     gantt.templates.task_class = (_start: Date, _end: Date, task: unknown) => {
       const t = task as GanttTask;
@@ -724,6 +739,14 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   }, [scales, showChart, tasks]);
 
   useEffect(() => {
+    // gantt.clearAll()+parse() below rebuilds the whole dataset from scratch
+    // — every time it runs (e.g. after editing a task's duration or adding a
+    // dependency triggers a tasks-prop update), dhtmlx would otherwise reset
+    // scroll back to the top-left. Capture wherever the user currently has
+    // the chart scrolled to so it can be restored after the reload, instead
+    // of yanking the view away from whatever task was just being edited.
+    const scrollState = readyRef.current ? gantt.getScrollState() : null;
+
     applyDayRangePadding(tasks, finestScaleUnitRef.current === "day");
     const data = tasks.map((t) => ({
       id: t.id,
@@ -768,8 +791,19 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       leadIn.setDate(leadIn.getDate() - 5);
       gantt.showDate(leadIn);
       renderTodayLine(containerRef.current, showChart);
+    } else if (scrollState) {
+      gantt.scrollTo(scrollState.x, scrollState.y);
+      renderTodayLine(containerRef.current, showChart);
     }
   }, [tasks, links, showChart]);
+
+  // Shrinks to fit small schedules, caps at MAX_CHART_HEIGHT for large ones
+  // (dhtmlx scrolls its own rows internally past that point, with the
+  // header rows staying fixed — see the "no autosize" note above).
+  const chartHeight = Math.min(
+    MAX_CHART_HEIGHT,
+    Math.max(MIN_CHART_HEIGHT, tasks.length * ROW_HEIGHT + SCALE_HEIGHT + 24),
+  );
 
   return (
     <>
@@ -1038,7 +1072,11 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
         }
       `}</style>
-      <div ref={containerRef} className={editable ? "gantt-editable" : undefined} style={{ width: "100%" }} />
+      <div
+        ref={containerRef}
+        className={editable ? "gantt-editable" : undefined}
+        style={{ width: "100%", height: chartHeight }}
+      />
     </>
   );
 };
