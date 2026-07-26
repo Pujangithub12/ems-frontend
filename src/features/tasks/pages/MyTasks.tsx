@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import {
@@ -10,7 +11,7 @@ import {
 } from "../hooks/useTasks";
 import { useUsers } from "../../users/hooks/useUsers";
 import { useProjects } from "../../projects/hooks/useProjects";
-import { useCreateSubtask, useUpdateSubtask, useSubtasksFetch } from "../hooks/useSubtasks";
+import { useCreateSubtask, useUpdateSubtask, useDeleteSubtask, useSubtasksFetch } from "../hooks/useSubtasks";
 import {
   useCommentsFetch,
   useAddComment,
@@ -32,6 +33,7 @@ import {
   Edit2,
   Paperclip,
   Trash2,
+  MoreVertical,
   Calendar,
   FolderKanban,
   Folder,
@@ -130,6 +132,19 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   </div>
 );
 
+/** Same look as Eyebrow, but a darker slate-600 for section headings that need more visual weight (Task Details/Update/Activity popups). */
+const SectionLabel: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = "",
+}) => (
+  <p
+    className={`text-[10px] font-semibold tracking-[0.1em] uppercase text-slate-600 ${className}`}
+    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+  >
+    {children}
+  </p>
+);
+
 const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
   type,
   value,
@@ -191,6 +206,7 @@ const MyTasks: React.FC = () => {
   const deleteTaskMutation = useDeleteTask();
   const createSubtaskMutation = useCreateSubtask();
   const updateSubtaskMutation = useUpdateSubtask();
+  const deleteSubtaskMutation = useDeleteSubtask();
   const subtasksFetchMutation = useSubtasksFetch();
   const commentsFetchMutation = useCommentsFetch();
   const addCommentMutation = useAddComment();
@@ -301,6 +317,17 @@ const MyTasks: React.FC = () => {
   );
   const [showSubTaskActivityPopup, setShowSubTaskActivityPopup] =
     useState(false);
+  // The "..." row menu (Update / Activity / Delete) — only one open at a
+  // time, rendered via a portal (see subTaskMenuPos) so it isn't clipped by
+  // any of the several overflow:hidden/auto ancestors between the row and
+  // the viewport (the row card, the scrollable panel, the modal itself).
+  const [subTaskMenuOpenId, setSubTaskMenuOpenId] = useState<
+    string | number | null
+  >(null);
+  const [subTaskMenuPos, setSubTaskMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [subTaskDeleteTarget, setSubTaskDeleteTarget] =
+    useState<DetailedSubTask | null>(null);
+  const [deletingSubTask, setDeletingSubTask] = useState(false);
 
   type SubTaskFeedbackItem = {
     subTaskId: number;
@@ -432,6 +459,45 @@ const MyTasks: React.FC = () => {
       } catch {
         // Keep the optimistic value if even the revert fetch fails.
       }
+    }
+  };
+
+  const removeSubTaskFromTree = (
+    list: DetailedSubTask[],
+    subTaskId: string | number,
+  ): DetailedSubTask[] =>
+    list
+      .filter((st) => String(st.id) !== String(subTaskId))
+      .map((st) => ({ ...st, subTasks: removeSubTaskFromTree(st.subTasks || [], subTaskId) }));
+
+  const handleDeleteSubTask = async () => {
+    if (!subTaskDeleteTarget || !selectedTask) return;
+    const taskId = selectedTask.id;
+    const target = subTaskDeleteTarget;
+    setDeletingSubTask(true);
+
+    const optimistic = removeSubTaskFromTree(taskSubTasks[taskId] || [], target.id);
+    setTaskSubTasks((prev) => ({ ...prev, [taskId]: optimistic }));
+
+    try {
+      await deleteSubtaskMutation.mutateAsync({ taskId, subTaskId: Number(target.id) });
+      const data = await subtasksFetchMutation.mutateAsync(taskId);
+      const detailed = convertToDetailed(data);
+      setTaskSubTasks((prev) => ({ ...prev, [taskId]: detailed }));
+      const avg = computeAverageLeafProgress(detailed);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, progress: avg } : t)));
+      setSelectedTask((prev) => (prev && prev.id === taskId ? { ...prev, progress: avg } : prev));
+      setSubTaskDeleteTarget(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete sub-task."));
+      try {
+        const data = await subtasksFetchMutation.mutateAsync(taskId);
+        setTaskSubTasks((prev) => ({ ...prev, [taskId]: convertToDetailed(data) }));
+      } catch {
+        // Keep the optimistic value if even the revert fetch fails.
+      }
+    } finally {
+      setDeletingSubTask(false);
     }
   };
 
@@ -849,38 +915,89 @@ const MyTasks: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="flex flex-shrink-0 gap-1">
+          <div className="flex-shrink-0">
             <button
               type="button"
-              className="p-1 transition-colors rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
-              onClick={() => {
-                setEditingSubTask(st);
-                setNewSubTaskUpdateTitle(st.title);
-                setSubTaskProgress(st.progress || 0);
-                setShowSubTaskUpdatePopup(true);
-              }}
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              className="p-1 transition-colors rounded text-slate-400 hover:text-blue-900 hover:bg-blue-50"
-              onClick={async () => {
-                setEditingSubTask(st);
-                try {
-                  const data = await commentsFetchMutation.mutateAsync({
-                    taskId: Number(selectedTask?.id),
-                    subTaskId: Number(st.id),
-                  });
-                  setSubTaskComments(data);
-                } catch (err) {
-                  setSubTaskComments([]);
+              onClick={(e) => {
+                e.stopPropagation();
+                if (subTaskMenuOpenId === st.id) {
+                  setSubTaskMenuOpenId(null);
+                  return;
                 }
-                setShowSubTaskActivityPopup(true);
+                const rect = e.currentTarget.getBoundingClientRect();
+                setSubTaskMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                setSubTaskMenuOpenId(st.id);
               }}
+              className="p-1 transition-colors rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              title="Sub-task options"
             >
-              <Clock className="w-3.5 h-3.5" />
+              <MoreVertical className="w-3.5 h-3.5" />
             </button>
+            {subTaskMenuOpenId === st.id && subTaskMenuPos &&
+              createPortal(
+                <>
+                  <div
+                    className="fixed inset-0 z-[70]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSubTaskMenuOpenId(null);
+                    }}
+                  />
+                  <div
+                    className="fixed z-[71] py-1 bg-white border rounded-md shadow-lg w-36 border-slate-200"
+                    style={{ top: subTaskMenuPos.top, right: subTaskMenuPos.right }}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 hover:bg-slate-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSubTaskMenuOpenId(null);
+                        setEditingSubTask(st);
+                        setNewSubTaskUpdateTitle(st.title);
+                        setSubTaskProgress(st.progress || 0);
+                        setShowSubTaskUpdatePopup(true);
+                      }}
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-slate-400" /> Update
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 hover:bg-slate-50"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setSubTaskMenuOpenId(null);
+                        setEditingSubTask(st);
+                        try {
+                          const data = await commentsFetchMutation.mutateAsync({
+                            taskId: Number(selectedTask?.id),
+                            subTaskId: Number(st.id),
+                          });
+                          setSubTaskComments(data);
+                        } catch (err) {
+                          setSubTaskComments([]);
+                        }
+                        setShowSubTaskActivityPopup(true);
+                      }}
+                    >
+                      <Clock className="w-3.5 h-3.5 text-slate-400" /> Activity
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-red-600 hover:bg-red-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSubTaskMenuOpenId(null);
+                        setSubTaskDeleteTarget(st);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </div>
+                </>,
+                document.body,
+              )}
           </div>
         </div>
         {safeChildren.length > 0 && isExpanded && (
@@ -1325,14 +1442,13 @@ const MyTasks: React.FC = () => {
           const statusMeta = getStatusMeta(t.status);
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
-                <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+              <div className="w-full max-w-xl overflow-hidden bg-white border shadow-2xl rounded-md border-slate-100 max-h-[85vh] flex flex-col">
+                <div className="flex items-start justify-between flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="min-w-0">
-                    <Eyebrow>Task Details</Eyebrow>
-                    <h3 className="font-semibold text-[16px] text-slate-900 truncate mt-0.5">
+                    <h3 className="text-[18px] font-semibold text-slate-900 truncate">
                       {t.title}
                     </h3>
-                    <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-1 truncate">
+                    <p className="flex items-center gap-1.5 text-[13px] text-slate-500 mt-1.5 truncate">
                       <span className="font-medium text-blue-900">
                         {t.project?.name || t.projectName || "No Project"}
                       </span>
@@ -1351,7 +1467,7 @@ const MyTasks: React.FC = () => {
                       )}
                     </p>
                   </div>
-                  <div className="flex flex-col items-end flex-shrink-0 gap-1.5">
+                  <div className="flex flex-col items-end flex-shrink-0 gap-2">
                     <div className="flex items-center gap-2.5">
                       <span
                         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
@@ -1383,21 +1499,22 @@ const MyTasks: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 p-6 space-y-3 overflow-y-auto">
-                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
-                    <div className="flex items-center gap-2 mb-2">
+                <div className="border-t border-slate-100" />
+                <div className="flex-1 px-7 py-6 space-y-6 overflow-y-auto">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2.5">
                       <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                      <Eyebrow>Description</Eyebrow>
+                      <SectionLabel>Description</SectionLabel>
                     </div>
                     <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
                       {t.description || "No description provided."}
                     </p>
                   </div>
 
-                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="pt-6 border-t border-slate-100">
+                    <div className="flex items-center gap-2 mb-2.5">
                       <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                      <Eyebrow>Sub-Tasks</Eyebrow>
+                      <SectionLabel>Sub-Tasks</SectionLabel>
                     </div>
                     <div className="flex gap-2 mb-4">
                       <input
@@ -1437,11 +1554,11 @@ const MyTasks: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
-                    <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="pt-6 border-t border-slate-100">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-2">
                         <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <Eyebrow>Assigned To</Eyebrow>
+                        <SectionLabel>Assigned To</SectionLabel>
                       </div>
                         <div ref={addMemberRef} className="relative">
                           <button
@@ -1781,7 +1898,7 @@ const MyTasks: React.FC = () => {
                     <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
                     </div>
-                    <Eyebrow>Progress</Eyebrow>
+                    <SectionLabel>Progress</SectionLabel>
                   </div>
                   <span
                     className="font-semibold text-[16px] text-slate-900"
@@ -1803,7 +1920,7 @@ const MyTasks: React.FC = () => {
               <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                  <Eyebrow>Update Description</Eyebrow>
+                  <SectionLabel>Update Description</SectionLabel>
                 </div>
                 <textarea
                   value={newSubTaskUpdateTitle}
@@ -1833,7 +1950,7 @@ const MyTasks: React.FC = () => {
               <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
                 <div className="flex items-center gap-2 mb-2">
                   <Clock className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                  <Eyebrow>Previous Updates</Eyebrow>
+                  <SectionLabel>Previous Updates</SectionLabel>
                 </div>
                 <div className="space-y-2 max-h-[120px] overflow-y-auto">
                   {editingSubTask.history &&
@@ -1910,7 +2027,7 @@ const MyTasks: React.FC = () => {
             </div>
             <div className="flex-1 p-6 space-y-5 overflow-y-auto">
               <div>
-                <Eyebrow className="mb-2">Progress History</Eyebrow>
+                <SectionLabel className="mb-2">Progress History</SectionLabel>
                 <div className="space-y-2">
                   {editingSubTask.history &&
                   editingSubTask.history.length > 0 ? (
@@ -1952,7 +2069,7 @@ const MyTasks: React.FC = () => {
               </div>
 
               <div>
-                <Eyebrow className="mb-2">Comments & Feedback</Eyebrow>
+                <SectionLabel className="mb-2">Comments & Feedback</SectionLabel>
                 <div className="space-y-3">
                   {subTaskComments.map((comment: any) => (
                     <div
@@ -2324,6 +2441,16 @@ const MyTasks: React.FC = () => {
         }}
         onConfirm={confirmDeleteTask}
         message="Are you sure you want to delete this task?"
+      />
+
+      {/* Sub-task Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!subTaskDeleteTarget}
+        onClose={() => setSubTaskDeleteTarget(null)}
+        onConfirm={handleDeleteSubTask}
+        isLoading={deletingSubTask}
+        title="Delete Sub-task"
+        message={`Are you sure you want to delete "${subTaskDeleteTarget?.title ?? "this sub-task"}"? This cannot be undone.`}
       />
     </>
   );

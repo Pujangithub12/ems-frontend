@@ -50,8 +50,12 @@ type AuthContextType = {
   }) => Promise<void>;
   /** Self-service signup step 2: confirms the OTP, creating the account (as super_admin) plus a brand-new workspace it owns, then logs it in. */
   registerVerify: (details: { email: string; otp: string }) => Promise<Workspace>;
-  /** Accepts a workspace invite: sets a password, creates the account with the invite's details/role, joins the workspace, and logs it in. */
-  acceptInvite: (token: string, password: string) => Promise<Workspace>;
+  /** Accepts a workspace invite: sets a password + the invitee's own profile details, creates the account (with the invite's name/email/role), joins the workspace, and logs it in. */
+  acceptInvite: (
+    token: string,
+    password: string,
+    profile: { phoneNumber: string; address: string; jobPosition: string },
+  ) => Promise<Workspace>;
   /** Forgot-password step 1: emails a 6-digit OTP if the address has an account (response is generic either way). */
   forgotPasswordStart: (email: string) => Promise<void>;
   /** Forgot-password step 2: confirms the OTP, sets the new password, and logs the user in. */
@@ -216,9 +220,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return ws;
   };
 
-  const acceptInvite = async (token: string, password: string): Promise<Workspace> => {
+  const acceptInvite = async (
+    token: string,
+    password: string,
+    profile: { phoneNumber: string; address: string; jobPosition: string },
+  ): Promise<Workspace> => {
     didLoginRef.current = true;
-    const res = await api.post(`/api/invites/${token}/accept`, { password });
+    const res = await api.post(`/api/invites/${token}/accept`, { password, ...profile });
     const { user: u, workspace: ws } = res.data;
     setUser(u || null);
     await fetchWorkspacesAndCurrent();

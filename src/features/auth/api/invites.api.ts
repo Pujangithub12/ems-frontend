@@ -3,7 +3,6 @@ import api from "../../../api/axios";
 export type InvitePreview = {
   fullName: string;
   email: string;
-  jobPosition: string;
   role: string;
 };
 
