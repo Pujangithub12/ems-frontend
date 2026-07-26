@@ -143,6 +143,11 @@ function renderTodayLine(container: HTMLElement | null, showChart: boolean) {
     todayCell.getBoundingClientRect().left -
     dataArea.getBoundingClientRect().left;
   line.style.left = `${Math.round(left)}px`;
+  // CSS height:100% only tracks dataArea's own box height, which dhtmlx caps
+  // to the visible viewport under row virtualization — it doesn't grow with
+  // the full task list. scrollHeight always reflects the true full-content
+  // extent, so the line reaches the bottom of the chart even when scrolled.
+  line.style.height = `${Math.max(dataArea.scrollHeight, dataArea.clientHeight)}px`;
 }
 
 function isSameCalendarDay(a: Date, b: Date): boolean {
@@ -732,7 +737,8 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     
     gantt.config.scales = scales as unknown as typeof gantt.config.scales;
     finestScaleUnitRef.current = scales[scales.length - 1]?.unit ?? "day";
-    gantt.config.min_column_width = 34;
+    // Week columns get a bit more breathing room than day/month ones.
+    gantt.config.min_column_width = finestScaleUnitRef.current === "week" ? 120 : 34;
     applyDayRangePadding(tasks, finestScaleUnitRef.current === "day");
     if (readyRef.current) gantt.render();
     renderTodayLine(containerRef.current, showChart);
@@ -922,7 +928,12 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           background: #fff;
         }
         .gantt-wbs-label {
-          margin-right: 3px;
+          margin-right: 18px;
+          color: #000;
+          font-weight: 500;
+        }
+        .gantt-wbs-label-sub {
+          font-weight: 400;
         }
 
         .gantt-row-menu-btn {

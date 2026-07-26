@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { getSubtasks, createSubtask, updateSubtask } from "../api/subtasks.api";
+import { getSubtasks, createSubtask, updateSubtask, deleteSubtask } from "../api/subtasks.api";
 
 /** On-demand fetch (not a stable useQuery key) — callers store the result into their own local state. */
 export function useSubtasksFetch() {
@@ -39,5 +39,12 @@ export function useUpdateSubtask() {
       progress?: number;
       status?: string;
     }) => updateSubtask(taskId, subTaskId, { title, name, progress, status }),
+  });
+}
+
+export function useDeleteSubtask() {
+  return useMutation({
+    mutationFn: ({ taskId, subTaskId }: { taskId: number; subTaskId: number }) =>
+      deleteSubtask(taskId, subTaskId),
   });
 }

@@ -166,8 +166,12 @@ const Users: React.FC = () => {
         if (!payload.password) delete payload.password;
         await updateUserMutation.mutateAsync({ id: editingUser.id, payload });
       } else {
-        delete payload.password;
-        const result = await inviteUserMutation.mutateAsync(payload as any);
+        // Only name/email/role — the invitee fills in the rest themselves.
+        const result = await inviteUserMutation.mutateAsync({
+          fullName: userForm.fullName,
+          email: userForm.email,
+          role: userForm.role,
+        });
         setInviteSentMessage(
           result?.message === "Existing user added to workspace"
             ? `${userForm.email} already had an account — added them to this workspace.`

@@ -23,6 +23,12 @@ export async function createSubtask(
   return res.data;
 }
 
+/** DELETE /api/tasks/:taskId/subtasks/:subTaskId */
+export async function deleteSubtask(taskId: number, subTaskId: number): Promise<any> {
+  const res = await api.delete(`/api/tasks/${taskId}/subtasks/${subTaskId}`);
+  return res.data;
+}
+
 /** PUT /api/tasks/:taskId/subtasks/:subTaskId */
 export async function updateSubtask(
   taskId: number,

@@ -51,9 +51,13 @@ const MembersTab: React.FC = () => {
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setMemberFormError(null);
-    const { password, ...payload } = memberForm;
+    // Only name/email/role — the invitee fills in the rest themselves.
     try {
-      await inviteUserMutation.mutateAsync(payload);
+      await inviteUserMutation.mutateAsync({
+        fullName: memberForm.fullName,
+        email: memberForm.email,
+        role: memberForm.role,
+      });
       setInviteSentMessage(`Invitation sent to ${memberForm.email}.`);
       setShowAddMember(false);
       setMemberForm(emptyMemberForm);

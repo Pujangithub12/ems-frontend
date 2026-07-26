@@ -1,13 +1,11 @@
 import api from "../../../api/axios";
 import { User } from "../../../types";
 
+/** Only name/email/role are collected from the inviting admin — the invitee
+ * fills in phone/address/job position themselves when accepting the invite. */
 export type InviteUserPayload = {
   fullName: string;
   email: string;
-  phoneNumber: string;
-  address: string;
-  jobPosition: string;
-  joinDate: string;
   role: string;
 };
 

@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   ArrowRight,
   UserCheck,
-  Briefcase,
   Mail,
 } from "lucide-react";
 
@@ -73,6 +72,9 @@ const AcceptInvite: React.FC = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [jobPosition, setJobPosition] = useState("");
+  const [address, setAddress] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -114,9 +116,17 @@ const AcceptInvite: React.FC = () => {
       setSubmitError("Passwords do not match");
       return;
     }
+    if (!phoneNumber.trim() || !jobPosition.trim() || !address.trim()) {
+      setSubmitError("Phone number, job position, and address are required");
+      return;
+    }
     setSubmitting(true);
     try {
-      const workspace = await auth.acceptInvite(token, password);
+      const workspace = await auth.acceptInvite(token, password, {
+        phoneNumber: phoneNumber.trim(),
+        jobPosition: jobPosition.trim(),
+        address: address.trim(),
+      });
       nav(`/${workspace.id}/dashboard`);
     } catch (err: any) {
       setSubmitError(
@@ -439,10 +449,6 @@ const AcceptInvite: React.FC = () => {
                     <Mail className="w-3.5 h-3.5" />
                     {invite.email}
                   </div>
-                  <div className="flex items-center gap-2 text-[12.5px] text-[#7A8499]">
-                    <Briefcase className="w-3.5 h-3.5" />
-                    {invite.jobPosition}
-                  </div>
                 </div>
 
                 <form onSubmit={submitAccept} className="space-y-3">
@@ -462,6 +468,75 @@ const AcceptInvite: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  <div>
+                    <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
+                      Phone number
+                    </label>
+                    <input
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      required
+                      type="tel"
+                      className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
+                      style={{ border: "1px solid #C6CCD8" }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "#1E3A8A";
+                        e.currentTarget.style.boxShadow =
+                          "0 0 0 3px rgba(30,58,138,0.12)";
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
+                      Job position
+                    </label>
+                    <input
+                      value={jobPosition}
+                      onChange={(e) => setJobPosition(e.target.value)}
+                      required
+                      type="text"
+                      className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
+                      style={{ border: "1px solid #C6CCD8" }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "#1E3A8A";
+                        e.currentTarget.style.boxShadow =
+                          "0 0 0 3px rgba(30,58,138,0.12)";
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
+                      Address
+                    </label>
+                    <input
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      required
+                      type="text"
+                      className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
+                      style={{ border: "1px solid #C6CCD8" }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "#1E3A8A";
+                        e.currentTarget.style.boxShadow =
+                          "0 0 0 3px rgba(30,58,138,0.12)";
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                    />
+                  </div>
 
                   <div>
                     <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">

@@ -131,6 +131,18 @@ const ZOOM_LABELS: Record<ZoomLevel, string> = { day: "Day", week: "Week", month
 
 const WEEKDAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
+/** dhtmlx's default tree-label rendering auto-escapes task text; a custom
+ * column `render`/template does not, so the wbs+name combo below (which
+ * takes over rendering the "text" column) has to escape it manually. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /** Stacks the day number over its weekday initial (S/M/T/W/T/F/S), matching
  * the reference design's two-line day header — used only at day zoom. */
 function dayScaleTemplate(date: Date): string {
@@ -384,6 +396,30 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
 
   parsedRows.filter((r) => r.isSummary).forEach((r) => resolveProgress(r));
 
+  // --- Step 2b2: auto-complete a parent task once every one of its
+  // (sub)tasks is completed — recurses so a grandparent also flips once its
+  // whole subtree is done. Purely derived for display, same as progress
+  // above: it re-evaluates from the underlying rows every render, so it
+  // self-heals if a child is later reopened, and a manual "completed" pick
+  // on a parent with incomplete children is left alone.
+  const rolledUpStatus = new Map<string, ScheduleStatus>();
+
+  function resolveRolledUpStatus(row: ParsedRow, visited = new Set<string>()): ScheduleStatus {
+    if (rolledUpStatus.has(row.id)) return rolledUpStatus.get(row.id)!;
+    const children = childrenByParent.get(row.id) ?? [];
+    if (children.length === 0 || visited.has(row.id)) return row.status;
+    visited.add(row.id);
+
+    const allChildrenCompleted = children.every(
+      (child) => resolveRolledUpStatus(child, visited) === "completed",
+    );
+    const status = allChildrenCompleted ? "completed" : row.status;
+    rolledUpStatus.set(row.id, status);
+    return status;
+  }
+
+  parsedRows.forEach((r) => resolveRolledUpStatus(r));
+
   // --- Step 2c: WBS numbering (1, 1.1, 1.2, 2, 2.1, ...), parents processed first ---
   const wbsById = new Map<string, string>();
   const childOrderCounter = new Map<string, number>();
@@ -469,7 +505,7 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       // so a freshly added subtask (see handleAddChildTask) is visible right
       // away instead of hidden behind a collapsed parent.
       open: hasChildren,
-      status: row.status,
+      status: rolledUpStatus.get(row.id) ?? row.status,
       wbs: wbsById.get(row.id) ?? "",
       durationLabel: type === "milestone" ? "—" : `${row.duration ?? dayDiff(end, start)} day${(row.duration ?? 0) === 1 ? "" : "s"}`,
       startLabel: formatDateLabel(start),
@@ -668,22 +704,24 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // reserves for the table (the remaining 75% is the chart).
   const columns: ScheduleColumnDef[] = useMemo(
     () => [
+      // The id (e.g. "1", "1.1") is shown inline as a prefix inside this same
+      // column instead of a separate "Id" column — dhtmlx renders the tree
+      // indent/expand-arrow first, then this template as the cell's content,
+      // so the id+name pair always lands right after those. The per-row
+      // "..." row-options trigger lives in the trailing "columnsMenuBtn"
+      // column instead (see below), matching the reference layout's own
+      // trailing actions column.
       {
-        id: "wbs",
-        header: "Id",
-        width: editMode ? 60 : 52,
+        id: "text",
+        header: "Task Name",
+        width: 300,
+        tree: true,
         align: "left",
-        // Indent the id itself by nesting depth (e.g. "1.1" one level in
-        // from "1") to match the Task Name column's tree indent. The
-        // per-row "..." row-options trigger lives in the trailing
-        // "columnsMenuBtn" column instead (see below), matching the
-        // reference layout's own trailing actions column.
         render: (t) => {
-          const depth = (t.wbs.match(/\./g) ?? []).length;
-          return `<span class="gantt-wbs-label" style="margin-left:${10 + depth * 10}px">${t.wbs}</span>`;
+          const isSubtask = t.wbs.includes(".");
+          return `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${escapeHtml(t.text)}</span>`;
         },
       },
-      { id: "text", header: "Task Name", width: 250, tree: true, align: "left" },
       // Always visible (not part of the show/hide-fields toggle) — a
       // read-only colored pill outside edit mode, an actual <select> (same
       // pill styling, via the "gantt-status-select" class) while editing so
