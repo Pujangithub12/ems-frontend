@@ -21,6 +21,7 @@ import { useScheduleQuery, useSaveScheduleMutation } from "../../hooks/useSchedu
 import GanttChartView, { ScheduleColumnDef, ScheduleScale } from "../GanttChartView";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
+import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalScrollbar";
 
 /**
  * ProjectScheduleTab
@@ -176,8 +177,9 @@ type StatusFilter = "all" | ScheduleStatus;
  * (Gantt view only — the List view always shows every field, since it's the
  * one place that info is otherwise unavailable). Id/Task Name are never
  * toggleable: Id also houses the edit-mode row menu, Task Name is the point. */
-type ColumnFieldId = "duration" | "start";
+type ColumnFieldId = "status" | "duration" | "start";
 const COLUMN_FIELD_DEFS: { id: ColumnFieldId; label: string }[] = [
+  { id: "status", label: "Status" },
   { id: "duration", label: "Duration" },
   { id: "start", label: "Start Date" },
 ];
@@ -488,9 +490,19 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
     }
 
     const parent = row.parentId && byId.has(row.parentId) ? row.parentId : 0;
+    const status = rolledUpStatus.get(row.id) ?? row.status;
 
-    const progress =
+    let progress =
       type === "summary" ? summaryProgress.get(row.id) ?? 0 : row.progress ?? 0;
+    // Pending/Completed always display 0/100 regardless of whatever stray
+    // value is stored (e.g. a status changed elsewhere, or a Completed row
+    // straight off an Excel import with a stale Progress column) — kept in
+    // sync display-side the same way the status rollup above is, on top of
+    // the source-of-truth enforcement in handleStatusChange/the backend DTO.
+    if (type !== "summary") {
+      if (status === "pending") progress = 0;
+      else if (status === "completed") progress = 100;
+    }
 
     tasks.push({
       id: row.id,
@@ -505,7 +517,7 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       // so a freshly added subtask (see handleAddChildTask) is visible right
       // away instead of hidden behind a collapsed parent.
       open: hasChildren,
-      status: rolledUpStatus.get(row.id) ?? row.status,
+      status,
       wbs: wbsById.get(row.id) ?? "",
       durationLabel: type === "milestone" ? "—" : `${row.duration ?? dayDiff(end, start)} day${(row.duration ?? 0) === 1 ? "" : "s"}`,
       startLabel: formatDateLabel(start),
@@ -549,28 +561,29 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
  * the same "ID" value across multiple unrelated rows — this is exactly what
  * buildGanttData's now-removed "Duplicate ID" notes used to warn about) can
  * still contain duplicates; the backend rejects the whole save outright if
- * so (`validateScheduleTasks`'s "Duplicate task ID" check). Rather than
- * blocking the save, keep the first occurrence of each id as-is and
- * renumber any later repeat to a fresh, unused id, so pre-existing bad data
- * can never wedge "Done Editing" shut. */
+ * so (`validateScheduleTasks`'s "Duplicate task ID" check).
+ *
+ * This used to *rename* the later duplicate to a fresh id instead of
+ * blocking the save — but since every other field on that row (name, dates,
+ * status, ...) was carried over unchanged, the renamed copy became a fully
+ * independent task that looked identical to the original. That's exactly
+ * the "my task got duplicated" bug this now fixes: every single click of
+ * "Done Editing" on schedule with a pre-existing duplicate id would re-fork
+ * it, even with no actual edits made. Two rows sharing an id represent the
+ * same task, not two different tasks that coincidentally chose the same
+ * identifier, so the later occurrence is dropped instead of spun off — any
+ * children pointing at that id via parentId still resolve fine, since the
+ * first (kept) occurrence has the identical id. Rows with no id at all are
+ * left alone either way; the backend assigns each an id from its position
+ * in the array, which is already unique per-row without any help here. */
 function dedupeRowIds(rows: ScheduleRow[]): ScheduleRow[] {
   const used = new Set<string>();
-  let counter = rows.length;
-  const nextId = () => {
-    let candidate = String(++counter);
-    while (used.has(candidate)) candidate = String(++counter);
-    return candidate;
-  };
-
-  return rows.map((row) => {
+  return rows.filter((row) => {
     const id = row.id.trim();
-    if (!id || !used.has(id)) {
-      if (id) used.add(id);
-      return row;
-    }
-    const newId = nextId();
-    used.add(newId);
-    return { ...row, id: newId };
+    if (!id) return true;
+    if (used.has(id)) return false;
+    used.add(id);
+    return true;
   });
 }
 
@@ -588,10 +601,16 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // "+" button lives in the grid's own header row (see the "columnsMenuBtn"
   // column below + GanttChartView's onGridHeaderClick), so the popover is
   // fixed-positioned off that button's rect rather than inline in the toolbar.
-  const [visibleFields, setVisibleFields] = useState<Set<ColumnFieldId>>(new Set());
+  // Status starts visible (it always was, before it became toggleable) —
+  // Duration/Start still start hidden, unchanged.
+  const [visibleFields, setVisibleFields] = useState<Set<ColumnFieldId>>(new Set(["status"]));
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [columnsMenuAnchor, setColumnsMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
+  // The chart's own horizontal-scroll container — mirrored by
+  // StickyHorizontalScrollbar so its scrollbar stays reachable at the
+  // bottom of the viewport instead of requiring the whole page scrolled down.
+  const chartScrollRef = useRef<HTMLDivElement>(null);
   // Master edit switch for the chart itself — off by default so the Gantt is
   // read-only until "Edit Schedule" is clicked. Inline text editing,
   // drag-to-link, and drag-resize on the chart all key off this.
@@ -714,7 +733,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       {
         id: "text",
         header: "Task Name",
-        width: 300,
+        width: 400,
         tree: true,
         align: "left",
         render: (t) => {
@@ -722,29 +741,59 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
           return `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${escapeHtml(t.text)}</span>`;
         },
       },
-      // Always visible (not part of the show/hide-fields toggle) — a
-      // read-only colored pill outside edit mode, an actual <select> (same
-      // pill styling, via the "gantt-status-select" class) while editing so
-      // the status can be changed inline. The <select>'s change event is
-      // picked up via document-level delegation in GanttChartView, since
-      // this is raw HTML outside React's tree — see onStatusChange there.
+      // Shown by default, same as before, but now toggleable via the "+"
+      // show/hide-fields menu like Duration/Start — a read-only colored pill
+      // outside edit mode, an actual <select> (same pill styling, via the
+      // "gantt-status-select" class) while editing so the status can be
+      // changed inline. The <select>'s change event is picked up via
+      // document-level delegation in GanttChartView, since this is raw HTML
+      // outside React's tree — see onStatusChange there.
+      ...(viewTab === "list" || visibleFields.has("status")
+        ? [
+            {
+              id: "status",
+              header: "Status",
+              width: 170,
+              align: "center" as const,
+              render: (t: GanttTask) => {
+                const meta = STATUS_META[t.status];
+                if (!editMode) {
+                  return `<span class="gantt-status-text" style="color:${meta.pillText}">${meta.label}</span>`;
+                }
+                const options = (Object.keys(STATUS_META) as ScheduleStatus[])
+                  .map(
+                    (key) =>
+                      `<option value="${key}"${key === t.status ? " selected" : ""}>${STATUS_META[key].label}</option>`,
+                  )
+                  .join("");
+                return `<select class="gantt-status-select" data-row-id="${t.id}" style="color:${meta.pillText}">${options}</select>`;
+              },
+            },
+          ]
+        : []),
+      // Always visible, same as Status. A bar+percent readout outside edit
+      // mode; while editing, an editable number input for every status
+      // except On Hold, which freezes it (see handleStatusChange/
+      // handleProgressChange below for the full two-way sync between this
+      // field and Status). Summary rows are always disabled too, since their
+      // percent is a rollup average of children, not a value of their own.
+      // Committed via document-level delegation in GanttChartView (see
+      // onProgressChange there), same as Status.
       {
-        id: "status",
-        header: "Status",
-        width: 110,
+        id: "progress",
+        header: "Progress",
+        width: 120,
         align: "center" as const,
         render: (t) => {
-          const meta = STATUS_META[t.status];
+          // t.progress here is dhtmlx's own 0-1 bar-fill fraction, not our
+          // percent value — progressPercent is the non-colliding field
+          // GanttChartView adds alongside it specifically for this render.
+          const value = Math.max(0, Math.min(100, Math.round(t.progressPercent ?? 0)));
           if (!editMode) {
-            return `<span class="gantt-status-pill" style="background:${meta.pillBg};color:${meta.pillText}">${meta.label}</span>`;
+            return `<span class="gantt-progress-value">${value}%</span>`;
           }
-          const options = (Object.keys(STATUS_META) as ScheduleStatus[])
-            .map(
-              (key) =>
-                `<option value="${key}"${key === t.status ? " selected" : ""}>${STATUS_META[key].label}</option>`,
-            )
-            .join("");
-          return `<select class="gantt-status-select" data-row-id="${t.id}" style="background-color:${meta.pillBg};color:${meta.pillText}">${options}</select>`;
+          const canEdit = !t.isSummaryRow && t.status !== "on_hold";
+          return `<input type="number" min="0" max="100" class="gantt-progress-input" data-row-id="${t.id}" value="${value}"${canEdit ? "" : " disabled"} />`;
         },
       },
       // The List view always shows every field — it's the one place that
@@ -771,7 +820,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             {
               id: "columnsMenuBtn",
               header: '<button type="button" class="gantt-columns-menu-btn" title="Show/hide columns">+</button>',
-              width: 42,
+              width: 50,
+              fixedWidth: true,
               align: "center" as const,
               render: (t: GanttTask) =>
                 editMode
@@ -927,9 +977,36 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // GanttChartView's onStatusChange) — folded into scheduleRows the same way
   // inline task-name edits and drag-resizes are. Nothing is sent to the
   // backend until "Done Editing" auto-saves.
+  //
+  // Progress is kept in sync with the new status: Pending always resets to
+  // 0, Completed always jumps to 100. In Progress leaves the existing value
+  // alone (it's already freely editable). On Hold also leaves it alone, but
+  // additionally freezes the Progress column (disabled, see the `columns`
+  // memo above) until status moves off On Hold again.
   const handleStatusChange = useCallback((id: string, status: string) => {
     setScheduleRows((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, status } : row)),
+      rows.map((row) => {
+        if (row.id !== id) return row;
+        if (status === "pending") return { ...row, status, progress: "0" };
+        if (status === "completed") return { ...row, status, progress: "100" };
+        return { ...row, status };
+      }),
+    );
+  }, []);
+
+  // Fired when the progress <input> in the "progress" column is changed (see
+  // GanttChartView's onProgressChange) — editable for every status except On
+  // Hold (frozen, see the `columns` memo above). The reverse of
+  // handleStatusChange above: here Progress drives Status instead, so
+  // dragging progress down to 0 or up to 100 (or anywhere between) keeps the
+  // Status column in sync automatically, without needing to touch it by hand.
+  const handleProgressChange = useCallback((id: string, progress: number) => {
+    setScheduleRows((rows) =>
+      rows.map((row) => {
+        if (row.id !== id) return row;
+        const status = progress <= 0 ? "pending" : progress >= 100 ? "completed" : "in_progress";
+        return { ...row, progress: String(progress), status };
+      }),
     );
   }, []);
 
@@ -1233,7 +1310,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
           </div>
         </div>
       ) : (
-        <>
+        <div>
           {/* Toolbar — a single flat row of minimal, icon+text controls
               (borderless, hover background) matching the reference design's
               clean, airy toolbar instead of the previous two boxed rows. */}
@@ -1329,12 +1406,11 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
           </div>
 
           {backendError && (
-            <div className="flex gap-2 items-start p-3 text-xs text-rose-700 bg-rose-50 rounded border border-rose-200">
+            <div className="flex gap-2 items-start p-3 mt-3 text-xs text-rose-700 bg-rose-50 rounded border border-rose-200">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{backendError}</span>
             </div>
           )}
-
 
           {/* -mx-6 cancels the page's own p-6 gutter (see ProjectDetails.tsx,
               shared by every tab) so the chart genuinely spans the full
@@ -1347,7 +1423,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               rows stay fixed in place while the rows beneath scroll, instead
               of scrolling away along with everything else. */}
           <div
-            className={`overflow-x-auto bg-white border-y border-slate-200 -mx-6 ${editMode ? "relative z-40" : ""}`}
+            ref={chartScrollRef}
+            className={`overflow-x-auto no-scrollbar bg-white border-y border-slate-200 -mx-6 ${editMode ? "relative z-40" : ""}`}
           >
             <div className="min-w-[600px]">
               <GanttChartView
@@ -1364,6 +1441,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 onDeleteTask={setPendingDeleteId}
                 onDuplicateTask={handleDuplicateTask}
                 onStatusChange={handleStatusChange}
+                onProgressChange={handleProgressChange}
                 onReorder={handleReorder}
                 onGridHeaderClick={handleGridHeaderClick}
               />
@@ -1380,11 +1458,12 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               )}
             </div>
           </div>
+          {viewTab === "gantt" && <StickyHorizontalScrollbar targetRef={chartScrollRef} />}
 
           {/* Status color legend — matches the bar colors (see
               GanttChartView's gantt-status-* classes) and the Status
               column's pill colors, both driven by the same STATUS_META. */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 items-center px-1">
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 items-center px-1 mt-6">
             {(Object.keys(STATUS_META) as ScheduleStatus[]).map((key) => (
               <div key={key} className="flex items-center gap-1.5">
                 <span
@@ -1404,7 +1483,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             <div
               ref={columnsMenuRef}
               style={{ position: "fixed", top: columnsMenuAnchor.top, left: columnsMenuAnchor.left }}
-              className="z-50 p-1 bg-white border rounded-lg shadow-lg w-52 border-slate-200"
+              className="z-50 p-1 bg-white border rounded-lg shadow-lg w-64 border-slate-200"
             >
               <div className="px-2 py-1.5 text-[11px] font-semibold tracking-wide uppercase text-slate-400">
                 Show fields
@@ -1430,7 +1509,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             title="Delete Task"
             message="Delete this task? Any subtasks under it will be deleted too."
           />
-        </>
+        </div>
       )}
     </div>
   );

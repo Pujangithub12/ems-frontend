@@ -70,18 +70,132 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
     return [{ value: "user", label: "Standard User" }];
   };
 
+  // Invite mode only ever collects 3 fields, so it gets its own compact,
+  // single-column shell instead of the wide 2-column grid the full edit
+  // form needs — that grid left invite mode with a lot of dead space.
+  if (!editingUser) {
+    return (
+      <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-sm bg-slate-900/45">
+        <div className="w-full max-w-md flex flex-col overflow-hidden bg-white rounded-md border border-slate-200 shadow-lg">
+          <div className="flex flex-shrink-0 justify-between items-start p-6 border-b border-slate-200">
+            <div>
+              <Eyebrow>Invite Member</Eyebrow>
+              <h3 className="font-semibold text-[17px] text-slate-900 mt-1">
+                Send a Workspace Invite
+              </h3>
+              <p className="text-[12.5px] text-slate-400 mt-1">
+                Add a new person to the workspace
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-shrink-0 p-1.5 rounded text-slate-400 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <form onSubmit={onSubmit} className="p-6 space-y-5">
+            {userFormError && (
+              <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-100 rounded-md text-red-700 text-[13px]">
+                <AlertCircle className="flex-shrink-0 w-4 h-4" />
+                {userFormError}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Eyebrow>Full Name</Eyebrow>
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  name="new-user-full-name"
+                  autoComplete="off"
+                  value={userForm.fullName}
+                  onChange={(e) => onFieldChange("fullName", e.target.value)}
+                  required
+                  className="py-2.5 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                  placeholder="John Doe"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Eyebrow>Email Address</Eyebrow>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  name="new-user-email"
+                  autoComplete="off"
+                  value={userForm.email}
+                  onChange={(e) => onFieldChange("email", e.target.value)}
+                  required
+                  className="py-2.5 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                  placeholder="john@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Eyebrow>User Role</Eyebrow>
+              <div className="relative">
+                <Shield className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={userForm.role}
+                  onChange={(e) => onFieldChange("role", e.target.value)}
+                  className="py-2.5 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors appearance-none"
+                >
+                  {getRoleOptions().map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <p className="text-[12.5px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-100 rounded-md p-3">
+              They'll get an email with a link to set their own password and
+              fill in the rest of their profile (phone, job position,
+              address) before joining the workspace.
+            </p>
+
+            <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-[13px] font-medium bg-white rounded border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={userFormSubmitting}
+                className="flex gap-2 items-center px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {userFormSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                Send Invite
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-sm bg-slate-900/45">
       <div className="w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden bg-white rounded-md border border-slate-200 shadow-lg">
         <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-200">
           <div>
-            <Eyebrow>
-              {editingUser ? "Edit User" : "Invite Member"}
-            </Eyebrow>
+            <Eyebrow>Edit User</Eyebrow>
             <h3 className="font-semibold text-[17px] text-slate-900 mt-1">
-              {editingUser
-                ? "Update User Information"
-                : "Send a Workspace Invite"}
+              Update User Information
             </h3>
           </div>
           <button
@@ -102,14 +216,6 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               <AlertCircle className="flex-shrink-0 w-4 h-4" />
               {userFormError}
             </div>
-          )}
-
-          {!editingUser && (
-            <p className="text-[13px] text-slate-500 -mt-2">
-              They'll get an email with a link to set their own password and
-              fill in the rest of their profile (phone, job position,
-              address) before joining the workspace.
-            </p>
           )}
 
           <div className="grid gap-6 md:grid-cols-2">
@@ -146,55 +252,51 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
               </div>
             </div>
 
-            {editingUser && (
-              <>
-                <div className="space-y-2">
-                  <Eyebrow>Phone Number</Eyebrow>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
-                    <input
-                      name="new-user-phone"
-                      autoComplete="off"
-                      value={userForm.phoneNumber}
-                      onChange={(e) => onFieldChange("phoneNumber", e.target.value)}
-                      required
-                      className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                      placeholder="Enter phone number"
-                    />
-                  </div>
-                </div>
+            <div className="space-y-2">
+              <Eyebrow>Phone Number</Eyebrow>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  name="new-user-phone"
+                  autoComplete="off"
+                  value={userForm.phoneNumber}
+                  onChange={(e) => onFieldChange("phoneNumber", e.target.value)}
+                  required
+                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                  placeholder="Enter phone number"
+                />
+              </div>
+            </div>
 
-                <div className="space-y-2">
-                  <Eyebrow>Job Position</Eyebrow>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
-                    <input
-                      name="new-user-job-position"
-                      autoComplete="off"
-                      value={userForm.jobPosition}
-                      onChange={(e) => onFieldChange("jobPosition", e.target.value)}
-                      required
-                      className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                      placeholder="Senior Developer"
-                    />
-                  </div>
-                </div>
+            <div className="space-y-2">
+              <Eyebrow>Job Position</Eyebrow>
+              <div className="relative">
+                <Briefcase className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  name="new-user-job-position"
+                  autoComplete="off"
+                  value={userForm.jobPosition}
+                  onChange={(e) => onFieldChange("jobPosition", e.target.value)}
+                  required
+                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                  placeholder="Senior Developer"
+                />
+              </div>
+            </div>
 
-                <div className="space-y-2">
-                  <Eyebrow>Join Date</Eyebrow>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="date"
-                      value={userForm.joinDate}
-                      onChange={(e) => onFieldChange("joinDate", e.target.value)}
-                      required
-                      className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Eyebrow>Join Date</Eyebrow>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="date"
+                  value={userForm.joinDate}
+                  onChange={(e) => onFieldChange("joinDate", e.target.value)}
+                  required
+                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                />
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Eyebrow>User Role</Eyebrow>
@@ -215,24 +317,22 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             </div>
           </div>
 
-          {editingUser && (
-            <div className="space-y-2">
-              <Eyebrow>Residential Address</Eyebrow>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-400" />
-                <textarea
-                  name="new-user-address"
-                  autoComplete="off"
-                  value={userForm.address}
-                  onChange={(e) => onFieldChange("address", e.target.value)}
-                  required
-                  rows={2}
-                  className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
-                  placeholder="123 Street Name, City, Country"
-                />
-              </div>
+          <div className="space-y-2">
+            <Eyebrow>Residential Address</Eyebrow>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-400" />
+              <textarea
+                name="new-user-address"
+                autoComplete="off"
+                value={userForm.address}
+                onChange={(e) => onFieldChange("address", e.target.value)}
+                required
+                rows={2}
+                className="py-2 pr-3 pl-9 w-full text-[13px] rounded bg-white border border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                placeholder="123 Street Name, City, Country"
+              />
             </div>
-          )}
+          </div>
 
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
             <button
@@ -249,10 +349,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             >
               {userFormSubmitting ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : editingUser ? null : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              {editingUser ? "Update Profile" : "Send Invite"}
+              ) : null}
+              Update Profile
             </button>
           </div>
         </form>

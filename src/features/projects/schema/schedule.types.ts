@@ -50,6 +50,14 @@ export interface GanttTask {
   wbs: string;
   durationLabel: string;
   startLabel: string;
+  /** Only populated on the raw task object dhtmlx hands back to column
+   * `render`/template callbacks (see GanttChartView) — dhtmlx's own built-in
+   * "progress"/"type" fields don't hold our percent value / "summary" label,
+   * so these two mirror them under non-colliding names for column renders
+   * to read instead. Not set on the plain GanttTask objects this app builds
+   * itself (e.g. in buildGanttData) — those already use progress/type directly. */
+  progressPercent?: number;
+  isSummaryRow?: boolean;
 }
 
 export interface GanttLink {

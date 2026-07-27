@@ -10,6 +10,13 @@ export interface ScheduleColumnDef {
   width?: number;
   align?: "left" | "center" | "right";
   tree?: boolean;
+  /** When true, `width` is used as a literal pixel value in Gantt view too,
+   * instead of being treated as a relative weight normalized against the
+   * grid's ~32%-of-container width (see the columns effect below). Meant for
+   * small fixed-size utility columns (e.g. the trailing "+" button column)
+   * where a couple-pixel weight change gets diluted away to nothing once
+   * it's rescaled alongside a 400px-weight Task Name column. */
+  fixedWidth?: boolean;
 
   render?: (task: GanttTask) => string;
 }
@@ -46,6 +53,10 @@ interface GanttChartViewProps {
   /** Fires when the status <select> embedded in the "status" column (see
    * ProjectScheduleTab's `columns` memo) is changed. */
   onStatusChange?: (id: string, status: string) => void;
+  /** Fires when the progress <input> embedded in the "progress" column is
+   * changed (rendered editable for every status except "on_hold", which
+   * freezes it — see ProjectScheduleTab's `columns` memo). */
+  onProgressChange?: (id: string, progress: number) => void;
   /** Fires after a row is dragged to a new position (and/or a new parent) in
    * the grid — every task's id + current parent id (null at root), in the
    * new top-to-bottom order. */
@@ -251,6 +262,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   onDeleteTask,
   onDuplicateTask,
   onStatusChange,
+  onProgressChange,
   onReorder,
   onGridHeaderClick,
 }) => {
@@ -272,6 +284,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   const onDeleteTaskRef = useRef(onDeleteTask);
   const onDuplicateTaskRef = useRef(onDuplicateTask);
   const onStatusChangeRef = useRef(onStatusChange);
+  const onProgressChangeRef = useRef(onProgressChange);
   const onReorderRef = useRef(onReorder);
   const onGridHeaderClickRef = useRef(onGridHeaderClick);
   const editableRef = useRef(editable);
@@ -283,10 +296,11 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     onDeleteTaskRef.current = onDeleteTask;
     onDuplicateTaskRef.current = onDuplicateTask;
     onStatusChangeRef.current = onStatusChange;
+    onProgressChangeRef.current = onProgressChange;
     onReorderRef.current = onReorder;
     onGridHeaderClickRef.current = onGridHeaderClick;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, onDeleteTask, onDuplicateTask, onStatusChange, onReorder, onGridHeaderClick, editable]);
+  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onReorder, onGridHeaderClick, editable]);
 
 
   // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
@@ -313,10 +327,20 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     // in this file.
     const handleDocChange = (e: Event) => {
       const target = e.target as HTMLElement;
-      if (!(target instanceof HTMLSelectElement)) return;
-      if (!target.classList.contains("gantt-status-select")) return;
-      const rowId = target.dataset.rowId;
-      if (rowId) onStatusChangeRef.current?.(rowId, target.value);
+      if (target instanceof HTMLSelectElement && target.classList.contains("gantt-status-select")) {
+        const rowId = target.dataset.rowId;
+        if (rowId) onStatusChangeRef.current?.(rowId, target.value);
+        return;
+      }
+      // The progress <input> embedded in the "progress" column (see
+      // ProjectScheduleTab's `columns` memo) — same delegation pattern as
+      // the status <select> above, since it's also raw HTML outside React's
+      // tree. Only rendered non-disabled while status is "in_progress".
+      if (target instanceof HTMLInputElement && target.classList.contains("gantt-progress-input")) {
+        const rowId = target.dataset.rowId;
+        const value = Math.max(0, Math.min(100, Math.round(Number(target.value) || 0)));
+        if (rowId) onProgressChangeRef.current?.(rowId, value);
+      }
     };
     document.addEventListener("mousedown", handleDocMouseDown, true);
     document.addEventListener("change", handleDocChange, true);
@@ -709,16 +733,26 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
 
   useEffect(() => {
     const gridWidthPx = Math.round(containerWidth * GRID_WIDTH_RATIO);
-    const totalWeight = columns.reduce((sum, c) => sum + (c.width ?? 100), 0);
+    const fixedWidthPx = columns.reduce(
+      (sum, c) => sum + (c.fixedWidth ? c.width ?? 0 : 0),
+      0,
+    );
+    const remainingWidthPx = Math.max(0, gridWidthPx - fixedWidthPx);
+    const totalWeight = columns.reduce(
+      (sum, c) => sum + (c.fixedWidth ? 0 : c.width ?? 100),
+      0,
+    );
 
     gantt.config.columns = columns.map((col) => ({
       name: col.id,
       label: col.header,
       width: showChart
-        ? Math.max(
-            28,
-            Math.round(((col.width ?? 100) / totalWeight) * gridWidthPx),
-          )
+        ? col.fixedWidth
+          ? col.width ?? 28
+          : Math.max(
+              28,
+              Math.round(((col.width ?? 100) / totalWeight) * remainingWidthPx),
+            )
         : col.width,
       align: col.align,
       tree: col.tree,
@@ -737,8 +771,13 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     
     gantt.config.scales = scales as unknown as typeof gantt.config.scales;
     finestScaleUnitRef.current = scales[scales.length - 1]?.unit ?? "day";
-    // Week columns get a bit more breathing room than day/month ones.
-    gantt.config.min_column_width = finestScaleUnitRef.current === "week" ? 120 : 34;
+    // Week/month columns get a bit more breathing room than day ones.
+    gantt.config.min_column_width =
+      finestScaleUnitRef.current === "week"
+        ? 120
+        : finestScaleUnitRef.current === "month"
+          ? 70
+          : 34;
     applyDayRangePadding(tasks, finestScaleUnitRef.current === "day");
     if (readyRef.current) gantt.render();
     renderTodayLine(containerRef.current, showChart);
@@ -765,9 +804,19 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
               1,
               Math.round((t.end.getTime() - t.start.getTime()) / 86400000),
             ),
+      // dhtmlx's own built-in "progress" field is a 0-1 fraction (used to
+      // fill the task bar) — it collides with our percent value, so the
+      // Progress column reads progressPercent (0-100) instead, added purely
+      // as an extra custom field alongside it.
       progress: Math.max(0, Math.min(1, (t.progress || 0) / 100)),
+      progressPercent: Math.max(0, Math.min(100, Math.round(t.progress || 0))),
       parent: t.parent,
+      // Same collision issue for "type": dhtmlx's own built-in field only
+      // ever holds its own vocabulary ("task"/"project"/"milestone", set via
+      // TYPE_MAP below), not our "summary" label — isSummaryRow is the
+      // custom, unambiguous field column renders should check instead.
       type: TYPE_MAP[t.type],
+      isSummaryRow: t.type === "summary",
       open: t.open,
       status: t.status,
       wbs: t.wbs,
@@ -818,11 +867,21 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_task_line {
           border-radius: 6px !important;
         }
-        .gantt_task_line.gantt-status-pending { background: rgba(96, 165, 250, 0.7) !important; border: 1px solid #3b82f6 !important; }
-        .gantt_task_line.gantt-status-in_progress { background: #8b5cf6 !important; border: 1px solid #7c3aed !important; }
-        .gantt_task_line.gantt-status-on_hold { background: #f59e0b !important; border: 1px solid #d97706 !important; }
-        .gantt_task_line.gantt-status-completed { background: #10b981 !important; border: 1px solid #059669 !important; }
-        .gantt_task_line .gantt_task_progress { background: rgba(0, 0, 0, 0.18) !important; border-radius: 6px 0 0 6px !important; }
+        /* Each bar is two-toned: a pale tint of the status color for the
+           whole duration, with the completed-percent portion (dhtmlx's own
+           .gantt_task_progress fill, sized off task.progress) drawn in the
+           full, solid status color on top — so how much of a task is done
+           reads at a glance directly on its bar, not just from the Progress
+           column. */
+        .gantt_task_line.gantt-status-pending { background: rgba(96, 165, 250, 0.65) !important; border: none !important; }
+        .gantt_task_line.gantt-status-in_progress { background: rgba(139, 92, 246, 0.65) !important; border: none !important; }
+        .gantt_task_line.gantt-status-on_hold { background: rgba(245, 158, 11, 0.65) !important; border: none !important; }
+        .gantt_task_line.gantt-status-completed { background: rgba(16, 185, 129, 0.65) !important; border: none !important; }
+        .gantt_task_line .gantt_task_progress { border-radius: 6px 0 0 6px !important; }
+        .gantt_task_line.gantt-status-pending .gantt_task_progress { background: #60a5fa !important; }
+        .gantt_task_line.gantt-status-in_progress .gantt_task_progress { background: #8b5cf6 !important; }
+        .gantt_task_line.gantt-status-on_hold .gantt_task_progress { background: #f59e0b !important; }
+        .gantt_task_line.gantt-status-completed .gantt_task_progress { background: #10b981 !important; }
         
         /* Summary (project) bars are a slimmer, vertically-centered pill —
            matching the reference's thin bracket-style summary marker, still
@@ -848,7 +907,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-today-line {
           position: absolute;
           top: 0;
-          width: 2px;
+          width: 1px;
           height: 100%;
           background: #f43f5e;
           pointer-events: none;
@@ -937,7 +996,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         }
 
         .gantt-row-menu-btn {
-          display: none;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
           width: 20px;
@@ -948,25 +1007,24 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           font-weight: 700;
           letter-spacing: -1px;
           border-radius: 4px;
-          border: 1px solid transparent;
+          border: none;
+          outline: none;
           background: transparent;
           color: #64748b;
           cursor: pointer;
         }
         .gantt-row-menu-btn:hover {
           background: #eff6ff;
-          border-color: #2563eb;
           color: #2563eb;
         }
-        .gantt_row:hover .gantt-row-menu-btn {
-          display: inline-flex;
+        .gantt-row-menu-btn:focus,
+        .gantt-row-menu-btn:focus-visible {
+          outline: none;
         }
         
-        .gantt-status-pill {
+        .gantt-status-text {
           display: inline-block;
-          padding: 2px 8px;
-          border-radius: 9999px;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           line-height: 1.4;
           white-space: nowrap;
@@ -974,10 +1032,10 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-status-select {
           appearance: none;
           -webkit-appearance: none;
-          padding: 2px 20px 2px 8px;
+          background: transparent;
+          padding: 2px 20px 2px 4px;
           border: none;
-          border-radius: 9999px;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           line-height: 1.4;
           cursor: pointer;
@@ -986,26 +1044,55 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           background-position: right 6px center;
         }
         
+        .gantt-progress-value {
+          font-size: 11px;
+          font-weight: 600;
+          color: #475569;
+        }
+        .gantt-progress-input {
+          width: 56px;
+          padding: 2px 6px;
+          font-size: 11px;
+          font-weight: 600;
+          text-align: center;
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          color: #334155;
+        }
+        .gantt-progress-input:disabled {
+          background: #f8fafc;
+          color: #94a3b8;
+          cursor: not-allowed;
+        }
+        .gantt-progress-input:focus {
+          outline: none;
+          border-color: #6366f1;
+        }
+
         .gantt-columns-menu-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 20px;
-          height: 20px;
+          width: 26px;
+          height: 26px;
           padding: 0;
           line-height: 1;
-          font-size: 14px;
-          font-weight: 600;
+          font-size: 18px;
+          font-weight: 300;
           border-radius: 4px;
-          border: 1px solid transparent;
+          border: none;
+          outline: none;
           background: transparent;
           color: #64748b;
           cursor: pointer;
         }
         .gantt-columns-menu-btn:hover {
           background: #eff6ff;
-          border-color: #2563eb;
           color: #2563eb;
+        }
+        .gantt-columns-menu-btn:focus,
+        .gantt-columns-menu-btn:focus-visible {
+          outline: none;
         }
         
         .gantt-row-menu {

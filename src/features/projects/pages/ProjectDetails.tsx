@@ -129,9 +129,9 @@ const ProjectDetails: React.FC = () => {
     // top bar), edge to edge in both directions.
     <div className="flex flex-col w-full min-h-[calc(100vh-4rem)] bg-white">
       {/* Header */}
-      <div className="flex items-center flex-shrink-0 gap-4 px-6 py-4 bg-white lg:px-8">
+      <div className="flex items-center flex-shrink-0 gap-4 px-6 pt-2 pb-3 bg-white lg:px-8">
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-3 mt-1">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-semibold text-[22px] tracking-tight text-slate-900 truncate">
               {project.name}
             </h1>
