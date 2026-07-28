@@ -669,7 +669,7 @@ const OrgTree: React.FC<{
       >
         {people.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-400 text-[13px]">
-            No workspace members yet.
+            No organization members yet.
           </div>
         ) : (
           <div className="relative" style={{ width, height, minWidth: "100%" }}>

@@ -26,8 +26,8 @@ const AccessForbiddenModal: React.FC<AccessForbiddenModalProps> = ({
 
         <div className="p-6">
           <p className="text-[13px] text-slate-600 leading-relaxed">
-            Your account only has access to the workspace you were invited
-            to. You can't switch to or create another workspace.
+            Your account only has access to the organization you were invited
+            to. You can't switch to or create another organization.
           </p>
         </div>
 

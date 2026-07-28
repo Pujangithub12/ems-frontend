@@ -37,8 +37,8 @@ export async function fetchInventoryItems(projectId: string): Promise<InventoryI
   return res.data.items ?? [];
 }
 
-/** GET all inventory items across every project in the workspace (sidebar Inventory page). */
-export async function fetchWorkspaceInventory(): Promise<InventoryItem[]> {
+/** GET all inventory items across every project in the organization (sidebar Inventory page). */
+export async function fetchOrganizationInventory(): Promise<InventoryItem[]> {
   const res = await api.get<{ items: InventoryItem[] }>("/api/workspace/inventory");
   return res.data.items ?? [];
 }
@@ -145,8 +145,8 @@ export async function deleteInventoryAttachment(itemId: number, attachmentId: nu
   await api.delete(`/api/projects/inventory/${itemId}/attachments/${attachmentId}`);
 }
 
-/** GET all warehouses in the workspace. */
-export async function fetchWorkspaceWarehouses(): Promise<Warehouse[]> {
+/** GET all warehouses in the organization. */
+export async function fetchOrganizationWarehouses(): Promise<Warehouse[]> {
   const res = await api.get<{ warehouses: Warehouse[] }>("/api/workspace/warehouses");
   return res.data.warehouses ?? [];
 }
@@ -167,22 +167,22 @@ export async function deleteWarehouse(warehouseId: number): Promise<void> {
   await api.delete(`/api/workspace/warehouses/${warehouseId}`);
 }
 
-/** GET pending/in-transit transfers across the workspace, for the KPI strip. */
-export async function fetchWorkspacePendingTransfers(): Promise<StockTransfer[]> {
+/** GET pending/in-transit transfers across the organization, for the KPI strip. */
+export async function fetchOrganizationPendingTransfers(): Promise<StockTransfer[]> {
   const res = await api.get<{ transfers: StockTransfer[] }>("/api/workspace/inventory/transfers");
   return res.data.transfers ?? [];
 }
 
-/** GET recent audit-log entries across the workspace, for the sidebar widget. */
-export async function fetchWorkspaceInventoryTransactions(): Promise<InventoryTransaction[]> {
+/** GET recent audit-log entries across the organization, for the sidebar widget. */
+export async function fetchOrganizationInventoryTransactions(): Promise<InventoryTransaction[]> {
   const res = await api.get<{ transactions: InventoryTransaction[] }>(
     "/api/workspace/inventory/transactions",
   );
   return res.data.transactions ?? [];
 }
 
-/** GET all vendors in the workspace. */
-export async function fetchWorkspaceVendors(): Promise<Vendor[]> {
+/** GET all vendors in the organization. */
+export async function fetchOrganizationVendors(): Promise<Vendor[]> {
   const res = await api.get<{ vendors: Vendor[] }>("/api/workspace/vendors");
   return res.data.vendors ?? [];
 }
@@ -194,6 +194,9 @@ export async function createVendor(input: {
   location?: string;
   contact?: string;
   contractExpiryDate?: string;
+  contactPerson?: string;
+  address?: string;
+  email?: string;
 }): Promise<Vendor> {
   const res = await api.post<{ vendor: Vendor }>("/api/workspace/vendors", input);
   return res.data.vendor;
@@ -202,7 +205,16 @@ export async function createVendor(input: {
 /** PUT update a vendor. */
 export async function updateVendor(
   vendorId: number,
-  input: { name?: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string | null },
+  input: {
+    name?: string;
+    code?: string;
+    location?: string;
+    contact?: string;
+    contractExpiryDate?: string | null;
+    contactPerson?: string;
+    address?: string;
+    email?: string;
+  },
 ): Promise<Vendor> {
   const res = await api.put<{ vendor: Vendor }>(`/api/workspace/vendors/${vendorId}`, input);
   return res.data.vendor;
@@ -214,7 +226,7 @@ export async function deleteVendor(vendorId: number): Promise<void> {
 }
 
 /** GET the shared item catalog (name + code) — used by both the Inventory and Procurement "Add item" forms. */
-export async function fetchWorkspaceItems(): Promise<CatalogItem[]> {
+export async function fetchOrganizationItems(): Promise<CatalogItem[]> {
   const res = await api.get<{ items: CatalogItem[] }>("/api/workspace/items");
   return res.data.items ?? [];
 }

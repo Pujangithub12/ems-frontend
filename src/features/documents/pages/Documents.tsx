@@ -21,14 +21,14 @@ import {
 } from "lucide-react";
 import { ProjectFile } from "../../../types";
 import { formatFileSize } from "../api/documents.api";
-import { workspaceDownloadUrl } from "../api/workspaceDocuments.api";
+import { organizationDownloadUrl } from "../api/organizationDocuments.api";
 import {
-  useWorkspaceFilesQuery,
-  useUploadWorkspaceFileMutation,
-  useCreateWorkspaceFolderMutation,
-  useDeleteWorkspaceFileMutation,
-  useRenameWorkspaceFileMutation,
-} from "../hooks/useWorkspaceFiles";
+  useOrganizationFilesQuery,
+  useUploadOrganizationFileMutation,
+  useCreateOrganizationFolderMutation,
+  useDeleteOrganizationFileMutation,
+  useRenameOrganizationFileMutation,
+} from "../hooks/useOrganizationFiles";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import ManageAccessModal from "../components/ManageAccessModal";
@@ -238,17 +238,17 @@ const Documents: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const filesQuery = useWorkspaceFilesQuery();
+  const filesQuery = useOrganizationFilesQuery();
   const files = filesQuery.data ?? [];
   const loading = filesQuery.isLoading;
   const error = filesQuery.isError
     ? getErrorMessage(filesQuery.error, "Failed to load documents.")
     : null;
   const [refreshing, setRefreshing] = useState(false);
-  const uploadFileMutation = useUploadWorkspaceFileMutation();
-  const createFolderMutation = useCreateWorkspaceFolderMutation();
-  const deleteFileMutation = useDeleteWorkspaceFileMutation();
-  const renameFileMutation = useRenameWorkspaceFileMutation();
+  const uploadFileMutation = useUploadOrganizationFileMutation();
+  const createFolderMutation = useCreateOrganizationFolderMutation();
+  const deleteFileMutation = useDeleteOrganizationFileMutation();
+  const renameFileMutation = useRenameOrganizationFileMutation();
 
   const [selectedFolderId, setSelectedFolderId] = useState<number | typeof ALL_DOCUMENTS>(
     ALL_DOCUMENTS,
@@ -709,7 +709,7 @@ const Documents: React.FC = () => {
                             <div className="flex items-center justify-end gap-1">
                               {!row.isFolder && (
                                 <a
-                                  href={workspaceDownloadUrl(row.id)}
+                                  href={organizationDownloadUrl(row.id)}
                                   className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
                                   title="Download"
                                 >

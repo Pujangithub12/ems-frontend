@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { getErrorMessage } from "../../../lib/errors";
-import { useWorkspaceWarehousesQuery, useCreateWarehouseMutation } from "../hooks/useInventory";
+import { useOrganizationWarehousesQuery, useCreateWarehouseMutation } from "../hooks/useInventory";
 
 interface WarehouseFieldProps {
   /** The selected warehouse's id, or null for "Unassigned". */
@@ -13,7 +13,7 @@ interface WarehouseFieldProps {
 
 /**
  * Warehouse field for the Add/Edit Inventory Item form — select-only (never
- * free text), backed by the workspace's existing warehouses. The "Add
+ * free text), backed by the organization's existing warehouses. The "Add
  * warehouse" link opens a floating popover (mirrors ItemNameField), rendered
  * via a portal into document.body and positioned `fixed` off the trigger
  * button's own rect — needed because this field is normally used inside a
@@ -21,7 +21,7 @@ interface WarehouseFieldProps {
  * absolutely-positioned popover that overflows the modal's bounds.
  */
 const WarehouseField: React.FC<WarehouseFieldProps> = ({ warehouseId, onSelect }) => {
-  const warehousesQuery = useWorkspaceWarehousesQuery();
+  const warehousesQuery = useOrganizationWarehousesQuery();
   const warehouses = warehousesQuery.data ?? [];
   const createMutation = useCreateWarehouseMutation();
 

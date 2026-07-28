@@ -95,7 +95,7 @@ const StatBlock: React.FC<{
 
 const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, workspace } = useAuth();
+  const { user, organization } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const {
@@ -348,11 +348,11 @@ const ProjectsPage: React.FC = () => {
               key={project.id}
               role="button"
               tabIndex={0}
-              onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
+              onClick={() => navigate(`/${organization?.id}/project/${project.id}/details`)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  navigate(`/${workspace?.id}/project/${project.id}/details`);
+                  navigate(`/${organization?.id}/project/${project.id}/details`);
                 }
               }}
               className="relative flex flex-col w-full gap-3 px-5 py-4 text-left transition-shadow bg-white border rounded-lg shadow-sm cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"

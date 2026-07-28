@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Clock,
   User as UserRoundIcon,
+  Flag,
 } from "lucide-react";
 
 const formatDate = (dateString: string) =>
@@ -80,10 +81,10 @@ const StatusPill: React.FC<{ type: "priority"; value: string }> = ({ value }) =>
   }
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
-      style={{ fontFamily: "'JetBrains Mono', monospace", background: bg, color: fg }}
+      className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
+      style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
     >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: fg }} />
+      <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
       {value}
     </span>
   );

@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { ShieldCheck, Users as UsersIcon, Building2 } from "lucide-react";
-import WorkspaceTab from "../components/WorkspaceTab";
+import OrganizationTab from "../components/OrganizationTab";
 import MembersTab from "../components/MembersTab";
 import RolesPermissionsTab from "../components/RolesPermissionsTab";
 
-type Tab = "workspace" | "members" | "roles";
+type Tab = "organization" | "members" | "roles";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "roles", label: "Roles & Permissions", icon: ShieldCheck },
   { id: "members", label: "Members", icon: UsersIcon },
-  { id: "workspace", label: "Workspace", icon: Building2 },
+  { id: "organization", label: "Organization", icon: Building2 },
 ];
 
 const Settings: React.FC = () => {
@@ -23,7 +23,7 @@ const Settings: React.FC = () => {
           Settings
         </h2>
         <p className="text-slate-500 text-[14px] mt-1">
-          Manage your workspace, members, and roles.
+          Manage your organization, members, and roles.
         </p>
       </div>
 
@@ -46,7 +46,7 @@ const Settings: React.FC = () => {
         ))}
       </div>
 
-      {activeTab === "workspace" && <WorkspaceTab />}
+      {activeTab === "organization" && <OrganizationTab />}
 
       {activeTab === "members" && <MembersTab />}
 

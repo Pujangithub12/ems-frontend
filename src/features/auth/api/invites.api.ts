@@ -8,7 +8,7 @@ export type InvitePreview = {
 
 export type InviteLookup = {
   invite: InvitePreview;
-  workspaceName: string;
+  organizationName: string;
 };
 
 /** GET /api/invites/:token — public, unauthenticated. Resolves an invite token to its preview details. */
@@ -16,6 +16,6 @@ export async function getInvite(token: string): Promise<InviteLookup> {
   const res = await api.get(`/api/invites/${token}`);
   return {
     invite: res.data.invite,
-    workspaceName: res.data.workspace?.name || "the workspace",
+    organizationName: res.data.organization?.name || "the organization",
   };
 }

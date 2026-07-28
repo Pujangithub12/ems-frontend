@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getTasks,
   createTask,
@@ -13,7 +13,7 @@ import {
 } from "../api/tasks.api";
 
 export function useTasks() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.tasks(wsId),
     queryFn: getTasks,
@@ -22,7 +22,7 @@ export function useTasks() {
 }
 
 export function useCreateTask() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: FormData) => createTask(payload),
@@ -33,7 +33,7 @@ export function useCreateTask() {
 }
 
 export function useCreateProjectTask() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -50,7 +50,7 @@ export function useCreateProjectTask() {
 }
 
 export function useUpdateTask() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: UpdateTaskPayload | FormData }) =>
@@ -62,7 +62,7 @@ export function useUpdateTask() {
 }
 
 export function useUpdateTaskStatus() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => updateTaskStatus(id, status),
@@ -73,7 +73,7 @@ export function useUpdateTaskStatus() {
 }
 
 export function useDeleteTask() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteTask(id),

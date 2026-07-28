@@ -10,7 +10,7 @@ export type User = {
   createdAt: string;
 };
 
-/** One entry per workspace member — a flat org chart, not a nested tree. */
+/** One entry per organization member — a flat org chart, not a nested tree. */
 export type HierarchyPerson = {
   id: number;
   userId: number;
@@ -89,6 +89,11 @@ export type Vendor = {
   location?: string | null;
   contact?: string | null;
   contractExpiryDate?: string | null;
+  /** Contact person's name at the vendor — distinct from `name`, which is the company name. Used on generated Purchase Order PDFs. */
+  contactPerson?: string | null;
+  /** Full postal address, for the generated Purchase Order PDF's "VENDOR" box — distinct from the shorter free-text `location`. */
+  address?: string | null;
+  email?: string | null;
   createdAt: string;
 };
 
@@ -122,7 +127,7 @@ export type InventoryItem = {
   warrantyExpiryDate?: string | null;
   updatedBy?: { id: number; fullName: string } | null;
   createdAt: string;
-  /** Set only on the workspace-wide Inventory page (aggregated across projects). */
+  /** Set only on the organization-wide Inventory page (aggregated across projects). */
   projectId?: number;
   projectName?: string;
 };
@@ -152,7 +157,7 @@ export type InventoryTransaction = {
   resultingQuantity: number;
   reason?: string | null;
   performedBy?: { id: number; fullName: string } | null;
-  /** Only present on the workspace-wide feed (GET /workspace/inventory/transactions). */
+  /** Only present on the organization-wide feed (GET /organization/inventory/transactions). */
   inventoryItem?: { id: number; itemName: string };
   createdAt: string;
 };
@@ -177,6 +182,23 @@ export type InventoryAttachment = {
   createdAt: string;
 };
 
+/** One row in the Inventory drawer's "Purchase History" section — a PurchaseOrderItem with the same item name, across the organization (procurement pipeline v2; replaces the old ProcurementItem-based lookup). */
+export type InventoryPurchaseHistoryEntry = {
+  id: number;
+  itemName: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | string | null;
+  purchaseOrder?: {
+    id: number;
+    poNumber?: string | null;
+    status: string;
+    vendor?: { id: number; name: string } | null;
+    project?: { id: number; name: string } | null;
+    createdAt: string;
+  } | null;
+};
+
 export type InventoryItemDetail = {
   item: InventoryItem;
   batches: InventoryBatch[];
@@ -184,38 +206,43 @@ export type InventoryItemDetail = {
   transactions: InventoryTransaction[];
   transfers: StockTransfer[];
   attachments: InventoryAttachment[];
-  purchaseHistory: ProcurementItem[];
+  purchaseHistory: InventoryPurchaseHistoryEntry[];
   projectAllocation: InventoryItem[];
 };
 
-export type ProcurementItem = {
+// ---------------------------------------------------------------------------
+// Procurement pipeline v2: Purchase Request -> Vendor Selection -> Purchase
+// Order -> Proforma Invoice -> Shipment/Insurance/Customs -> Cost Sheet ->
+// Goods Receipt -> Inventory. Replaces the retired flat ProcurementItem model
+// (old feature's pages/types have been removed along with it).
+// ---------------------------------------------------------------------------
+
+export type PurchaseRequestPriority = "low" | "medium" | "high" | "urgent";
+export type PurchaseRequestStatus = "draft" | "submitted" | "approved" | "rejected" | "converted_to_po";
+export type PurchaseRequestAttachmentType = "general" | "quotation" | "comparison_sheet";
+
+export type PurchaseRequestItem = {
   id: number;
   itemName: string;
-  /** References the shared item catalog — null for rows created before catalog-linking existed (or via CSV import). */
   item?: { id: number; name: string; code?: string | null } | null;
-  poNumber?: string | null;
-  category: "hardware" | "software" | "service";
+  itemId?: number | null;
   quantity: number;
   unit?: string | null;
-  estimatedCost?: number | string | null;
-  unitCost?: number | string | null;
-  taxPercent?: number | string | null;
-  discountPercent?: number | string | null;
-  transportCost?: number | string | null;
-  customsCost?: number | string | null;
-  vendorName?: string | null;
-  vendor?: { id: number; name: string } | null;
-  neededByDate?: string | null;
-  status: "pending" | "approved" | "ordered" | "delivered";
+  estimatedPrice?: number | string | null;
   notes?: string | null;
-  requestedBy?: { id: number; fullName: string } | null;
-  createdAt: string;
-  /** Set only on the workspace-wide Procurement page (aggregated across projects). */
-  projectId?: number;
-  projectName?: string;
 };
 
-export type ProcurementStatusHistory = {
+export type VendorQuote = {
+  id: number;
+  price: number | string;
+  notes?: string | null;
+  isSelected: boolean;
+  vendorId?: number | null;
+  vendor?: Vendor | null;
+  createdAt: string;
+};
+
+export type PurchaseRequestStatusHistoryEntry = {
   id: number;
   fromStatus?: string | null;
   toStatus: string;
@@ -224,7 +251,56 @@ export type ProcurementStatusHistory = {
   createdAt: string;
 };
 
-export type ProcurementAttachment = {
+export type PurchaseRequestAttachment = {
+  id: number;
+  fileName: string;
+  filePath: string;
+  documentType: PurchaseRequestAttachmentType;
+  uploadedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type PurchaseRequest = {
+  id: number;
+  prNumber?: string | null;
+  department?: string | null;
+  priority: PurchaseRequestPriority;
+  reason?: string | null;
+  status: PurchaseRequestStatus;
+  requestedBy?: { id: number; fullName: string } | null;
+  requestedById?: number | null;
+  project?: { id: number; name: string } | null;
+  projectId?: number;
+  items: PurchaseRequestItem[];
+  vendorQuotes: VendorQuote[];
+  purchaseOrder?: { id: number; poNumber?: string | null; status: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PurchaseRequestDetail = {
+  purchaseRequest: PurchaseRequest;
+  statusHistory: PurchaseRequestStatusHistoryEntry[];
+  attachments: PurchaseRequestAttachment[];
+};
+
+export type PurchaseOrderStatus = "created" | "sent" | "accepted" | "cancelled" | "completed";
+export type PurchaseType = "local" | "international";
+
+export type PurchaseOrderItem = {
+  id: number;
+  itemName: string;
+  item?: { id: number; name: string; code?: string | null } | null;
+  itemId?: number | null;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | string | null;
+  notes?: string | null;
+  /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
+  hsnCode?: string | null;
+};
+
+export type PurchaseOrderAttachment = {
   id: number;
   fileName: string;
   filePath: string;
@@ -232,11 +308,194 @@ export type ProcurementAttachment = {
   createdAt: string;
 };
 
-export type ProcurementItemDetail = {
-  item: ProcurementItem;
-  statusHistory: ProcurementStatusHistory[];
-  attachments: ProcurementAttachment[];
-  projectAllocation: ProcurementItem[];
+export type PurchaseOrderStatusHistoryEntry = {
+  id: number;
+  fromStatus?: string | null;
+  toStatus: string;
+  changedBy?: { id: number; fullName: string } | null;
+  createdAt: string;
+};
+
+export type ProformaInvoiceStatus = "waiting" | "approved" | "rejected";
+
+export type ProformaInvoiceItem = {
+  id: number;
+  itemName: string;
+  item?: { id: number; name: string; code?: string | null } | null;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | string | null;
+};
+
+export type ProformaInvoice = {
+  id: number;
+  piNumber?: string | null;
+  piDate?: string | null;
+  currency: string;
+  exchangeRate: number | string;
+  paymentTerms?: string | null;
+  validityDate?: string | null;
+  fileName?: string | null;
+  filePath?: string | null;
+  status: ProformaInvoiceStatus;
+  items: ProformaInvoiceItem[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ShipmentTransportMode = "road" | "sea" | "air";
+export type ShipmentStatus = "booked" | "in_transit" | "arrived" | "delivered";
+
+export type Insurance = {
+  id: number;
+  insuranceCompany?: string | null;
+  policyNumber?: string | null;
+  coverage?: number | string | null;
+  premium?: number | string | null;
+  claimStatus?: string | null;
+};
+
+export type CustomsDocumentType =
+  | "bill_of_lading"
+  | "commercial_invoice"
+  | "packing_list"
+  | "certificate_of_origin"
+  | "insurance_certificate"
+  | "other";
+
+export type CustomsDocument = {
+  id: number;
+  documentType: CustomsDocumentType;
+  fileName: string;
+  filePath: string;
+  createdAt: string;
+};
+
+export type Customs = {
+  id: number;
+  customDeclarationNumber?: string | null;
+  billOfEntry?: string | null;
+  hsCode?: string | null;
+  clearingAgent?: string | null;
+  port?: string | null;
+  importDuty?: number | string | null;
+  vat?: number | string | null;
+  excise?: number | string | null;
+  serviceCharge?: number | string | null;
+  documentationCost?: number | string | null;
+  inspectionCost?: number | string | null;
+  warehouseCost?: number | string | null;
+  miscellaneousCost?: number | string | null;
+  documents: CustomsDocument[];
+};
+
+export type Shipment = {
+  id: number;
+  shipmentNo?: string | null;
+  transportMode: ShipmentTransportMode;
+  transportCompany?: string | null;
+  containerNo?: string | null;
+  vehicleNo?: string | null;
+  trackingNo?: string | null;
+  etd?: string | null;
+  eta?: string | null;
+  arrivalDate?: string | null;
+  status: ShipmentStatus;
+  freightCost?: number | string | null;
+  loadingCost?: number | string | null;
+  unloadingCost?: number | string | null;
+  fuelCost?: number | string | null;
+  miscellaneousCost?: number | string | null;
+  localTaxCost?: number | string | null;
+  insurance?: Insurance | null;
+  customs?: Customs | null;
+};
+
+export type GoodsReceiptStatus = "pending_inspection" | "accepted" | "partially_accepted" | "rejected";
+
+export type GoodsReceiptItem = {
+  id: number;
+  purchaseOrderItemId: number | null;
+  receivedQuantity: number;
+  damagedQuantity: number;
+};
+
+export type GoodsReceiptPhoto = {
+  id: number;
+  fileName: string;
+  filePath: string;
+  createdAt: string;
+};
+
+export type GoodsReceipt = {
+  id: number;
+  grnNumber?: string | null;
+  inspectionResult?: string | null;
+  status: GoodsReceiptStatus;
+  warehouse?: { id: number; name: string } | null;
+  receivedBy?: { id: number; fullName: string } | null;
+  items: GoodsReceiptItem[];
+  photos: GoodsReceiptPhoto[];
+  createdAt: string;
+};
+
+/** Always computed on the fly (GET /purchase-orders/:id/cost-sheet), never stored — spec section 9's landed-cost breakdown. */
+export type CostSheet = {
+  piValue: number;
+  piSource: "proforma_invoice" | "purchase_order_items";
+  freight: number;
+  loading: number;
+  unloading: number;
+  fuel: number;
+  shipmentMiscellaneous: number;
+  localTax: number;
+  insurancePremium: number;
+  customsDuty: number;
+  customsVat: number;
+  customsExcise: number;
+  customsServiceCharge: number;
+  customsDocumentation: number;
+  customsInspection: number;
+  customsWarehouse: number;
+  customsMiscellaneous: number;
+  grandTotal: number;
+  totalQuantity: number;
+  landedCostPerUnit: number;
+};
+
+export type PurchaseOrder = {
+  id: number;
+  poNumber?: string | null;
+  deliveryAddress?: string | null;
+  paymentTerms?: string | null;
+  deliveryDate?: string | null;
+  incoterms?: string | null;
+  taxPercent?: number | string | null;
+  terms?: string | null;
+  /** Free-text shipping arrangement for the PO PDF (e.g. "Ex-factory, Bhiwadi, Rajasthan") — distinct from `incoterms`. */
+  shippingTerms?: string | null;
+  /** Free-text delivery period for the PO PDF (e.g. "Within 6 weeks of submission of PO.") — distinct from `deliveryDate`, which is a specific date. */
+  deliveryPeriod?: string | null;
+  finalDestination?: string | null;
+  purchaseType: PurchaseType;
+  status: PurchaseOrderStatus;
+  vendor?: Vendor | null;
+  vendorId?: number | null;
+  project?: { id: number; name: string } | null;
+  projectId?: number;
+  purchaseRequest?: { id: number; prNumber?: string | null } | null;
+  items: PurchaseOrderItem[];
+  attachments?: PurchaseOrderAttachment[];
+  statusHistory?: PurchaseOrderStatusHistoryEntry[];
+  proformaInvoices?: ProformaInvoice[];
+  shipment?: Shipment | null;
+  goodsReceipts?: GoodsReceipt[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PurchaseOrderDetail = {
+  purchaseOrder: PurchaseOrder;
 };
 
 export type ReportKpi = {
@@ -260,7 +519,7 @@ export type ReportSummary = {
   procurementCostTrend: { month: string; value: number }[];
   spendByCategory: { category: InventoryItem["category"]; value: number }[];
   inventoryValueByCategory: { category: InventoryItem["category"]; value: number }[];
-  poStatusBreakdown: { status: ProcurementItem["status"]; count: number }[];
+  poStatusBreakdown: { status: PurchaseOrderStatus; count: number }[];
   warehouseUtilization: { id: number; name: string; used: number; capacity: number }[];
   stockMovementTrend: { month: string; receipt: number; issue: number; adjustment: number; transferred: number }[];
   topPurchasedItems: { id: number; itemName: string; value: number }[];

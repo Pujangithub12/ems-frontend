@@ -84,7 +84,7 @@ const MembersTab: React.FC = () => {
       <div className="overflow-hidden bg-white border rounded-md border-slate-200">
         <div className="flex items-center px-5 py-4 border-b border-slate-200">
           <div className="font-semibold text-[15px] text-slate-900">
-            Workspace members
+            Organization members
           </div>
           {isAdmin && (
             <button
@@ -170,7 +170,7 @@ const MembersTab: React.FC = () => {
                             onClick={() => setRemoveTarget(m)}
                             disabled={m.id === Number(user?.id)}
                             className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            title={m.id === Number(user?.id) ? "You can't remove yourself" : "Remove from workspace"}
+                            title={m.id === Number(user?.id) ? "You can't remove yourself" : "Remove from organization"}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -208,7 +208,7 @@ const MembersTab: React.FC = () => {
         onClose={() => setRemoveTarget(null)}
         onConfirm={handleConfirmRemove}
         title="Remove Member"
-        message={`Remove ${removeTarget?.fullName} from this workspace? Their account is not deleted.`}
+        message={`Remove ${removeTarget?.fullName} from this organization? Their account is not deleted.`}
         confirmText="Remove"
       />
     </>

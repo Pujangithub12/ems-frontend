@@ -13,7 +13,7 @@ export type ProjectPayload = Partial<{
   sellingPrice: number | null;
 }>;
 
-/** GET /api/projects — the workspace's project list (lighter shape, no headings/files). */
+/** GET /api/projects — the organization's project list (lighter shape, no headings/files). */
 export async function getProjects(): Promise<Project[]> {
   const res = await api.get<Project[]>("/api/projects");
   return res.data;

@@ -1,14 +1,14 @@
 import api from "../../../api/axios";
 import { ProjectFile } from "../../../types";
 
-/** GET all files/folders for the workspace-level sidebar Documents page (flat list; nesting is via parentId). */
-export async function fetchWorkspaceFiles(): Promise<ProjectFile[]> {
+/** GET all files/folders for the organization-level sidebar Documents page (flat list; nesting is via parentId). */
+export async function fetchOrganizationFiles(): Promise<ProjectFile[]> {
   const res = await api.get<{ files: ProjectFile[] }>("/api/workspace/files");
   return res.data.files ?? [];
 }
 
 /** POST create a folder, optionally nested inside another folder. */
-export async function createWorkspaceFolder(
+export async function createOrganizationFolder(
   name: string,
   parentId: number | null,
 ): Promise<ProjectFile> {
@@ -20,7 +20,7 @@ export async function createWorkspaceFolder(
 }
 
 /** POST upload a file into an optional folder. */
-export async function uploadWorkspaceFile(
+export async function uploadOrganizationFile(
   file: File,
   parentId: number | null,
 ): Promise<ProjectFile> {
@@ -36,12 +36,12 @@ export async function uploadWorkspaceFile(
 }
 
 /** DELETE a file, or a folder and everything inside it — same endpoint used by the project Documents tab. */
-export async function deleteWorkspaceFile(fileId: number): Promise<void> {
+export async function deleteOrganizationFile(fileId: number): Promise<void> {
   await api.delete(`/api/projects/files/${fileId}`);
 }
 
 /** PUT rename a file or folder — same endpoint used by the project Documents tab. */
-export async function renameWorkspaceFile(
+export async function renameOrganizationFile(
   fileId: number,
   name: string,
 ): Promise<ProjectFile> {
@@ -52,7 +52,7 @@ export async function renameWorkspaceFile(
 }
 
 /** Direct download URL for a file (opened in a new tab / set as href). */
-export function workspaceDownloadUrl(fileId: number): string {
+export function organizationDownloadUrl(fileId: number): string {
   const base = (api.defaults.baseURL ?? "").replace(/\/$/, "");
   return `${base}/api/projects/files/${fileId}/download`;
 }

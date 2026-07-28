@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchReportSummary,
   fetchReportActivity,
@@ -11,7 +11,7 @@ import {
 } from "../api/reports.api";
 
 export function useReportSummaryQuery(filters: ReportFilters) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.reportSummary(wsId, filters as Record<string, string | number | undefined>),
     queryFn: () => fetchReportSummary(filters),
@@ -20,7 +20,7 @@ export function useReportSummaryQuery(filters: ReportFilters) {
 }
 
 export function useReportActivityQuery(action?: "viewed" | "exported") {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.reportActivity(wsId, action),
     queryFn: () => fetchReportActivity(action),
@@ -29,7 +29,7 @@ export function useReportActivityQuery(action?: "viewed" | "exported") {
 }
 
 export function useLogReportActivityMutation() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { reportType: string; action: "viewed" | "exported"; format?: string }) =>
@@ -41,7 +41,7 @@ export function useLogReportActivityMutation() {
 }
 
 export function useReportCommentsQuery(reportKey: string | null) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.reportComments(wsId, reportKey ?? ""),
     queryFn: () => fetchReportComments(reportKey as string),

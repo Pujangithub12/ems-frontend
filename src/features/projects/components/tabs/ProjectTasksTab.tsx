@@ -22,6 +22,7 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  Flag,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, ProjectTask } from "../../../../types";
@@ -52,9 +53,9 @@ const COLUMNS: { status: TaskStatus; title: string; accent: string }[] = [
 ];
 
 const PRIORITY_STYLES: Record<string, string> = {
-  high: "bg-rose-50 text-rose-600 border-rose-100",
-  medium: "bg-amber-50 text-amber-600 border-amber-100",
-  low: "bg-emerald-50 text-emerald-600 border-emerald-100",
+  high: "text-rose-600",
+  medium: "text-amber-600",
+  low: "text-emerald-600",
 };
 
 const TaskCardContent: React.FC<{
@@ -78,10 +79,11 @@ const TaskCardContent: React.FC<{
         <div className="flex items-center gap-1">
           {task.priority && (
             <span
-              className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+              className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide ${
                 PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium
               }`}
             >
+              <Flag className="w-2.5 h-2.5" fill="currentColor" strokeWidth={1.5} />
               {task.priority}
             </span>
           )}

@@ -42,7 +42,7 @@ const tabs = [
 ];
 
 const ProjectDetails: React.FC = () => {
-  const { workspaceId, id } = useParams<{ workspaceId: string; id: string }>();
+  const { organizationId, id } = useParams<{ organizationId: string; id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -85,7 +85,7 @@ const ProjectDetails: React.FC = () => {
           {error || "The project you are looking for does not exist."}
         </p>
         <button
-          onClick={() => navigate(`/${workspaceId}/project`)}
+          onClick={() => navigate(`/${organizationId}/project`)}
           className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
         >
           Back to Projects

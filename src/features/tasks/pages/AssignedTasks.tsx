@@ -43,6 +43,7 @@ import {
   PauseCircle,
   User as UserRoundIcon,
   MoreVertical,
+  Flag,
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 
@@ -196,6 +197,17 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
       label = "On Hold";
     }
   }
+  if (type === "priority") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
+        style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
+      >
+        <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
+        {label}
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
@@ -306,6 +318,7 @@ const AssignedTasks: React.FC = () => {
   type ModalSubTask = {
     id: string;
     title: string;
+    estimatedDays?: string;
     subTasks?: ModalSubTask[];
   };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
@@ -339,6 +352,7 @@ const AssignedTasks: React.FC = () => {
     id: string | number;
     title: string;
     progress?: number;
+    estimatedDays?: number | null;
     history?: { id: string; date: string; title: string; progress: number }[];
     subTasks: DetailedSubTask[];
   };
@@ -346,6 +360,12 @@ const AssignedTasks: React.FC = () => {
     Record<number, DetailedSubTask[]>
   >({});
   const [newSubTaskTitle, setNewSubTaskTitle] = useState<
+    Record<number, string>
+  >({});
+  // Estimated days for the "add subtask to existing task" inline form —
+  // keyed by task id, same pattern as newSubTaskTitle above. Weights this
+  // subtask's contribution to the parent task's rolled-up progress.
+  const [newSubTaskEstimatedDays, setNewSubTaskEstimatedDays] = useState<
     Record<number, string>
   >({});
   const [expandedNestedSubTasks, setExpandedNestedSubTasks] = useState<
@@ -486,6 +506,7 @@ const AssignedTasks: React.FC = () => {
       id: st.id,
       title: st.title,
       progress: st.progress || 0,
+      estimatedDays: st.estimatedDays ?? null,
       history: st.history || [],
       subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
@@ -494,12 +515,17 @@ const AssignedTasks: React.FC = () => {
     subTasks.map((st) => ({
       id: st.id.toString(),
       title: st.title,
+      estimatedDays: st.estimatedDays != null ? String(st.estimatedDays) : "",
       subTasks: convertToModal(st.subTasks || []),
     }));
 
+  // Weighted by estimatedDays (mirrors backend's computeAverageLeafProgress
+  // in subtaskTree.ts) so a big subtask finishing moves the parent's
+  // progress more than a small one does, instead of every subtask counting
+  // equally. A leaf with no estimatedDays set falls back to a weight of 1.
   const computeAverageLeafProgress = (subTasks: DetailedSubTask[]): number => {
-    let sum = 0;
-    let count = 0;
+    let weightedSum = 0;
+    let totalWeight = 0;
 
     const visit = (list: DetailedSubTask[]) => {
       for (const st of list) {
@@ -509,14 +535,18 @@ const AssignedTasks: React.FC = () => {
         } else {
           const v = typeof st.progress === "number" ? st.progress : 0;
           const clamped = Math.max(0, Math.min(100, v));
-          sum += clamped;
-          count += 1;
+          const weight =
+            typeof st.estimatedDays === "number" && st.estimatedDays > 0
+              ? st.estimatedDays
+              : 1;
+          weightedSum += clamped * weight;
+          totalWeight += weight;
         }
       }
     };
 
     visit(subTasks || []);
-    return count === 0 ? 0 : Math.round(sum / count);
+    return totalWeight === 0 ? 0 : Math.round(weightedSum / totalWeight);
   };
 
   const updateSubTaskProgressInTree = (
@@ -870,10 +900,16 @@ const AssignedTasks: React.FC = () => {
   ) => {
     const title = overrideTitle ?? (newSubTaskTitle[taskId] || "");
     if (!title.trim()) return;
+    const estimatedDaysRaw = overrideTitle ? "" : newSubTaskEstimatedDays[taskId] || "";
+    const estimatedDays =
+      estimatedDaysRaw.trim() === "" || Number.isNaN(Number(estimatedDaysRaw))
+        ? null
+        : Number(estimatedDaysRaw);
 
     const newSubTask: DetailedSubTask = {
       id: `temp-${Date.now()}`,
       title,
+      estimatedDays,
       subTasks: [],
     };
 
@@ -895,6 +931,7 @@ const AssignedTasks: React.FC = () => {
 
     if (!overrideTitle) {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
+      setNewSubTaskEstimatedDays((prev) => ({ ...prev, [taskId]: "" }));
     }
 
     try {
@@ -902,6 +939,7 @@ const AssignedTasks: React.FC = () => {
         taskId,
         title,
         parentSubTaskId: parentId ? Number(parentId) : null,
+        estimatedDays,
       });
 
       if (data.subTasks) {
@@ -1882,6 +1920,23 @@ const AssignedTasks: React.FC = () => {
                           className="flex-1 px-3 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
                           placeholder="Sub-task title"
                         />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={subTask.estimatedDays ?? ""}
+                          onChange={(e) => {
+                            const updated = [...newSubTasks];
+                            updated[idx] = {
+                              ...subTask,
+                              estimatedDays: e.target.value,
+                            };
+                            setNewSubTasks(updated);
+                          }}
+                          className="w-16 px-2.5 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                          placeholder="Days"
+                          title="Estimated days — weights this sub-task's share of the task's progress"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -2157,6 +2212,23 @@ const AssignedTasks: React.FC = () => {
                           className="flex-1 px-3 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
                           placeholder="Sub-task title"
                         />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={subTask.estimatedDays ?? ""}
+                          onChange={(e) => {
+                            const updated = [...editSubTasks];
+                            updated[idx] = {
+                              ...subTask,
+                              estimatedDays: e.target.value,
+                            };
+                            setEditSubTasks(updated);
+                          }}
+                          className="w-16 px-2.5 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                          placeholder="Days"
+                          title="Estimated days — weights this sub-task's share of the task's progress"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -2376,6 +2448,27 @@ const AssignedTasks: React.FC = () => {
                         }}
                         className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                         placeholder="Enter sub-task title"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={newSubTaskEstimatedDays[expandedTaskId] || ""}
+                        onChange={(e) =>
+                          setNewSubTaskEstimatedDays((prev) => ({
+                            ...prev,
+                            [expandedTaskId]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSubTaskToTask(expandedTaskId);
+                          }
+                        }}
+                        className="w-24 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        placeholder="Days"
+                        title="Estimated days — weights this sub-task's share of the task's progress"
                       />
                       <button
                         type="button"

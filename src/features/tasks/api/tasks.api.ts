@@ -13,13 +13,13 @@ export type Task = {
   assignedUsers: AssignedUser[];
   files?: string[];
   createdAt: string;
-  subTasks: { id: number; title: string; status: string; children?: any[] }[];
+  subTasks: { id: number; title: string; status: string; estimatedDays?: number | null; children?: any[] }[];
   projectName?: string;
   project?: { id: number; name: string; status?: string };
   createdBy?: { id: number; fullName: string };
 };
 
-/** GET /api/tasks — the full workspace task list (used by both the summary bar and the task list pages). */
+/** GET /api/tasks — the full organization task list (used by both the summary bar and the task list pages). */
 export async function getTasks(): Promise<Task[]> {
   const res = await api.get<Task[]>("/api/tasks");
   return Array.isArray(res.data) ? res.data : [];

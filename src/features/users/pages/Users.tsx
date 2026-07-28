@@ -173,8 +173,8 @@ const Users: React.FC = () => {
           role: userForm.role,
         });
         setInviteSentMessage(
-          result?.message === "Existing user added to workspace"
-            ? `${userForm.email} already had an account — added them to this workspace.`
+          result?.message === "Existing user added to organization"
+            ? `${userForm.email} already had an account — added them to this organization.`
             : `Invitation sent to ${userForm.email}.`,
         );
       }

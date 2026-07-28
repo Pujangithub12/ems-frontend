@@ -15,25 +15,25 @@ import {
 } from "lucide-react";
 import { Eyebrow } from "./SettingsShared";
 import {
-  useWorkspaceAccessMatrix,
-  useGrantWorkspaceAccess,
-  useRevokeWorkspaceAccess,
-} from "../hooks/useWorkspaceAccess";
+  useOrganizationAccessMatrix,
+  useGrantOrganizationAccess,
+  useRevokeOrganizationAccess,
+} from "../hooks/useOrganizationAccess";
 
 /**
- * Lets a caller who belongs to more than one of their own workspaces control
- * which of those workspaces each employee can access — a checkbox grid
- * (employee x workspace) backed by the access-matrix endpoints, rather than
- * having to re-invite the same person from each workspace's Users page.
+ * Lets a caller who belongs to more than one of their own organizations control
+ * which of those organizations each employee can access — a checkbox grid
+ * (employee x organization) backed by the access-matrix endpoints, rather than
+ * having to re-invite the same person from each organization's Users page.
  *
  * Checkbox clicks only stage a change locally — nothing is sent to the
  * server until the admin reviews their selections and clicks "Verify
  * Changes", so a misclick can't instantly grant/revoke real access.
  */
 const AccessMatrixSection: React.FC = () => {
-  const { data, isLoading } = useWorkspaceAccessMatrix();
-  const grantMutation = useGrantWorkspaceAccess();
-  const revokeMutation = useRevokeWorkspaceAccess();
+  const { data, isLoading } = useOrganizationAccessMatrix();
+  const grantMutation = useGrantOrganizationAccess();
+  const revokeMutation = useRevokeOrganizationAccess();
   // Staged changes only: key -> desired access state, present only for cells
   // that differ from what the server currently has.
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -41,15 +41,15 @@ const AccessMatrixSection: React.FC = () => {
   const [matrixError, setMatrixError] = useState<string | null>(null);
   const [matrixSuccess, setMatrixSuccess] = useState<string | null>(null);
 
-  const cellKey = (workspaceId: number, employeeId: number) => `${workspaceId}-${employeeId}`;
+  const cellKey = (organizationId: number, employeeId: number) => `${organizationId}-${employeeId}`;
 
-  const effectiveAccess = (workspaceId: number, employeeId: number, serverValue: boolean) => {
-    const key = cellKey(workspaceId, employeeId);
+  const effectiveAccess = (organizationId: number, employeeId: number, serverValue: boolean) => {
+    const key = cellKey(organizationId, employeeId);
     return key in pending ? pending[key] : serverValue;
   };
 
-  const toggleCell = (workspaceId: number, employeeId: number, serverValue: boolean) => {
-    const key = cellKey(workspaceId, employeeId);
+  const toggleCell = (organizationId: number, employeeId: number, serverValue: boolean) => {
+    const key = cellKey(organizationId, employeeId);
     setMatrixSuccess(null);
     setPending((prev) => {
       const current = key in prev ? prev[key] : serverValue;
@@ -81,17 +81,17 @@ const AccessMatrixSection: React.FC = () => {
 
     for (const [key, desired] of pendingEntries) {
       const [wsIdStr, empIdStr] = key.split("-");
-      const workspaceId = Number(wsIdStr);
+      const organizationId = Number(wsIdStr);
       const userId = Number(empIdStr);
       try {
         if (desired) {
           // This checkbox grid only grants/revokes access, it doesn't pick
           // a role per cell — new access always starts as "user" here,
           // matching the backend's own default. Bump someone to admin/super
-          // admin for that workspace from the Users page afterward.
-          await grantMutation.mutateAsync({ workspaceId, userId, role: "user" });
+          // admin for that organization from the Users page afterward.
+          await grantMutation.mutateAsync({ organizationId, userId, role: "user" });
         } else {
-          await revokeMutation.mutateAsync({ workspaceId, userId });
+          await revokeMutation.mutateAsync({ organizationId, userId });
         }
         setPending((prev) => {
           const next = { ...prev };
@@ -117,15 +117,15 @@ const AccessMatrixSection: React.FC = () => {
       <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-200">
         <UsersIcon className="w-4 h-4 text-slate-400" />
         <div className="font-semibold text-[15px] text-slate-900">
-          Employee Workspace Access
+          Employee Organization Access
         </div>
       </div>
       <div className="p-5">
         <p className="mb-4 text-slate-500 text-[12.5px] leading-relaxed">
-          Control which of your workspaces each employee can access. Check or
+          Control which of your organizations each employee can access. Check or
           uncheck boxes below, then click Verify Changes to apply them — an
-          employee checked in more than one workspace uses the same login and
-          switches between them from the workspace picker.
+          employee checked in more than one organization uses the same login and
+          switches between them from the organization picker.
         </p>
         {matrixError && (
           <div className="flex items-center gap-2 p-3 mb-4 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100">
@@ -143,10 +143,10 @@ const AccessMatrixSection: React.FC = () => {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
           </div>
-        ) : !data || data.workspaces.length <= 1 ? (
+        ) : !data || data.organizations.length <= 1 ? (
           <p className="py-6 text-center text-slate-400 text-[12.5px]">
-            You only have one workspace right now — create another to manage
-            cross-workspace access.
+            You only have one organization right now — create another to manage
+            cross-organization access.
           </p>
         ) : data.employees.length === 0 ? (
           <p className="py-6 text-center text-slate-400 text-[12.5px]">
@@ -159,7 +159,7 @@ const AccessMatrixSection: React.FC = () => {
                 <thead>
                   <tr>
                     <th className="pb-2 font-medium text-left text-slate-400">Employee</th>
-                    {data.workspaces.map((w) => (
+                    {data.organizations.map((w) => (
                       <th
                         key={w.id}
                         className="px-2 pb-2 font-medium text-center text-slate-400"
@@ -176,8 +176,8 @@ const AccessMatrixSection: React.FC = () => {
                         <div className="font-medium text-slate-900">{emp.fullName}</div>
                         <div className="text-slate-400 text-[11px]">{emp.email}</div>
                       </td>
-                      {data.workspaces.map((w) => {
-                        const serverValue = emp.workspaceIds.includes(w.id);
+                      {data.organizations.map((w) => {
+                        const serverValue = emp.organizationIds.includes(w.id);
                         const key = cellKey(w.id, emp.id);
                         const checked = effectiveAccess(w.id, emp.id, serverValue);
                         const isStaged = key in pending;
@@ -242,34 +242,47 @@ const AccessMatrixSection: React.FC = () => {
   );
 };
 
-const WorkspaceTab: React.FC = () => {
-  const { user, workspace, updateWorkspace, deleteWorkspace, createWorkspace } = useAuth();
+const OrganizationTab: React.FC = () => {
+  const { user, organization, updateOrganization, deleteOrganization, createOrganization } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
 
-  const [wsName, setWsName] = useState(workspace?.name || "");
-  const [wsDescription, setWsDescription] = useState(workspace?.description || "");
+  const [wsName, setWsName] = useState(organization?.name || "");
+  const [wsDescription, setWsDescription] = useState(organization?.description || "");
+  const [wsAddress, setWsAddress] = useState(organization?.address || "");
+  const [wsContact, setWsContact] = useState(organization?.contact || "");
+  const [wsEmail, setWsEmail] = useState(organization?.email || "");
+  const [wsWebsite, setWsWebsite] = useState(organization?.website || "");
   const [wsSaving, setWsSaving] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsSuccess, setWsSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    setWsName(workspace?.name || "");
-    setWsDescription(workspace?.description || "");
-  }, [workspace?.id]);
+    setWsName(organization?.name || "");
+    setWsDescription(organization?.description || "");
+    setWsAddress(organization?.address || "");
+    setWsContact(organization?.contact || "");
+    setWsEmail(organization?.email || "");
+    setWsWebsite(organization?.website || "");
+  }, [organization?.id]);
 
-  const handleSaveWorkspace = async (e: React.FormEvent) => {
+  const handleSaveOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspace || !wsName.trim()) return;
+    if (!organization || !wsName.trim()) return;
     setWsSaving(true);
     setWsError(null);
     setWsSuccess(null);
     try {
-      await updateWorkspace(workspace.id, wsName.trim(), wsDescription);
-      setWsSuccess("Workspace updated.");
+      await updateOrganization(organization.id, wsName.trim(), wsDescription, {
+        address: wsAddress.trim(),
+        contact: wsContact.trim(),
+        email: wsEmail.trim(),
+        website: wsWebsite.trim(),
+      });
+      setWsSuccess("Organization updated.");
     } catch (err: any) {
-      setWsError(err?.response?.data?.message || "Failed to update workspace.");
+      setWsError(err?.response?.data?.message || "Failed to update organization.");
     } finally {
       setWsSaving(false);
     }
@@ -283,6 +296,10 @@ const WorkspaceTab: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newWsName, setNewWsName] = useState("");
   const [newWsDescription, setNewWsDescription] = useState("");
+  const [newWsAddress, setNewWsAddress] = useState("");
+  const [newWsContact, setNewWsContact] = useState("");
+  const [newWsEmail, setNewWsEmail] = useState("");
+  const [newWsWebsite, setNewWsWebsite] = useState("");
   const [addingWs, setAddingWs] = useState(false);
   const [addWsError, setAddWsError] = useState<string | null>(null);
 
@@ -290,38 +307,47 @@ const WorkspaceTab: React.FC = () => {
     setShowAddModal(false);
     setNewWsName("");
     setNewWsDescription("");
+    setNewWsAddress("");
+    setNewWsContact("");
+    setNewWsEmail("");
+    setNewWsWebsite("");
     setAddWsError(null);
   };
 
-  const handleAddWorkspace = async (e: React.FormEvent) => {
+  const handleAddOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newWsName.trim()) return;
     setAddingWs(true);
     setAddWsError(null);
     try {
-      const created = await createWorkspace(newWsName.trim(), newWsDescription);
+      const created = await createOrganization(newWsName.trim(), newWsDescription, {
+        address: newWsAddress.trim() || undefined,
+        contact: newWsContact.trim() || undefined,
+        email: newWsEmail.trim() || undefined,
+        website: newWsWebsite.trim() || undefined,
+      });
       if (created) {
         closeAddModal();
         navigate(`/${created.id}/dashboard`);
       } else {
-        setAddWsError("Failed to create workspace.");
+        setAddWsError("Failed to create organization.");
       }
     } finally {
       setAddingWs(false);
     }
   };
 
-  const handleDeleteWorkspace = async () => {
-    if (!workspace) return;
+  const handleDeleteOrganization = async () => {
+    if (!organization) return;
     setDeleting(true);
     setDeleteError(null);
     try {
-      const next = await deleteWorkspace(workspace.id, deleteConfirmText);
+      const next = await deleteOrganization(organization.id, deleteConfirmText);
       setShowDeleteModal(false);
       setDeleteConfirmText("");
       if (next) navigate(`/${next.id}/dashboard`, { replace: true });
     } catch (err: any) {
-      setDeleteError(err?.response?.data?.message || "Failed to delete workspace.");
+      setDeleteError(err?.response?.data?.message || "Failed to delete organization.");
     } finally {
       setDeleting(false);
     }
@@ -333,7 +359,7 @@ const WorkspaceTab: React.FC = () => {
         <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-200">
           <Building2 className="w-4 h-4 text-slate-400" />
           <div className="font-semibold text-[15px] text-slate-900">
-            Workspace details
+            Organization details
           </div>
           {isSuperAdmin && (
             <button
@@ -341,11 +367,11 @@ const WorkspaceTab: React.FC = () => {
               onClick={() => setShowAddModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 ml-auto text-[12.5px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" /> Add Workspace
+              <Plus className="w-3.5 h-3.5" /> Add Organization
             </button>
           )}
         </div>
-        <form onSubmit={handleSaveWorkspace} className="p-5 space-y-4">
+        <form onSubmit={handleSaveOrganization} className="p-5 space-y-4">
           {wsError && (
             <div className="flex items-center gap-2 p-3 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100">
               <AlertCircle className="flex-shrink-0 w-4 h-4" />
@@ -376,7 +402,53 @@ const WorkspaceTab: React.FC = () => {
               disabled={!isAdmin}
               rows={3}
               className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none disabled:bg-slate-50 disabled:text-slate-500"
-              placeholder="What's this workspace for?"
+              placeholder="What's this organization for?"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Eyebrow>Address</Eyebrow>
+            <textarea
+              value={wsAddress}
+              onChange={(e) => setWsAddress(e.target.value)}
+              disabled={!isAdmin}
+              rows={2}
+              className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none disabled:bg-slate-50 disabled:text-slate-500"
+              placeholder="Postal address — used on generated Purchase Order PDFs"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Eyebrow>Contact</Eyebrow>
+              <input
+                type="tel"
+                value={wsContact}
+                onChange={(e) => setWsContact(e.target.value)}
+                disabled={!isAdmin}
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors disabled:bg-slate-50 disabled:text-slate-500"
+                placeholder="Phone number"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Eyebrow>Email</Eyebrow>
+              <input
+                type="email"
+                value={wsEmail}
+                onChange={(e) => setWsEmail(e.target.value)}
+                disabled={!isAdmin}
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors disabled:bg-slate-50 disabled:text-slate-500"
+                placeholder="info@example.com"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Eyebrow>Website</Eyebrow>
+            <input
+              type="text"
+              value={wsWebsite}
+              onChange={(e) => setWsWebsite(e.target.value)}
+              disabled={!isAdmin}
+              className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors disabled:bg-slate-50 disabled:text-slate-500"
+              placeholder="www.example.com"
             />
           </div>
           {isAdmin && (
@@ -399,10 +471,10 @@ const WorkspaceTab: React.FC = () => {
                   <AlertTriangle className="flex-shrink-0 w-4 h-4 mt-0.5 text-red-600" />
                   <div className="flex-1">
                     <h4 className="text-[13px] font-semibold text-red-700">
-                      Delete this workspace
+                      Delete this organization
                     </h4>
                     <p className="mt-1 text-[12px] text-red-600/90 leading-relaxed">
-                      Permanently deletes this workspace along with all of its
+                      Permanently deletes this organization along with all of its
                       projects, tasks, announcements, leave requests, calendar
                       events, and files. This cannot be undone.
                     </p>
@@ -415,7 +487,7 @@ const WorkspaceTab: React.FC = () => {
                       }}
                       className="mt-3 px-3 py-1.5 text-[12px] font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors"
                     >
-                      Delete Workspace
+                      Delete Organization
                     </button>
                   </div>
                 </div>
@@ -427,15 +499,15 @@ const WorkspaceTab: React.FC = () => {
 
       {isAdmin && <AccessMatrixSection />}
 
-      {/* Add Workspace Modal */}
+      {/* Add Organization Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-6">
           <div className="w-full max-w-md overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div>
-                <Eyebrow>Workspaces</Eyebrow>
+                <Eyebrow>Organizations</Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  Add Workspace
+                  Add Organization
                 </h3>
               </div>
               <button
@@ -446,7 +518,7 @@ const WorkspaceTab: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={handleAddWorkspace} className="p-6 space-y-4">
+            <form onSubmit={handleAddOrganization} className="p-6 space-y-4">
               {addWsError && (
                 <div className="flex items-center gap-2 p-3 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded border-rose-100">
                   <AlertCircle className="flex-shrink-0 w-4 h-4" />
@@ -462,7 +534,7 @@ const WorkspaceTab: React.FC = () => {
                   required
                   autoFocus
                   className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                  placeholder="My New Workspace"
+                  placeholder="My New Organization"
                 />
               </div>
               <div className="space-y-1.5">
@@ -472,7 +544,49 @@ const WorkspaceTab: React.FC = () => {
                   onChange={(e) => setNewWsDescription(e.target.value)}
                   rows={3}
                   className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
-                  placeholder="What's this workspace for?"
+                  placeholder="What's this organization for?"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Eyebrow>Address (optional)</Eyebrow>
+                <textarea
+                  value={newWsAddress}
+                  onChange={(e) => setNewWsAddress(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                  placeholder="Postal address"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Eyebrow>Contact (optional)</Eyebrow>
+                  <input
+                    type="tel"
+                    value={newWsContact}
+                    onChange={(e) => setNewWsContact(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    placeholder="Phone number"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Eyebrow>Email (optional)</Eyebrow>
+                  <input
+                    type="email"
+                    value={newWsEmail}
+                    onChange={(e) => setNewWsEmail(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    placeholder="info@example.com"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Eyebrow>Website (optional)</Eyebrow>
+                <input
+                  type="text"
+                  value={newWsWebsite}
+                  onChange={(e) => setNewWsWebsite(e.target.value)}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  placeholder="www.example.com"
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -489,7 +603,7 @@ const WorkspaceTab: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
                   {addingWs && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Create Workspace
+                  Create Organization
                 </button>
               </div>
             </form>
@@ -497,8 +611,8 @@ const WorkspaceTab: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Workspace Modal */}
-      {showDeleteModal && workspace && (
+      {/* Delete Organization Modal */}
+      {showDeleteModal && organization && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-6">
           <div className="w-full max-w-md overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
             <div className="flex items-center gap-3 px-6 py-4 border-b border-red-100 bg-red-50">
@@ -507,7 +621,7 @@ const WorkspaceTab: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-semibold text-[15px] text-slate-900">
-                  Delete "{workspace.name}"?
+                  Delete "{organization.name}"?
                 </h3>
                 <p className="text-[11px] text-slate-500">
                   This action is permanent and cannot be undone.
@@ -516,7 +630,7 @@ const WorkspaceTab: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-[13px] text-slate-600 leading-relaxed">
-                Are you sure you want to delete this workspace? All projects,
+                Are you sure you want to delete this organization? All projects,
                 tasks, announcements, leave requests, calendar events,
                 activities, and files inside it will be permanently deleted.
                 Members will simply be removed from it — their accounts are
@@ -529,7 +643,7 @@ const WorkspaceTab: React.FC = () => {
               )}
               <div className="space-y-1.5">
                 <label className="text-[12px] font-medium text-slate-600">
-                  Type <span className="font-semibold">{workspace.name}</span>{" "}
+                  Type <span className="font-semibold">{organization.name}</span>{" "}
                   to confirm
                 </label>
                 <input
@@ -537,7 +651,7 @@ const WorkspaceTab: React.FC = () => {
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-red-400 transition-colors"
-                  placeholder={workspace.name}
+                  placeholder={organization.name}
                   autoFocus
                 />
               </div>
@@ -551,11 +665,11 @@ const WorkspaceTab: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDeleteWorkspace}
-                  disabled={deleting || deleteConfirmText !== workspace.name}
+                  onClick={handleDeleteOrganization}
+                  disabled={deleting || deleteConfirmText !== organization.name}
                   className="px-4 py-2 text-[13px] font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {deleting ? "Deleting..." : "Delete Workspace"}
+                  {deleting ? "Deleting..." : "Delete Organization"}
                 </button>
               </div>
             </div>
@@ -566,4 +680,4 @@ const WorkspaceTab: React.FC = () => {
   );
 };
 
-export default WorkspaceTab;
+export default OrganizationTab;

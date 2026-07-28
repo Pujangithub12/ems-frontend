@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { CatalogItem } from "../../../types";
-import { useWorkspaceItemCatalogQuery, useCreateCatalogItemMutation } from "../hooks/useInventory";
+import { useOrganizationItemCatalogQuery, useCreateCatalogItemMutation } from "../hooks/useInventory";
 
 interface ItemNameFieldProps {
   /** The linked catalog item's id, or null if this row isn't linked to the catalog (e.g. a legacy row, or nothing picked yet). */
@@ -17,7 +17,7 @@ interface ItemNameFieldProps {
 }
 
 /**
- * Item Name field backed by the shared workspace item catalog (name + code),
+ * Item Name field backed by the shared organization item catalog (name + code),
  * so item naming stays consistent between the Inventory and Procurement
  * "Add item" forms — the value is a reference to a CatalogItem row, not
  * freehand text. The "Add new item" link opens a floating popover, rendered
@@ -34,7 +34,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
   autoFocus,
   className,
 }) => {
-  const itemsQuery = useWorkspaceItemCatalogQuery();
+  const itemsQuery = useOrganizationItemCatalogQuery();
   const items = itemsQuery.data ?? [];
   const createMutation = useCreateCatalogItemMutation();
 

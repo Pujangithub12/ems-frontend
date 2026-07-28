@@ -30,10 +30,10 @@ import {
   useCreateInventoryItemMutation,
   useUpdateInventoryItemMutation,
   useDeleteInventoryItemMutation,
-  useWorkspaceWarehousesQuery,
-  useWorkspaceVendorsQuery,
+  useOrganizationWarehousesQuery,
+  useOrganizationVendorsQuery,
 } from "../../../inventory/hooks/useInventory";
-import { toNumber, formatCost } from "../../../procurement/api/procurement.api";
+import { toNumber, formatCost } from "../../../../lib/currency";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import ComboBoxInput from "../../../../components/ComboBoxInput";
@@ -126,9 +126,9 @@ const ProjectInventoryTab: React.FC<ProjectInventoryTabProps> = ({ projectId }) 
     : null;
   const [refreshing, setRefreshing] = useState(false);
 
-  const warehousesQuery = useWorkspaceWarehousesQuery();
+  const warehousesQuery = useOrganizationWarehousesQuery();
   const warehouses = warehousesQuery.data ?? [];
-  const vendorsQuery = useWorkspaceVendorsQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];
 
   const createMutation = useCreateInventoryItemMutation();

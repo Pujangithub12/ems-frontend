@@ -91,7 +91,7 @@ const AcceptInvite: React.FC = () => {
     error: inviteQueryError,
   } = useInvite(token);
   const invite = lookup?.invite ?? null;
-  const workspaceName = lookup?.workspaceName || "the workspace";
+  const organizationName = lookup?.organizationName || "the organization";
 
   const status: "loading" | "ready" | "invalid" = !token
     ? "invalid"
@@ -122,12 +122,12 @@ const AcceptInvite: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const workspace = await auth.acceptInvite(token, password, {
+      const organization = await auth.acceptInvite(token, password, {
         phoneNumber: phoneNumber.trim(),
         jobPosition: jobPosition.trim(),
         address: address.trim(),
       });
-      nav(`/${workspace.id}/dashboard`);
+      nav(`/${organization.id}/dashboard`);
     } catch (err: any) {
       setSubmitError(
         err?.response?.data?.message || err.message || "Could not accept invite",
@@ -211,13 +211,13 @@ const AcceptInvite: React.FC = () => {
               color: "#F4F7FD",
             }}
           >
-            You've been invited to <span style={{ color: "#5B9BFF" }}>{workspaceName}</span>.
+            You've been invited to <span style={{ color: "#5B9BFF" }}>{organizationName}</span>.
           </h1>
           <p
             className="mt-3.5 max-w-[410px] leading-relaxed text-[13.5px]"
             style={{ color: "#91A0BE" }}
           >
-            Set a password to join your team's workspace — tasks, projects,
+            Set a password to join your team's organization — tasks, projects,
             and updates, all in one place.
           </p>
 
@@ -386,7 +386,7 @@ const AcceptInvite: React.FC = () => {
               >
                 E
               </div>
-              <span className="text-[12.5px] text-[#454F63]">EMS workspace invite</span>
+              <span className="text-[12.5px] text-[#454F63]">EMS organization invite</span>
             </div>
 
             {status === "loading" && (
@@ -428,7 +428,7 @@ const AcceptInvite: React.FC = () => {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  Join {workspaceName}
+                  Join {organizationName}
                 </h2>
                 <p className="text-[#7A8499] text-[13.5px] mt-1 mb-4 leading-relaxed">
                   Set a password to activate your account.

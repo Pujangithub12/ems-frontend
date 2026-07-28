@@ -9,6 +9,7 @@ import {
   User as UserIcon,
   MessageSquare,
   Paperclip,
+  Flag,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUpdateTaskStatus } from "../hooks/useTasks";
@@ -148,15 +149,20 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ project, onUpdate }) => {
                     >
                       <div className="flex items-start justify-between mb-3">
                         <span
-                          className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest
                             ${
                               task.priority === "high"
-                                ? "bg-rose-50 text-rose-600 border-rose-100"
+                                ? "text-rose-600"
                                 : task.priority === "medium"
-                                  ? "bg-amber-50 text-amber-600 border-amber-100"
-                                  : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                  ? "text-amber-600"
+                                  : "text-emerald-600"
                             }`}
                         >
+                          <Flag
+                            size={12}
+                            fill="currentColor"
+                            strokeWidth={1.5}
+                          />
                           {task.priority}
                         </span>
                         <button className="p-1 opacity-0 group-hover:opacity-100 hover:bg-slate-50 rounded-md transition-all text-slate-400">

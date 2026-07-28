@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Upload,
   X,
@@ -18,7 +19,16 @@ import { ScheduleRow, emptyScheduleRow } from "../../schema/schedule.types";
 import { GanttLink, GanttTask, ScheduleStatus, STATUS_META } from "../../schema/schedule.types";
 import { dtoToRows, rowsToDto } from "../../api/schedule.api";
 import { useScheduleQuery, useSaveScheduleMutation } from "../../hooks/useSchedule";
-import GanttChartView, { ScheduleColumnDef, ScheduleScale } from "../GanttChartView";
+import {
+  ScheduleLinkType,
+  PredecessorToken,
+  parsePredecessorList,
+  formatPredecessorToken,
+  LINK_TYPE_LABELS,
+  LINK_TYPE_TO_GANTT,
+  GANTT_TYPE_TO_LINK_TYPE,
+} from "../../utils/predecessorTokens";
+import GanttChartView, { ScheduleColumnDef, ScheduleScale, LinkEditInfo } from "../GanttChartView";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalScrollbar";
@@ -44,7 +54,11 @@ import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalSc
  *   Start Date      Excel date or "YYYY-MM-DD"
  *   Progress        percent complete, 0-100 (optional, defaults to 0)
  *   Parent ID       optional, references the ID of the owning summary task
- *   Predecessor ID  optional, comma separated list of ID(s) this task depends on
+ *   Predecessor ID  optional, comma separated list of ID(s) this task depends on. Each id can
+ *                   carry an MS-Project-style relationship type + lag right after it: "5FS+2"
+ *                   (Finish-to-Start, 2 days lag), "7SS-1" (Start-to-Start, 1 day lead). A bare
+ *                   id (e.g. "3") implies Finish-to-Start with zero lag. Types: FS/SS/FF/SF —
+ *                   see predecessorTokens.ts for the parser/serializer.
  *
  * A row is a "summary" bar only when it has no Start Date/Duration AND at
  * least one other row references it via Parent ID. A row with Duration = 0
@@ -81,7 +95,7 @@ interface ParsedRow {
   duration: number | null;
   start: Date | null;
   parentId: string | null;
-  predecessorIds: string[];
+  predecessorTokens: PredecessorToken[];
   isSummary: boolean;
   isMilestone: boolean;
   progress: number | null;
@@ -295,13 +309,10 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
       parentIdRaw === undefined || parentIdRaw === "" || parentIdRaw === null ? null : String(parentIdRaw).trim();
 
     const predecessorRaw = item.predecessorId;
-    const predecessorIds =
+    const predecessorTokens =
       predecessorRaw === undefined || predecessorRaw === "" || predecessorRaw === null
         ? []
-        : String(predecessorRaw)
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
+        : parsePredecessorList(String(predecessorRaw));
 
     const progressRaw = item.progress;
     const progressNum =
@@ -316,7 +327,7 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
     // A row with an explicit zero Duration (and a real Start Date) is a milestone.
     const isMilestone = duration === 0 && start != null;
 
-    return { id, name, duration, start, parentId, predecessorIds, isSummary, isMilestone, progress, status };
+    return { id, name, duration, start, parentId, predecessorTokens, isSummary, isMilestone, progress, status };
   });
 
   const byId = new Map<string, ParsedRow>();
@@ -535,7 +546,8 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
   const links: GanttLink[] = [];
   let linkCounter = 1;
   parsedRows.forEach((row) => {
-    row.predecessorIds.forEach((pid) => {
+    row.predecessorTokens.forEach((token) => {
+      const pid = token.id;
       if (!byId.has(pid)) {
         warnings.push(`Task "${row.id}" references missing Predecessor ID "${pid}".`);
         return;
@@ -548,7 +560,8 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
         id: `link-${linkCounter++}`,
         source: pid,
         target: row.id,
-        type: "e2s", // finish-to-start: predecessor must finish before this task starts
+        type: LINK_TYPE_TO_GANTT[token.type],
+        lag: token.lag,
       });
     });
   });
@@ -607,6 +620,19 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [columnsMenuAnchor, setColumnsMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const columnsMenuRef = useRef<HTMLDivElement>(null);
+  // Double-click-a-dependency-arrow popover (type + lag + delete) — anchored
+  // to the click position the same way the columns menu is anchored to its
+  // trigger button's rect. Replaces the old window.confirm-to-delete flow.
+  const [linkEditor, setLinkEditor] = useState<{
+    linkId: string;
+    sourceId: string;
+    targetId: string;
+    type: ScheduleLinkType;
+    lag: number;
+    top: number;
+    left: number;
+  } | null>(null);
+  const linkEditorRef = useRef<HTMLDivElement>(null);
   // The chart's own horizontal-scroll container — mirrored by
   // StickyHorizontalScrollbar so its scrollbar stays reachable at the
   // bottom of the viewport instead of requiring the whole page scrolled down.
@@ -628,7 +654,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   const saveScheduleMutation = useSaveScheduleMutation(projectId);
 
   useEffect(() => {
-    if (scheduleQuery.data && scheduleQuery.data.length > 0) {
+    if (scheduleQuery.data && scheduleQuery.data.tasks.length > 0) {
       setScheduleRows(dtoToRows(scheduleQuery.data));
     }
   }, [scheduleQuery.data]);
@@ -664,6 +690,29 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [showColumnsMenu]);
+
+  // Same dismiss-on-outside-click/scroll/Escape behavior as the columns menu.
+  useEffect(() => {
+    if (!linkEditor) return;
+    const close = () => setLinkEditor(null);
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (linkEditorRef.current && !linkEditorRef.current.contains(target)) {
+        close();
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("scroll", close, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("scroll", close, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [linkEditor]);
 
   const toggleField = useCallback((id: ColumnFieldId) => {
     setVisibleFields((prev) => {
@@ -842,15 +891,14 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // already feed, so `buildGanttData` treats them identically. This only
   // updates local state; it's saved to the backend the same way any other
   // edit is, via the existing "Save to Backend" button.
-  const handleLinkCreate = useCallback((sourceId: string, targetId: string) => {
+  const handleLinkCreate = useCallback((sourceId: string, targetId: string, ganttType: GanttLink["type"]) => {
     setScheduleRows((rows) =>
       rows.map((row) => {
         if (row.id !== targetId || sourceId === targetId) return row;
-        const existing = row.predecessorId
-          ? row.predecessorId.split(",").map((s) => s.trim()).filter(Boolean)
-          : [];
-        if (existing.includes(sourceId)) return row;
-        return { ...row, predecessorId: [...existing, sourceId].join(",") };
+        const existing = parsePredecessorList(row.predecessorId);
+        if (existing.some((t) => t.id === sourceId)) return row;
+        const nextTokens = [...existing, { id: sourceId, type: GANTT_TYPE_TO_LINK_TYPE[ganttType], lag: 0 }];
+        return { ...row, predecessorId: nextTokens.map(formatPredecessorToken).join(",") };
       }),
     );
   }, []);
@@ -859,12 +907,35 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setScheduleRows((rows) =>
       rows.map((row) => {
         if (row.id !== targetId) return row;
-        const existing = row.predecessorId
-          ? row.predecessorId.split(",").map((s) => s.trim()).filter(Boolean)
-          : [];
-        return { ...row, predecessorId: existing.filter((id) => id !== sourceId).join(",") };
+        const existing = parsePredecessorList(row.predecessorId);
+        return { ...row, predecessorId: existing.filter((t) => t.id !== sourceId).map(formatPredecessorToken).join(",") };
       }),
     );
+  }, []);
+
+  /** Patches an existing dependency's type/lag (from the double-click edit popover — see linkEditor state below). */
+  const handleLinkUpdate = useCallback((sourceId: string, targetId: string, patch: { type?: ScheduleLinkType; lag?: number }) => {
+    setScheduleRows((rows) =>
+      rows.map((row) => {
+        if (row.id !== targetId) return row;
+        const existing = parsePredecessorList(row.predecessorId);
+        const nextTokens = existing.map((t) => (t.id === sourceId ? { ...t, ...patch } : t));
+        return { ...row, predecessorId: nextTokens.map(formatPredecessorToken).join(",") };
+      }),
+    );
+  }, []);
+
+  /** Opens the type/lag/delete popover for a double-clicked dependency arrow. */
+  const handleLinkEditRequest = useCallback((info: LinkEditInfo) => {
+    setLinkEditor({
+      linkId: info.linkId,
+      sourceId: info.sourceId,
+      targetId: info.targetId,
+      type: GANTT_TYPE_TO_LINK_TYPE[info.type],
+      lag: info.lag,
+      top: info.top,
+      left: info.left,
+    });
   }, []);
 
   // Inline task-name edits and drag-resizes on the chart both report back
@@ -1231,10 +1302,18 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       {/* Dims the rest of the page while editing, so the (still-crisp, since
           it sits above this overlay in z-index) chart reads as the one thing
           that's currently interactive. pointer-events-none so it's purely
-          visual — nothing underneath loses clickability. */}
-      {editMode && (
-        <div className="fixed inset-0 z-30 bg-slate-900/10 pointer-events-none transition-opacity duration-200" />
-      )}
+          visual — nothing underneath loses clickability. Portaled to
+          document.body rather than rendered inline: this component's root is
+          a `space-y-6` flex column, and Tailwind's space-y margin applies to
+          any child with a preceding sibling regardless of that sibling's
+          `position` — so mounting/unmounting this fixed overlay as the first
+          child was adding/removing a spurious margin-top on the content
+          below it, visible as the chart jumping down on entering edit mode. */}
+      {editMode &&
+        createPortal(
+          <div className="fixed inset-0 z-30 bg-slate-900/10 pointer-events-none transition-opacity duration-200" />,
+          document.body,
+        )}
       {scheduleRows.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-16 text-center rounded border border-dashed border-slate-200">
           <div className="flex justify-center items-center mb-3 w-12 h-12 rounded bg-slate-100">
@@ -1302,7 +1381,12 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               <li><strong>Progress</strong> (optional) — percent complete, 0-100</li>
               <li><strong>Status</strong> (optional) — Pending, In Progress, On Hold, or Completed; defaults to Pending. Drives the bar's color.</li>
               <li><strong>Parent ID</strong> (optional) — ID of the owning summary task</li>
-              <li><strong>Predecessor ID</strong> (optional) — comma-separated IDs this task depends on</li>
+              <li>
+                <strong>Predecessor ID</strong> (optional) — comma-separated IDs this task depends on. Add a
+                relationship type and/or lag right after the id, MS-Project style: a bare id (e.g. "3") means
+                Finish-to-Start with no lag; "5FS+2" = Finish-to-Start, 2 days after; "7SS-1" = Start-to-Start,
+                1 day lead. Types: FS, SS, FF, SF.
+              </li>
             </ul>
             <p className="mt-2 text-slate-400">
               Rows with no Start Date / Duration, referenced by at least one other row's Parent ID, become summary bars.
@@ -1436,6 +1520,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 editable={editMode}
                 onLinkCreate={handleLinkCreate}
                 onLinkDelete={handleLinkDelete}
+                onLinkEdit={handleLinkEditRequest}
                 onTaskChange={handleTaskChange}
                 onAddChildTask={handleAddChildTask}
                 onDeleteTask={setPendingDeleteId}
@@ -1499,6 +1584,74 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                   <ToggleSwitch checked={visibleFields.has(field.id)} />
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Dependency edit popover — anchored to wherever the user
+              double-clicked the link arrow (see GanttChartView's
+              onLinkDblClick -> onLinkEdit). Same fixed-position/dismiss
+              pattern as the columns menu above. */}
+          {linkEditor && (
+            <div
+              ref={linkEditorRef}
+              style={{ position: "fixed", top: linkEditor.top, left: linkEditor.left }}
+              className="z-50 p-3 bg-white border rounded-lg shadow-lg w-64 border-slate-200"
+            >
+              <div className="px-1 py-1 text-[11px] font-semibold tracking-wide uppercase text-slate-400">
+                Dependency
+              </div>
+              <div className="px-1 pb-2 text-[12px] text-slate-600">
+                Task {linkEditor.sourceId} → Task {linkEditor.targetId}
+              </div>
+              <div className="px-1 py-1.5">
+                <label className="block mb-1 text-[11px] font-medium text-slate-700">Type</label>
+                <select
+                  value={linkEditor.type}
+                  onChange={(e) => setLinkEditor({ ...linkEditor, type: e.target.value as ScheduleLinkType })}
+                  className="w-full px-2 py-1.5 text-[12px] border rounded outline-none border-slate-200 focus:border-blue-400"
+                >
+                  {(Object.keys(LINK_TYPE_LABELS) as ScheduleLinkType[]).map((t) => (
+                    <option key={t} value={t}>
+                      {LINK_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="px-1 py-1.5">
+                <label className="block mb-1 text-[11px] font-medium text-slate-700">Lag (days)</label>
+                <input
+                  type="number"
+                  value={linkEditor.lag}
+                  onChange={(e) => setLinkEditor({ ...linkEditor, lag: Number(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="w-full px-2 py-1.5 text-[12px] border rounded outline-none border-slate-200 focus:border-blue-400"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2 px-1 pt-2 mt-1 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLinkDelete(linkEditor.sourceId, linkEditor.targetId);
+                    setLinkEditor(null);
+                  }}
+                  className="text-[12px] font-medium text-red-600 hover:underline"
+                >
+                  Delete dependency
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLinkUpdate(linkEditor.sourceId, linkEditor.targetId, {
+                      type: linkEditor.type,
+                      lag: linkEditor.lag,
+                    });
+                    setLinkEditor(null);
+                  }}
+                  className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           )}
 

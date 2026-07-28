@@ -65,6 +65,8 @@ export interface GanttLink {
   source: string;
   target: string;
   type: "e2s" | "s2s" | "e2e" | "s2e";
+  /** Days of delay after the predecessor's reference point; negative = lead/overlap. Record-and-display only — never used for date auto-scheduling. */
+  lag?: number;
 }
 
 /** Colors + labels for each manual status — shared by the Status column pill,

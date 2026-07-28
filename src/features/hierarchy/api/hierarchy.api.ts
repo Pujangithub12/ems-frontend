@@ -1,7 +1,7 @@
 import api from "../../../api/axios";
 import { HierarchyPerson } from "../../../types";
 
-/** GET /api/hierarchy — flat org-chart people list for the current workspace. */
+/** GET /api/hierarchy — flat org-chart people list for the current organization. */
 export async function getHierarchy(): Promise<HierarchyPerson[]> {
   const res = await api.get<{ people: HierarchyPerson[] }>("/api/hierarchy");
   return res.data.people || [];

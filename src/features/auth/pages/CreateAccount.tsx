@@ -105,8 +105,8 @@ const CreateAccount: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const workspace = await auth.registerVerify({ email, otp });
-      nav(`/${workspace.id}/dashboard`);
+      const organization = await auth.registerVerify({ email, otp });
+      nav(`/${organization.id}/dashboard`);
     } catch (err: any) {
       setError(
         err?.response?.data?.message || err.message || "Could not verify code",
@@ -208,13 +208,13 @@ const CreateAccount: React.FC = () => {
           >
             Bring your fleet <span style={{ color: "#5B9BFF" }}>online</span>.
             <br />
-            Set up your workspace in minutes.
+            Set up your organization in minutes.
           </h1>
           <p
             className="mt-3.5 max-w-[410px] leading-relaxed text-[13.5px]"
             style={{ color: "#91A0BE" }}
           >
-            Plants, projects, approvals, and people — one workspace for your
+            Plants, projects, approvals, and people — one organization for your
             entire operation, from intake to grid.
           </p>
 
@@ -383,7 +383,7 @@ const CreateAccount: React.FC = () => {
               >
                 E
               </div>
-              <span className="text-[12.5px] text-[#454F63]">EMS workspace sign-up</span>
+              <span className="text-[12.5px] text-[#454F63]">EMS organization sign-up</span>
             </div>
 
             {step === "details" ? (
@@ -398,7 +398,7 @@ const CreateAccount: React.FC = () => {
                   Create account
                 </h2>
                 <p className="text-[#7A8499] text-[13.5px] mt-1 mb-4 leading-relaxed">
-                  You'll be the owner of a brand-new workspace.
+                  You'll be the owner of a brand-new organization.
                 </p>
 
                 <form onSubmit={submitDetails} className="space-y-3">

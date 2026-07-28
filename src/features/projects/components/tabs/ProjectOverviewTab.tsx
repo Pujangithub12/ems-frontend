@@ -14,8 +14,8 @@ import { Project } from "../../../../types";
 import { flattenProjectTasks } from "../../../tasks/utils/taskUtils";
 import { useAuth } from "../../../../context/AuthProvider";
 import { useUpdateProject } from "../../hooks/useProjects";
-import { useProcurementItemsQuery } from "../../../procurement/hooks/useProcurement";
-import { formatCost, toNumber } from "../../../procurement/api/procurement.api";
+import { usePurchaseOrdersQuery } from "../../../procurement/hooks/usePurchaseOrder";
+import { formatCost, toNumber } from "../../../../lib/currency";
 import { useMonthlyPerformanceQuery } from "../../hooks/useMonthlyPerformance";
 import { MONTH_NAMES, formatEnergy } from "../../api/performance.api";
 import { getErrorMessage } from "../../../../lib/errors";
@@ -184,12 +184,18 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
     return acc;
   }, {});
 
-  // Project Financials + Procurement Budget Usage (moved here from the Procurement tab)
-  const procurementQuery = useProcurementItemsQuery(String(project.id));
-  const procurementItems = procurementQuery.data ?? [];
+  // Project Financials + Procurement Budget Usage (moved here from the Procurement tab).
+  // Committed spend is measured from Purchase Orders (actual commitments), not Purchase
+  // Requests (not yet committed to a vendor).
+  const purchaseOrdersQuery = usePurchaseOrdersQuery(String(project.id));
+  const purchaseOrders = purchaseOrdersQuery.data ?? [];
   const totalSpend = useMemo(
-    () => procurementItems.reduce((sum, it) => sum + toNumber(it.estimatedCost), 0),
-    [procurementItems],
+    () =>
+      purchaseOrders.reduce(
+        (sum, po) => sum + po.items.reduce((itemSum, item) => itemSum + item.quantity * toNumber(item.unitPrice), 0),
+        0,
+      ),
+    [purchaseOrders],
   );
 
   const updateProjectMutation = useUpdateProject();

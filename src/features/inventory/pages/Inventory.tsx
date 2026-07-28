@@ -32,21 +32,21 @@ import { useProjects } from "../../projects/hooks/useProjects";
 import { InventoryItem, Vendor, Warehouse } from "../../../types";
 import { InventoryItemInput } from "../api/inventory.api";
 import {
-  useWorkspaceInventoryQuery,
+  useOrganizationInventoryQuery,
   useCreateInventoryItemMutation,
   useUpdateInventoryItemMutation,
   useDeleteInventoryItemMutation,
-  useWorkspaceWarehousesQuery,
+  useOrganizationWarehousesQuery,
   useCreateWarehouseMutation,
   useDeleteWarehouseMutation,
-  useWorkspacePendingTransfersQuery,
-  useWorkspaceVendorsQuery,
+  useOrganizationPendingTransfersQuery,
+  useOrganizationVendorsQuery,
   useCreateVendorMutation,
   useUpdateVendorMutation,
   useDeleteVendorMutation,
 } from "../hooks/useInventory";
-import { useWorkspaceProcurementQuery } from "../../procurement/hooks/useProcurement";
-import { toNumber, formatCost } from "../../procurement/api/procurement.api";
+import { useOrganizationPurchaseOrdersQuery } from "../../procurement/hooks/usePurchaseOrder";
+import { toNumber, formatCost } from "../../../lib/currency";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import ItemNameField from "../components/ItemNameField";
@@ -142,7 +142,7 @@ const InventoryPage: React.FC = () => {
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const { data: projects = [] } = useProjects();
-  const itemsQuery = useWorkspaceInventoryQuery();
+  const itemsQuery = useOrganizationInventoryQuery();
   const items = itemsQuery.data ?? [];
   const loading = itemsQuery.isLoading;
   const error = itemsQuery.isError
@@ -150,12 +150,12 @@ const InventoryPage: React.FC = () => {
     : null;
   const [refreshing, setRefreshing] = useState(false);
 
-  const warehousesQuery = useWorkspaceWarehousesQuery();
+  const warehousesQuery = useOrganizationWarehousesQuery();
   const warehouses = warehousesQuery.data ?? [];
-  const vendorsQuery = useWorkspaceVendorsQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];
-  const pendingTransfersQuery = useWorkspacePendingTransfersQuery();
-  const procurementQuery = useWorkspaceProcurementQuery();
+  const pendingTransfersQuery = useOrganizationPendingTransfersQuery();
+  const purchaseOrdersQuery = useOrganizationPurchaseOrdersQuery();
 
   const createMutation = useCreateInventoryItemMutation();
   const updateMutation = useUpdateInventoryItemMutation();
@@ -862,14 +862,19 @@ const InventoryPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="p-4 bg-white border rounded-lg border-slate-200">
               <h4 className="text-[12px] font-semibold text-slate-900 mb-3">Recent Purchases</h4>
-              {(procurementQuery.data ?? []).length === 0 ? (
+              {(purchaseOrdersQuery.data ?? []).length === 0 ? (
                 <p className="text-[11px] text-slate-400">No recent purchases.</p>
               ) : (
                 <div className="space-y-2">
-                  {(procurementQuery.data ?? []).slice(0, 6).map((p) => (
-                    <div key={p.id} className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-600 truncate">{p.itemName}</span>
-                      <span className="text-slate-400">{formatCost(p.estimatedCost)}</span>
+                  {(purchaseOrdersQuery.data ?? []).slice(0, 6).map((po) => (
+                    <div key={po.id} className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-600 truncate">
+                        {po.items[0]?.itemName}
+                        {po.items.length > 1 ? ` +${po.items.length - 1}` : ""}
+                      </span>
+                      <span className="text-slate-400">
+                        {formatCost(po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0))}
+                      </span>
                     </div>
                   ))}
                 </div>

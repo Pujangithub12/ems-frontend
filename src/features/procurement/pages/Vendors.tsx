@@ -17,7 +17,7 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { Vendor } from "../../../types";
 import {
-  useWorkspaceVendorsQuery,
+  useOrganizationVendorsQuery,
   useCreateVendorMutation,
   useUpdateVendorMutation,
   useDeleteVendorMutation,
@@ -31,6 +31,9 @@ type VendorForm = {
   location: string;
   contact: string;
   contractExpiryDate: string;
+  contactPerson: string;
+  address: string;
+  email: string;
 };
 
 const emptyForm: VendorForm = {
@@ -39,6 +42,9 @@ const emptyForm: VendorForm = {
   location: "",
   contact: "",
   contractExpiryDate: "",
+  contactPerson: "",
+  address: "",
+  email: "",
 };
 
 const formatDate = (value?: string | null) =>
@@ -57,7 +63,7 @@ const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; i
 );
 
 /**
- * Workspace-wide vendor directory (under the Procurement group). Backed by the
+ * Organization-wide vendor directory (under the Procurement group). Backed by the
  * same vendor CRUD the inventory/procurement "Add vendor" pickers use, so a
  * vendor added here shows up in every vendor dropdown and vice-versa.
  */
@@ -65,7 +71,7 @@ const VendorsPage: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const vendorsQuery = useWorkspaceVendorsQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];
   const loading = vendorsQuery.isLoading;
   const error = vendorsQuery.isError
@@ -135,6 +141,9 @@ const VendorsPage: React.FC = () => {
       location: vendor.location || "",
       contact: vendor.contact || "",
       contractExpiryDate: vendor.contractExpiryDate ? vendor.contractExpiryDate.slice(0, 10) : "",
+      contactPerson: vendor.contactPerson || "",
+      address: vendor.address || "",
+      email: vendor.email || "",
     });
     setFormError(null);
     setShowForm(true);
@@ -166,6 +175,9 @@ const VendorsPage: React.FC = () => {
             location: form.location.trim(),
             contact: form.contact.trim(),
             contractExpiryDate: form.contractExpiryDate || null,
+            contactPerson: form.contactPerson.trim(),
+            address: form.address.trim(),
+            email: form.email.trim(),
           },
         });
       } else {
@@ -175,6 +187,9 @@ const VendorsPage: React.FC = () => {
           location: form.location.trim() || undefined,
           contact: form.contact.trim() || undefined,
           ...(form.contractExpiryDate ? { contractExpiryDate: form.contractExpiryDate } : {}),
+          contactPerson: form.contactPerson.trim() || undefined,
+          address: form.address.trim() || undefined,
+          email: form.email.trim() || undefined,
         });
       }
       await vendorsQuery.refetch();
@@ -417,6 +432,27 @@ const VendorsPage: React.FC = () => {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Contact person</label>
+                  <input
+                    value={form.contactPerson}
+                    onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                    placeholder="e.g. Anshuman Pani"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Email</label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block mb-1 text-[11px] font-medium text-slate-900">Location</label>
                 <input
@@ -424,6 +460,16 @@ const VendorsPage: React.FC = () => {
                   onChange={(e) => setForm({ ...form, location: e.target.value })}
                   placeholder="Optional"
                   className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Full address</label>
+                <textarea
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  rows={2}
+                  placeholder="Used on generated Purchase Order PDFs"
+                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none resize-none focus:border-blue-400"
                 />
               </div>
               <div>

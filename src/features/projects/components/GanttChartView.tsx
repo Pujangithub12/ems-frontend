@@ -39,9 +39,12 @@ interface GanttChartViewProps {
   showChart: boolean;
   
   editable: boolean;
-  
-  onLinkCreate?: (sourceId: string, targetId: string) => void;
+
+  /** Fires when a link is drawn by dragging between two bars' connector dots — `type` is dhtmlx's own inference of FS/SS/FF/SF from which dots were used (e.g. right-dot-to-left-dot = e2s/FS). */
+  onLinkCreate?: (sourceId: string, targetId: string, type: GanttLink["type"]) => void;
   onLinkDelete?: (sourceId: string, targetId: string) => void;
+  /** Fires on double-clicking an existing link — callers render their own edit popover (type/lag/delete) at the given viewport position instead of this component doing anything itself beyond reporting the click. */
+  onLinkEdit?: (info: LinkEditInfo) => void;
   onTaskChange?: (
     id: string,
     changes: { text?: string; start?: Date; duration?: number },
@@ -67,6 +70,17 @@ interface GanttChartViewProps {
   onGridHeaderClick?: (columnId: string, target: HTMLElement) => void;
 }
 
+/** Payload for onLinkEdit — everything a caller needs to render a type/lag edit popover anchored at the click position. */
+export interface LinkEditInfo {
+  linkId: string;
+  sourceId: string;
+  targetId: string;
+  type: GanttLink["type"];
+  lag: number;
+  top: number;
+  left: number;
+}
+
 
 const GRID_WIDTH_RATIO = 0.32;
 
@@ -84,6 +98,14 @@ const LINK_TYPE_MAP: Record<GanttLink["type"], string> = {
   s2s: "1", // start_to_start
   e2e: "2", // finish_to_finish
   s2e: "3", // start_to_finish
+};
+
+/** Reverse of LINK_TYPE_MAP — used to translate dhtmlx's own inferred link type (from which connector dots were dragged) back into our vocabulary. */
+const DHTMLX_TYPE_TO_LINK_TYPE: Record<string, GanttLink["type"]> = {
+  "0": "e2s",
+  "1": "s2s",
+  "2": "e2e",
+  "3": "s2e",
 };
 
 const TYPE_MAP: Record<GanttTask["type"], string> = {
@@ -257,6 +279,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   editable,
   onLinkCreate,
   onLinkDelete,
+  onLinkEdit,
   onTaskChange,
   onAddChildTask,
   onDeleteTask,
@@ -279,6 +302,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
 
   const onLinkCreateRef = useRef(onLinkCreate);
   const onLinkDeleteRef = useRef(onLinkDelete);
+  const onLinkEditRef = useRef(onLinkEdit);
   const onTaskChangeRef = useRef(onTaskChange);
   const onAddChildTaskRef = useRef(onAddChildTask);
   const onDeleteTaskRef = useRef(onDeleteTask);
@@ -291,6 +315,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
     onLinkDeleteRef.current = onLinkDelete;
+    onLinkEditRef.current = onLinkEdit;
     onTaskChangeRef.current = onTaskChange;
     onAddChildTaskRef.current = onAddChildTask;
     onDeleteTaskRef.current = onDeleteTask;
@@ -300,7 +325,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     onReorderRef.current = onReorder;
     onGridHeaderClickRef.current = onGridHeaderClick;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onReorder, onGridHeaderClick, editable]);
+  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onReorder, onGridHeaderClick, editable]);
 
 
   // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
@@ -677,8 +702,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     eventIds.push(
       gantt.attachEvent(
         "onAfterLinkAdd",
-        (_id: string | number, link: { source: unknown; target: unknown }) => {
-          onLinkCreateRef.current?.(String(link.source), String(link.target));
+        (_id: string | number, link: { source: unknown; target: unknown; type: unknown }) => {
+          const type = DHTMLX_TYPE_TO_LINK_TYPE[String(link.type)] ?? "e2s";
+          onLinkCreateRef.current?.(String(link.source), String(link.target), type);
         },
       ),
     );
@@ -690,11 +716,25 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         },
       ),
     );
-    
+
+    // Double-click no longer deletes directly (a native window.confirm was
+    // jarring and couldn't expose lag at all) — it reports the link's current
+    // info + click position so the caller can render its own type/lag/delete
+    // popover (see ProjectScheduleTab's link-editor state).
     eventIds.push(
-      gantt.attachEvent("onLinkDblClick", (id: string | number) => {
-        if (window.confirm("Delete this dependency?")) {
-          gantt.deleteLink(id);
+      gantt.attachEvent("onLinkDblClick", (id: string | number, e: MouseEvent) => {
+        const link = gantt.getLink(id);
+        if (link) {
+          const type = DHTMLX_TYPE_TO_LINK_TYPE[String(link.type)] ?? "e2s";
+          onLinkEditRef.current?.({
+            linkId: String(id),
+            sourceId: String(link.source),
+            targetId: String(link.target),
+            type,
+            lag: typeof link.lag === "number" ? link.lag : 0,
+            top: e.clientY,
+            left: e.clientX,
+          });
         }
         return false;
       }),
@@ -828,6 +868,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       source: l.source,
       target: l.target,
       type: LINK_TYPE_MAP[l.type],
+      lag: l.lag ?? 0,
     }));
 
     gantt.clearAll();

@@ -70,7 +70,7 @@ export const ROLE_INFO: Record<
     color: "#B91C1C",
     badge: "Highest Privilege",
     description:
-      "Full workspace access, including everything Administrators can do, plus promoting members to Administrator or Super Administrator.",
+      "Full organization access, including everything Administrators can do, plus promoting members to Administrator or Super Administrator.",
   },
   admin: {
     label: "Administrator",
@@ -94,7 +94,7 @@ export const ROLE_INFO: Record<
     color: "#1E3A8A",
     badge: "Default Role",
     description:
-      "Can view and work on what's assigned to them — tasks, projects, calendar, and announcements — without managing members or workspace settings.",
+      "Can view and work on what's assigned to them — tasks, projects, calendar, and announcements — without managing members or organization settings.",
   },
 };
 
@@ -116,7 +116,7 @@ export type PermissionItem = {
 /**
  * Mirrors the app's actual authorization gates (backend/src/routes/routes.ts
  * roleMiddleware/permissionMiddleware calls + a few inline controller checks
- * like WorkspaceController's workspace.manage check) — not an aspirational or
+ * like OrganizationController's workspace.manage check) — not an aspirational or
  * fictional list. Editable items are enforced dynamically via the RolePermission
  * table (see backend/src/config/permissions.ts); keep the two in sync.
  */
@@ -134,7 +134,8 @@ export const PERMISSION_GROUPS: { category: string; items: PermissionItem[] }[] 
       { key: "projects.manage", label: "Create, edit & delete projects", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.schedule", label: "Manage project schedule (Gantt)", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.documents", label: "Upload & manage project documents", editable: true, roles: ["super_admin", "admin"] },
-      { key: "projects.procurement", label: "Add & manage procurement items", editable: true, roles: ["super_admin", "admin"] },
+      { key: "projects.purchase_request_create", label: "Raise purchase requests", editable: false, roles: [...ALL_ROLES] },
+      { key: "projects.procurement", label: "Approve purchase requests & manage vendor selection / purchase orders", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.performance", label: "Enter & edit monthly energy performance", editable: true, roles: ["super_admin", "admin"] },
       { key: "projects.inventory", label: "Add & manage inventory items", editable: true, roles: ["super_admin", "admin"] },
     ],
@@ -194,9 +195,9 @@ export const PERMISSION_GROUPS: { category: string; items: PermissionItem[] }[] 
     ],
   },
   {
-    category: "Workspace",
+    category: "Organization",
     items: [
-      { key: "workspace.manage", label: "Rename or delete the workspace", editable: true, roles: ["super_admin", "admin"] },
+      { key: "workspace.manage", label: "Rename or delete the organization", editable: true, roles: ["super_admin", "admin"] },
     ],
   },
   {

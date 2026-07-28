@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getProjects,
   getProject,
@@ -11,7 +11,7 @@ import {
 } from "../api/projects.api";
 
 export function useProjects() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.projects(wsId),
     queryFn: getProjects,
@@ -20,7 +20,7 @@ export function useProjects() {
 }
 
 export function useProject(id: string | number | undefined) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.project(wsId, id ?? ""),
     queryFn: () => getProject(id!),
@@ -29,7 +29,7 @@ export function useProject(id: string | number | undefined) {
 }
 
 export function useCreateProject() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: ProjectPayload) => createProject(payload),
@@ -40,7 +40,7 @@ export function useCreateProject() {
 }
 
 export function useUpdateProject() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: ProjectPayload }) =>
@@ -53,7 +53,7 @@ export function useUpdateProject() {
 }
 
 export function useDeleteProject() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteProject(id),
