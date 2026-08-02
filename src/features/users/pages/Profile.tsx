@@ -72,8 +72,8 @@ const Panel: React.FC<{
 
 const Profile: React.FC = () => {
   const { user, updateUser } = useAuth();
-  const { workspaceId } = useParams<{ workspaceId: string }>();
-  const prefix = `/${workspaceId}`;
+  const { organizationId } = useParams<{ organizationId: string }>();
+  const prefix = `/${organizationId}`;
 
   const { data: allLeaveRequests = [], isLoading: loadingExtras } = useLeaveRequests();
   const leaveRequests = allLeaveRequests.filter(

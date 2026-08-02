@@ -81,10 +81,10 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             <div>
               <Eyebrow>Invite Member</Eyebrow>
               <h3 className="font-semibold text-[17px] text-slate-900 mt-1">
-                Send a Workspace Invite
+                Send an Organization Invite
               </h3>
               <p className="text-[12.5px] text-slate-400 mt-1">
-                Add a new person to the workspace
+                Add a new person to the organization
               </p>
             </div>
             <button
@@ -158,7 +158,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({
             <p className="text-[12.5px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-100 rounded-md p-3">
               They'll get an email with a link to set their own password and
               fill in the rest of their profile (phone, job position,
-              address) before joining the workspace.
+              address) before joining the organization.
             </p>
 
             <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">

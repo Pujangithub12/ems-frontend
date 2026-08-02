@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getLeaveRequests,
   createLeaveRequest,
@@ -9,7 +9,7 @@ import {
 } from "../api/leaveRequests.api";
 
 export function useLeaveRequests() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.leaveRequests(wsId),
     queryFn: getLeaveRequests,
@@ -18,7 +18,7 @@ export function useLeaveRequests() {
 }
 
 export function useCreateLeaveRequest() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateLeaveRequestPayload) => createLeaveRequest(payload),
@@ -29,7 +29,7 @@ export function useCreateLeaveRequest() {
 }
 
 export function useUpdateLeaveRequestStatus() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: "approved" | "rejected" }) =>

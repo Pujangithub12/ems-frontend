@@ -3,65 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../../context/AuthProvider";
 import { Eye, EyeOff, Loader2, ShieldCheck, ArrowRight } from "lucide-react";
 
-type Lang = "en" | "ne";
-
-const STRINGS: Record<Lang, Record<string, string>> = {
-  en: {
-    help: "Help",
-    eyebrow: "Operations platform",
-    h1a: "The fleet is",
-    h1accent: "online",
-    h1b: "Pick up where you left off.",
-    lede:
-      "Plants, projects, approvals, and people — one workspace for your entire operation, from intake to grid.",
-    fleetOutput: "Fleet output",
-    plantsOnline: "plants online",
-    availability: "Availability",
-    updated: "Updated",
-    ago: "ago",
-    location: "Kathmandu · Nepal",
-    operational: "All systems operational",
-    chip: "EMS workspace sign-in",
-    title: "Sign in",
-    sub: "Enter your credentials to access your dashboard.",
-    email: "Work email",
-    password: "Password",
-    signin: "Sign in",
-    note: "New here?",
-    noteLink: "Create an account",
-    privacy: "Privacy",
-    terms: "Terms",
-    status: "Status",
-  },
-  ne: {
-    help: "सहायता",
-    eyebrow: "अपरेसन प्लेटफर्म",
-    h1a: "फ्लिट",
-    h1accent: "अनलाइन",
-    h1b: "छ। जहाँबाट छोड्नुभएको थियो त्यहीँबाट सुरु गर्नुहोस्।",
-    lede:
-      "प्लान्ट, प्रोजेक्ट, स्वीकृति, र कर्मचारी — तपाईंको सम्पूर्ण अपरेसनको लागि एउटै वर्कस्पेस।",
-    fleetOutput: "फ्लिट आउटपुट",
-    plantsOnline: "प्लान्ट अनलाइन",
-    availability: "उपलब्धता",
-    updated: "अपडेट भयो",
-    ago: "अघि",
-    location: "काठमाडौं · नेपाल",
-    operational: "सबै प्रणाली सुचारु छन्",
-    chip: "EMS वर्कस्पेस साइन-इन",
-    title: "साइन इन गर्नुहोस्",
-    sub: "आफ्नो ड्यासबोर्ड पहुँच गर्न आफ्नो प्रमाण पत्र प्रविष्ट गर्नुहोस्।",
-    email: "कार्य इमेल",
-    password: "पासवर्ड",
-    signin: "साइन इन गर्नुहोस्",
-    note: "नयाँ हुनुहुन्छ?",
-    noteLink: "खाता सिर्जना गर्नुहोस्",
-    privacy: "गोपनीयता",
-    terms: "सर्तहरू",
-    status: "स्थिति",
-  },
-};
-
 const useNptClock = () => {
   const [clock, setClock] = useState("--:-- NPT");
   useEffect(() => {
@@ -113,11 +54,9 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [lang, setLang] = useState<Lang>("en");
 
   const auth = useAuth();
   const nav = useNavigate();
-  const t = STRINGS[lang];
   const nptClock = useNptClock();
   const mw = useAnimatedCounter(87.4);
   const sparkRef = useRef<SVGPathElement>(null);
@@ -198,7 +137,7 @@ const Login: React.FC = () => {
             className="flex items-center gap-2.5 text-[10px] uppercase tracking-[0.2em] mb-4"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#6E7FA3" }}
           >
-            {t.eyebrow}
+            Operations platform
             <span className="h-px w-11" style={{ background: "#2B3A57" }} />
           </div>
           <h1
@@ -210,15 +149,15 @@ const Login: React.FC = () => {
               color: "#F4F7FD",
             }}
           >
-            {t.h1a} <span style={{ color: "#5B9BFF" }}>{t.h1accent}</span>.
+            The fleet is <span style={{ color: "#5B9BFF" }}>online</span>.
             <br />
-            {t.h1b}
+            Pick up where you left off.
           </h1>
           <p
             className="mt-3.5 max-w-[410px] leading-relaxed text-[13.5px]"
             style={{ color: "#91A0BE" }}
           >
-            {t.lede}
+            Plants, projects, approvals, and people — one organization for your entire operation, from intake to grid.
           </p>
 
           <div
@@ -239,7 +178,7 @@ const Login: React.FC = () => {
                   className="ems-login-dot w-1.5 h-1.5 rounded-full inline-block"
                   style={{ background: "#34C77B" }}
                 />
-                {t.fleetOutput}
+                Fleet output
               </div>
               <div
                 className="text-[10.5px] tabular-nums"
@@ -323,15 +262,15 @@ const Login: React.FC = () => {
             >
               <span>
                 <b style={{ color: "#AEBDD8", fontWeight: 500 }}>3</b>{" "}
-                {t.plantsOnline}
+                plants online
               </span>
               <span>
-                {t.availability}{" "}
+                Availability{" "}
                 <b style={{ color: "#AEBDD8", fontWeight: 500 }}>99.2%</b>
               </span>
               <span>
-                {t.updated} <b style={{ color: "#AEBDD8", fontWeight: 500 }}>2 min</b>{" "}
-                {t.ago}
+                Updated <b style={{ color: "#AEBDD8", fontWeight: 500 }}>2 min</b>{" "}
+                ago
               </span>
             </div>
           </div>
@@ -341,13 +280,13 @@ const Login: React.FC = () => {
           className="relative z-10 flex justify-between items-center text-[9.5px] uppercase tracking-[0.12em]"
           style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#56668A" }}
         >
-          <span>{t.location}</span>
+          <span>Kathmandu · Nepal</span>
           <span className="flex items-center gap-1.5">
             <i
               className="w-1.5 h-1.5 rounded-full inline-block"
               style={{ background: "#34C77B" }}
             />
-            {t.operational}
+            All systems operational
           </span>
           <span>EMS v1.0</span>
         </div>
@@ -356,37 +295,12 @@ const Login: React.FC = () => {
       {/* RIGHT: Sign-in panel */}
       <main className="relative flex flex-col flex-1 px-6 py-4 overflow-hidden sm:px-10">
         <div className="flex items-center justify-end gap-4">
-          <div
-            className="inline-flex overflow-hidden bg-white rounded-lg"
-            style={{ border: "1px solid #D8DDE7", boxShadow: "0 1px 2px rgba(16,20,31,0.04)" }}
-            role="group"
-            aria-label="Language"
-          >
-            <button
-              type="button"
-              onClick={() => setLang("en")}
-              className={`px-3.5 py-1.5 text-[12px] font-medium transition-colors ${
-                lang === "en" ? "bg-[#10141F] text-white" : "text-[#7A8499]"
-              }`}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              onClick={() => setLang("ne")}
-              className={`px-3.5 py-1.5 text-[12px] font-medium transition-colors font-nepali ${
-                lang === "ne" ? "bg-[#10141F] text-white" : "text-[#7A8499]"
-              }`}
-            >
-              नेपाली
-            </button>
-          </div>
           <a
             href="#"
             onClick={(e) => e.preventDefault()}
             className="text-[12.5px] font-medium text-[#7A8499] hover:text-[#10141F]"
           >
-            {t.help}
+            Help
           </a>
         </div>
 
@@ -414,7 +328,7 @@ const Login: React.FC = () => {
               >
                 E
               </div>
-              <span className="text-[12.5px] text-[#454F63]">{t.chip}</span>
+              <span className="text-[12.5px] text-[#454F63]">EMS organization sign-in</span>
             </div>
 
             <h2
@@ -424,10 +338,10 @@ const Login: React.FC = () => {
                 letterSpacing: "-0.02em",
               }}
             >
-              {t.title}
+              Sign in
             </h2>
             <p className="text-[#7A8499] text-[13.5px] mt-1 mb-4 leading-relaxed">
-              {t.sub}
+              Enter your credentials to access your dashboard.
             </p>
 
             <form onSubmit={submit} className="space-y-3">
@@ -440,7 +354,7 @@ const Login: React.FC = () => {
 
               <div>
                 <label className="block mb-1 text-[12.5px] font-semibold text-[#454F63]">
-                  {t.email}
+                  Work email
                 </label>
                 <input
                   value={email}
@@ -465,7 +379,7 @@ const Login: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[12.5px] font-semibold text-[#454F63]">
-                    {t.password}
+                    Password
                   </label>
                   <Link
                     to="/forgot-password"
@@ -516,7 +430,7 @@ const Login: React.FC = () => {
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    <span>{t.signin}</span>
+                    <span>Sign in</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -524,12 +438,12 @@ const Login: React.FC = () => {
             </form>
 
             <p className="mt-4 text-[12.5px] text-[#7A8499] text-center leading-relaxed">
-              {t.note}{" "}
+              New here?{" "}
               <Link
                 to="/register"
                 className="font-semibold text-[#1E3A8A] hover:underline"
               >
-                {t.noteLink}
+                Create an account
               </Link>
             </p>
           </div>
@@ -542,15 +456,15 @@ const Login: React.FC = () => {
           <span>© {new Date().getFullYear()} EMS</span>
           <span style={{ color: "#D4D9E2" }}>·</span>
           <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-[#454F63]">
-            {t.privacy}
+            Privacy
           </a>
           <span style={{ color: "#D4D9E2" }}>·</span>
           <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-[#454F63]">
-            {t.terms}
+            Terms
           </a>
           <span style={{ color: "#D4D9E2" }}>·</span>
           <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-[#454F63]">
-            {t.status}
+            Status
           </a>
         </div>
       </main>

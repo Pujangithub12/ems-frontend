@@ -26,16 +26,16 @@ import {
   Clock3,
 } from "lucide-react";
 import { useProjects } from "../../projects/hooks/useProjects";
-import { useWorkspaceInventoryQuery } from "../../inventory/hooks/useInventory";
-import { useWorkspaceProcurementQuery } from "../../procurement/hooks/useProcurement";
-import { useWorkspaceWarehousesQuery, useWorkspaceVendorsQuery } from "../../inventory/hooks/useInventory";
+import { useOrganizationInventoryQuery } from "../../inventory/hooks/useInventory";
+import { useOrganizationPurchaseOrdersQuery } from "../../procurement/hooks/usePurchaseOrder";
+import { useOrganizationWarehousesQuery, useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 import {
   useReportSummaryQuery,
   useReportActivityQuery,
   useLogReportActivityMutation,
 } from "../hooks/useReports";
 import { ReportFilters } from "../api/reports.api";
-import { formatCost, toNumber } from "../../procurement/api/procurement.api";
+import { formatCost, toNumber } from "../../../lib/currency";
 import { getErrorMessage } from "../../../lib/errors";
 import { useAuth } from "../../../context/AuthProvider";
 import Sparkline from "../../../components/charts/Sparkline";
@@ -48,8 +48,8 @@ import InventoryItemDrawer from "../../inventory/components/InventoryItemDrawer"
 
 const CATEGORY_COLORS: Record<string, string> = { hardware: "#3730A3", software: "#7E22CE", service: "#0F766E" };
 const CATEGORY_LABELS: Record<string, string> = { hardware: "Hardware", software: "Software", service: "Service" };
-const STATUS_COLORS: Record<string, string> = { pending: "#B45309", approved: "#6D28D9", ordered: "#1E3A8A", delivered: "#15803D" };
-const STATUS_LABELS: Record<string, string> = { pending: "Pending", approved: "Approved", ordered: "Ordered", delivered: "Delivered" };
+const STATUS_COLORS: Record<string, string> = { created: "#64748B", sent: "#B45309", accepted: "#1E3A8A", cancelled: "#B91C1C", completed: "#15803D" };
+const STATUS_LABELS: Record<string, string> = { created: "Created", sent: "Sent", accepted: "Accepted", cancelled: "Cancelled", completed: "Completed" };
 const MOVEMENT_SERIES = [
   { key: "receipt", label: "Received", color: "#15803D" },
   { key: "issue", label: "Issued", color: "#B91C1C" },
@@ -124,15 +124,15 @@ const ReportsPage: React.FC = () => {
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const { data: projects = [] } = useProjects();
-  const warehousesQuery = useWorkspaceWarehousesQuery();
-  const vendorsQuery = useWorkspaceVendorsQuery();
+  const warehousesQuery = useOrganizationWarehousesQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const warehouses = warehousesQuery.data ?? [];
   const vendors = vendorsQuery.data ?? [];
 
-  const inventoryQuery = useWorkspaceInventoryQuery();
-  const procurementQuery = useWorkspaceProcurementQuery();
+  const inventoryQuery = useOrganizationInventoryQuery();
+  const purchaseOrdersQuery = useOrganizationPurchaseOrdersQuery();
   const inventoryItems = inventoryQuery.data ?? [];
-  const procurementItems = procurementQuery.data ?? [];
+  const purchaseOrders = purchaseOrdersQuery.data ?? [];
 
   const [range, setRange] = useState<ReportFilters["range"]>("30d");
   const [projectId, setProjectId] = useState<number | "">("");
@@ -177,12 +177,14 @@ const ReportsPage: React.FC = () => {
   );
   const procRecords = useMemo(
     () =>
-      procurementItems.map((p) => ({
-        ...p,
-        vendorLabel: p.vendor?.name || p.vendorName || "--",
-        cost: p.quantity * toNumber(p.unitCost ?? p.estimatedCost),
+      purchaseOrders.map((po) => ({
+        ...po,
+        itemName: po.items[0]?.itemName ? `${po.items[0].itemName}${po.items.length > 1 ? ` +${po.items.length - 1}` : ""}` : "--",
+        vendorLabel: po.vendor?.name || "--",
+        quantity: po.items.reduce((sum, i) => sum + i.quantity, 0),
+        cost: po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0),
       })),
-    [procurementItems],
+    [purchaseOrders],
   );
 
   const INV_COLUMNS: ReportDrawerColumn[] = [
@@ -296,7 +298,7 @@ const ReportsPage: React.FC = () => {
   }, [summary, deadStockSearch]);
 
   const refresh = async () => {
-    await Promise.all([summaryQuery.refetch(), inventoryQuery.refetch(), procurementQuery.refetch()]);
+    await Promise.all([summaryQuery.refetch(), inventoryQuery.refetch(), purchaseOrdersQuery.refetch()]);
   };
 
   const handleExportExcel = async () => {
@@ -341,7 +343,7 @@ const ReportsPage: React.FC = () => {
     await logActivityMutation.mutateAsync({ reportType, action: "exported", format: "xlsx" });
   };
 
-  const loading = summaryQuery.isLoading || inventoryQuery.isLoading || procurementQuery.isLoading;
+  const loading = summaryQuery.isLoading || inventoryQuery.isLoading || purchaseOrdersQuery.isLoading;
   const error = summaryQuery.isError ? getErrorMessage(summaryQuery.error, "Failed to load reports.") : null;
 
   if (loading) {

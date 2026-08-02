@@ -213,7 +213,7 @@ const highlights = [
   {
     icon: Zap,
     title: "Quick Setup",
-    description: "Get your workspace running in minutes, no lengthy onboarding required.",
+    description: "Get your organization running in minutes, no lengthy onboarding required.",
   },
   {
     icon: Lock,
@@ -256,7 +256,7 @@ const features = [
   {
     icon: Megaphone,
     title: "Announcements",
-    description: "Post company-wide updates that reach everyone in your workspace.",
+    description: "Post company-wide updates that reach everyone in your organization.",
   },
   {
     icon: Users,
@@ -302,7 +302,7 @@ const Home: React.FC = () => {
             Manage your <span className="text-blue-700">workforce</span> with confidence
           </h1>
           <p className="mb-8 text-lg leading-relaxed text-slate-500">
-            An all-in-one workspace to manage tasks, projects, approvals and your team's calendar
+            An all-in-one organization to manage tasks, projects, approvals and your team's calendar
             all organized around your company's people and hierarchy.
           </p>
           <div className="flex items-center gap-3">

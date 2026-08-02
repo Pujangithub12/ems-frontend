@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { getErrorMessage } from "../../../lib/errors";
-import { useWorkspaceVendorsQuery, useCreateVendorMutation } from "../hooks/useInventory";
+import { useOrganizationVendorsQuery, useCreateVendorMutation } from "../hooks/useInventory";
 
 interface VendorFieldProps {
   /** The selected vendor's id, or null for "No vendor". */
@@ -13,7 +13,7 @@ interface VendorFieldProps {
 
 /**
  * Vendor field for the Add/Edit Inventory Item form — select-only (never
- * free text), backed by the workspace's existing vendors. The "Add vendor"
+ * free text), backed by the organization's existing vendors. The "Add vendor"
  * link opens a floating popover (mirrors ItemNameField/WarehouseField),
  * rendered via a portal into document.body and positioned `fixed` off the
  * trigger button's own rect — needed because this field is normally used
@@ -21,7 +21,7 @@ interface VendorFieldProps {
  * absolutely-positioned popover that overflows the modal's bounds.
  */
 const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect }) => {
-  const vendorsQuery = useWorkspaceVendorsQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];
   const createMutation = useCreateVendorMutation();
 

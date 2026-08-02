@@ -122,7 +122,7 @@ const ForgotPassword: React.FC = () => {
               >
                 E
               </div>
-              <span className="text-[12.5px] text-[#454F63]">EMS workspace sign-in</span>
+              <span className="text-[12.5px] text-[#454F63]">EMS organization sign-in</span>
             </div>
 
             {step === "email" && (

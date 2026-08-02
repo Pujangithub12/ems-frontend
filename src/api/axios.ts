@@ -18,27 +18,43 @@ if (typeof window !== "undefined") {
   }
 }
 
+// Exposed so non-axios consumers (the notification socket connection) can
+// point at the same backend host without re-deriving/re-normalizing it.
+export const apiBaseUrl = API_BASE;
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
     "Content-Type": "application/json",
+    // Auth is cookie-based and the cookie is SameSite=None in production
+    // (required since the frontend and API are cross-site), which defeats
+    // SameSite's normal CSRF protection. JSON requests are already safe —
+    // "application/json" isn't a CORS-"simple" content type, so the browser
+    // preflights them and the backend's origin whitelist blocks anything
+    // not from this app. File uploads (multipart/form-data) ARE a simple
+    // request though, so without this header they'd skip preflight
+    // entirely and a malicious page could submit one using a logged-in
+    // victim's cookies. Adding any non-simple header forces the same
+    // preflight+origin-check for those too — see requireCsrfHeader on the
+    // backend, which rejects any upload route request missing it.
+    "X-Requested-With": "XMLHttpRequest",
   },
   withCredentials: true,
 });
 
-// The active workspace is derived from the URL (see DashboardLayout), not
-// from the shared workspaceId cookie — this lets each request declare which
-// workspace it's scoped to synchronously, so switching workspaces takes
+// The active organization is derived from the URL (see DashboardLayout), not
+// from the shared organizationId cookie — this lets each request declare which
+// organization it's scoped to synchronously, so switching organizations takes
 // effect on the very next request instead of racing a cookie update.
-let activeWorkspaceId: number | null = null;
+let activeOrganizationId: number | null = null;
 
-export function setActiveWorkspaceId(id: number | null) {
-  activeWorkspaceId = id;
+export function setActiveOrganizationId(id: number | null) {
+  activeOrganizationId = id;
 }
 
 // Fired whenever the backend rejects a request with the
-// WORKSPACE_ACCESS_FORBIDDEN code (see authMiddleware / WorkspaceController)
-// — e.g. an invited-user account trying to reach or create a workspace other
+// WORKSPACE_ACCESS_FORBIDDEN code (see authMiddleware / OrganizationController)
+// — e.g. an invited-user account trying to reach or create an organization other
 // than the one it was invited into. Registered once by a component mounted
 // near the app root (see App.tsx) so this axios module, which has no access
 // to React state, can still surface a global error modal.
@@ -49,8 +65,8 @@ export function setAccessForbiddenHandler(fn: (() => void) | null) {
 }
 
 api.interceptors.request.use((config) => {
-  if (activeWorkspaceId !== null) {
-    config.headers.set("X-Workspace-Id", String(activeWorkspaceId));
+  if (activeOrganizationId !== null) {
+    config.headers.set("X-Workspace-Id", String(activeOrganizationId));
   }
   return config;
 });

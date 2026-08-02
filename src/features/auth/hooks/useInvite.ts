@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { getInvite } from "../api/invites.api";
 
-/** Unauthenticated — no workspace context, so this doesn't use useWorkspaceId(). */
+/** Unauthenticated — no organization context, so this doesn't use useOrganizationId(). */
 export function useInvite(token: string) {
   return useQuery({
     queryKey: queryKeys.invite(token),

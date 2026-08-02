@@ -5,15 +5,15 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import api, { setActiveWorkspaceId } from "../api/axios";
+import api, { setActiveOrganizationId } from "../api/axios";
 import {
-  getWorkspaces,
-  getCurrentWorkspace,
-  switchWorkspace,
-  createWorkspace as createWorkspaceService,
-  updateWorkspace as updateWorkspaceService,
-  deleteWorkspace as deleteWorkspaceService,
-} from "../features/settings/api/workspaces.api";
+  getOrganizations,
+  getCurrentOrganization,
+  switchOrganization,
+  createOrganization as createOrganizationService,
+  updateOrganization as updateOrganizationService,
+  deleteOrganization as deleteOrganizationService,
+} from "../features/settings/api/organizations.api";
 
 export type User = {
   id: string;
@@ -25,22 +25,34 @@ export type User = {
   jobPosition?: string;
   joinDate?: string;
   createdAt?: string;
-  /** Non-null for accounts created via an accepted workspace invite — they're
-   * permanently locked to this one workspace (see backend authMiddleware). */
-  homeWorkspaceId?: number | null;
+  /** Non-null for accounts created via an accepted organization invite — they're
+   * permanently locked to this one organization (see backend authMiddleware). */
+  homeOrganizationId?: number | null;
 } | null;
 
-export type Workspace = {
+export type Organization = {
   id: number;
   name: string;
   description?: string;
+  /** Postal address, phone, email, and website — used e.g. on generated Purchase Order PDFs' letterhead/customer box. */
+  address?: string | null;
+  contact?: string | null;
+  email?: string | null;
+  website?: string | null;
   createdAt: string;
+};
+
+export type OrganizationContactDetails = {
+  address?: string;
+  contact?: string;
+  email?: string;
+  website?: string;
 };
 
 type AuthContextType = {
   user: User;
-  workspace: Workspace | null;
-  workspaces: Workspace[];
+  organization: Organization | null;
+  organizations: Organization[];
   login: (credentials: { email: string; password: string }) => Promise<void>;
   /** Self-service signup step 1: sends a 6-digit OTP to the given email. No account is created yet. */
   registerStart: (details: {
@@ -48,31 +60,36 @@ type AuthContextType = {
     email: string;
     password: string;
   }) => Promise<void>;
-  /** Self-service signup step 2: confirms the OTP, creating the account (as super_admin) plus a brand-new workspace it owns, then logs it in. */
-  registerVerify: (details: { email: string; otp: string }) => Promise<Workspace>;
-  /** Accepts a workspace invite: sets a password + the invitee's own profile details, creates the account (with the invite's name/email/role), joins the workspace, and logs it in. */
+  /** Self-service signup step 2: confirms the OTP, creating the account (as super_admin) plus a brand-new organization it owns, then logs it in. */
+  registerVerify: (details: { email: string; otp: string }) => Promise<Organization>;
+  /** Accepts an organization invite: sets a password + the invitee's own profile details, creates the account (with the invite's name/email/role), joins the organization, and logs it in. */
   acceptInvite: (
     token: string,
     password: string,
     profile: { phoneNumber: string; address: string; jobPosition: string },
-  ) => Promise<Workspace>;
+  ) => Promise<Organization>;
   /** Forgot-password step 1: emails a 6-digit OTP if the address has an account (response is generic either way). */
   forgotPasswordStart: (email: string) => Promise<void>;
   /** Forgot-password step 2: confirms the OTP, sets the new password, and logs the user in. */
   forgotPasswordReset: (details: { email: string; otp: string; newPassword: string }) => Promise<void>;
   logout: () => void;
-  /** Syncs context + the outgoing API header to the given workspace (already known locally). Call after navigating the URL to that workspace's id. */
-  selectWorkspace: (workspaceId: number) => Workspace | null;
-  createWorkspace: (name: string, description?: string) => Promise<Workspace | null>;
-  updateWorkspace: (
-    workspaceId: number,
+  /** Syncs context + the outgoing API header to the given organization (already known locally). Call after navigating the URL to that organization's id. */
+  selectOrganization: (organizationId: number) => Organization | null;
+  createOrganization: (
     name: string,
     description?: string,
+    details?: OrganizationContactDetails,
+  ) => Promise<Organization | null>;
+  updateOrganization: (
+    organizationId: number,
+    name: string,
+    description?: string,
+    details?: OrganizationContactDetails,
   ) => Promise<void>;
-  deleteWorkspace: (
-    workspaceId: number,
+  deleteOrganization: (
+    organizationId: number,
     confirmName: string,
-  ) => Promise<Workspace | null>;
+  ) => Promise<Organization | null>;
   loading: boolean;
   /** Merges fresh fields (e.g. after a profile edit) into the local user state without a refetch. */
   updateUser: (user: User) => void;
@@ -84,8 +101,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<User>(null);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
 
   // FIX 2: Track whether login() has already run so the background checkAuth
@@ -113,24 +130,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     resetInactivityTimer();
   };
 
-  const fetchWorkspacesAndCurrent = async () => {
+  const fetchOrganizationsAndCurrent = async () => {
     try {
       // Also re-fetch /api/me here: login/registerVerify/acceptInvite/
       // forgotPasswordReset no longer return `role` on their own response
-      // (role only makes sense once a workspace is resolved, which happens
+      // (role only makes sense once an organization is resolved, which happens
       // inside authMiddleware — the same place /api/me runs through). This
       // is what keeps user.role accurate after those actions.
-      const [validWorkspaces, current, meRes] = await Promise.all([
-        getWorkspaces(),
-        getCurrentWorkspace(),
+      const [validOrganizations, current, meRes] = await Promise.all([
+        getOrganizations(),
+        getCurrentOrganization(),
         api.get("/api/me"),
       ]);
-      setWorkspaces(validWorkspaces);
-      setWorkspace(current);
-      setActiveWorkspaceId(current?.id ?? null);
+      setOrganizations(validOrganizations);
+      setOrganization(current);
+      setActiveOrganizationId(current?.id ?? null);
       setUser(meRes.data.user ?? null);
     } catch (err) {
-      console.error("Failed to fetch workspaces", err);
+      console.error("Failed to fetch organizations", err);
     }
   };
 
@@ -141,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // Only update state if login() hasn't already handled it
         if (!didLoginRef.current) {
           setUser(res.data.user);
-          await fetchWorkspacesAndCurrent();
+          await fetchOrganizationsAndCurrent();
         }
       } catch {
         if (!didLoginRef.current) {
@@ -194,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const res = await api.post("/api/login", credentials);
     const { user: u } = res.data;
     setUser(u || null);
-    await fetchWorkspacesAndCurrent();
+    await fetchOrganizationsAndCurrent();
     // Ensure loading is false so DashboardLayout doesn't show the spinner
     setLoading(false);
   };
@@ -210,12 +227,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const registerVerify = async (details: {
     email: string;
     otp: string;
-  }): Promise<Workspace> => {
+  }): Promise<Organization> => {
     didLoginRef.current = true;
     const res = await api.post("/api/register/verify", details);
-    const { user: u, workspace: ws } = res.data;
+    const { user: u, organization: ws } = res.data;
     setUser(u || null);
-    await fetchWorkspacesAndCurrent();
+    await fetchOrganizationsAndCurrent();
     setLoading(false);
     return ws;
   };
@@ -224,12 +241,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     token: string,
     password: string,
     profile: { phoneNumber: string; address: string; jobPosition: string },
-  ): Promise<Workspace> => {
+  ): Promise<Organization> => {
     didLoginRef.current = true;
     const res = await api.post(`/api/invites/${token}/accept`, { password, ...profile });
-    const { user: u, workspace: ws } = res.data;
+    const { user: u, organization: ws } = res.data;
     setUser(u || null);
-    await fetchWorkspacesAndCurrent();
+    await fetchOrganizationsAndCurrent();
     setLoading(false);
     return ws;
   };
@@ -247,7 +264,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const res = await api.post("/api/forgot-password/reset", details);
     const { user: u } = res.data;
     setUser(u || null);
-    await fetchWorkspacesAndCurrent();
+    await fetchOrganizationsAndCurrent();
     setLoading(false);
   };
 
@@ -259,69 +276,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("Logout failed", err);
     }
     setUser(null);
-    setWorkspace(null);
-    setWorkspaces([]);
-    setActiveWorkspaceId(null);
+    setOrganization(null);
+    setOrganizations([]);
+    setActiveOrganizationId(null);
   };
 
-  // Called by DashboardLayout when the URL's :workspaceId no longer matches
+  // Called by DashboardLayout when the URL's :organizationId no longer matches
   // the active one. Synchronous: updates the outgoing request header and the
   // display context immediately, then fires off a best-effort cookie sync
-  // (used as the default workspace for requests that can't set headers).
-  const selectWorkspace = (workspaceId: number): Workspace | null => {
-    const target = workspaces.find((w) => w.id === workspaceId) ?? null;
+  // (used as the default organization for requests that can't set headers).
+  const selectOrganization = (organizationId: number): Organization | null => {
+    const target = organizations.find((w) => w.id === organizationId) ?? null;
     if (!target) return null;
 
-    setWorkspace(target);
-    setActiveWorkspaceId(target.id);
-    // Role is scoped per workspace now, so switching workspaces can change
+    setOrganization(target);
+    setActiveOrganizationId(target.id);
+    // Role is scoped per organization now, so switching organizations can change
     // it — re-fetch /api/me (it'll pick up the new X-Workspace-Id header,
     // set just above) and refresh the stored role. Without this, role-gated
-    // UI would keep showing the previous workspace's role until a reload.
-    switchWorkspace(target.id)
+    // UI would keep showing the previous organization's role until a reload.
+    switchOrganization(target.id)
       .then(() => api.get("/api/me"))
       .then((res) => setUser(res.data.user ?? null))
       .catch((err) => {
-        console.error("Failed to persist workspace switch", err);
+        console.error("Failed to persist organization switch", err);
       });
 
     return target;
   };
 
-  const createWorkspace = async (
+  const createOrganization = async (
     name: string,
     description?: string,
-  ): Promise<Workspace | null> => {
+    details?: OrganizationContactDetails,
+  ): Promise<Organization | null> => {
     try {
-      const newWorkspace = await createWorkspaceService(name, description);
-      setWorkspaces((prev) => [...prev, newWorkspace]);
-      return newWorkspace;
+      const newOrganization = await createOrganizationService(name, description, details);
+      setOrganizations((prev) => [...prev, newOrganization]);
+      return newOrganization;
     } catch (err) {
-      console.error("Failed to create workspace", err);
+      console.error("Failed to create organization", err);
       return null;
     }
   };
 
-  const updateWorkspace = async (
-    workspaceId: number,
+  const updateOrganization = async (
+    organizationId: number,
     name: string,
     description?: string,
+    details?: OrganizationContactDetails,
   ) => {
-    const updated = await updateWorkspaceService(workspaceId, name, description);
-    setWorkspaces((prev) => prev.map((w) => (w.id === workspaceId ? updated : w)));
-    if (workspace?.id === workspaceId) {
-      setWorkspace(updated);
+    const updated = await updateOrganizationService(organizationId, name, description, details);
+    setOrganizations((prev) => prev.map((w) => (w.id === organizationId ? updated : w)));
+    if (organization?.id === organizationId) {
+      setOrganization(updated);
     }
   };
 
-  const deleteWorkspace = async (
-    workspaceId: number,
+  const deleteOrganization = async (
+    organizationId: number,
     confirmName: string,
-  ): Promise<Workspace | null> => {
-    const result = await deleteWorkspaceService(workspaceId, confirmName);
-    await fetchWorkspacesAndCurrent();
-    // The workspace the caller should be moved to (backend only returns this
-    // when the deleted workspace was the caller's active one).
+  ): Promise<Organization | null> => {
+    const result = await deleteOrganizationService(organizationId, confirmName);
+    await fetchOrganizationsAndCurrent();
+    // The organization the caller should be moved to (backend only returns this
+    // when the deleted organization was the caller's active one).
     return result;
   };
 
@@ -329,8 +348,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     <AuthContext.Provider
       value={{
         user,
-        workspace,
-        workspaces,
+        organization,
+        organizations,
         login,
         registerStart,
         registerVerify,
@@ -338,10 +357,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         forgotPasswordStart,
         forgotPasswordReset,
         logout,
-        selectWorkspace,
-        createWorkspace,
-        updateWorkspace,
-        deleteWorkspace,
+        selectOrganization,
+        createOrganization,
+        updateOrganization,
+        deleteOrganization,
         loading,
         updateUser: setUser,
       }}

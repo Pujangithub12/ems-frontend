@@ -12,7 +12,7 @@ export interface ScheduleColumnDef {
   tree?: boolean;
   /** When true, `width` is used as a literal pixel value in Gantt view too,
    * instead of being treated as a relative weight normalized against the
-   * grid's ~32%-of-container width (see the columns effect below). Meant for
+   * grid's ~35%-of-container width (see the columns effect below). Meant for
    * small fixed-size utility columns (e.g. the trailing "+" button column)
    * where a couple-pixel weight change gets diluted away to nothing once
    * it's rescaled alongside a 400px-weight Task Name column. */
@@ -39,15 +39,21 @@ interface GanttChartViewProps {
   showChart: boolean;
   
   editable: boolean;
-  
-  onLinkCreate?: (sourceId: string, targetId: string) => void;
+
+  /** Fires when a link is drawn by dragging between two bars' connector dots — `type` is dhtmlx's own inference of FS/SS/FF/SF from which dots were used (e.g. right-dot-to-left-dot = e2s/FS). */
+  onLinkCreate?: (sourceId: string, targetId: string, type: GanttLink["type"]) => void;
   onLinkDelete?: (sourceId: string, targetId: string) => void;
+  /** Fires on double-clicking an existing link — callers render their own edit popover (type/lag/delete) at the given viewport position instead of this component doing anything itself beyond reporting the click. */
+  onLinkEdit?: (info: LinkEditInfo) => void;
   onTaskChange?: (
     id: string,
     changes: { text?: string; start?: Date; duration?: number },
   ) => void;
 
   onAddChildTask?: (parentId: string) => void;
+  /** Fires when a row's hover "+" (gantt-row-add-btn, trailing column) is
+   * clicked — adds a new sibling task directly below this row. */
+  onAddTaskBelow?: (id: string) => void;
   onDeleteTask?: (id: string) => void;
   onDuplicateTask?: (id: string) => void;
   /** Fires when the status <select> embedded in the "status" column (see
@@ -57,6 +63,10 @@ interface GanttChartViewProps {
    * changed (rendered editable for every status except "on_hold", which
    * freezes it — see ProjectScheduleTab's `columns` memo). */
   onProgressChange?: (id: string, progress: number) => void;
+  /** Fires when the checkbox embedded in the "selectCheckbox" column (see
+   * ProjectScheduleTab's `columns` memo, only present in bulk-select mode)
+   * is toggled. */
+  onSelectToggle?: (id: string) => void;
   /** Fires after a row is dragged to a new position (and/or a new parent) in
    * the grid — every task's id + current parent id (null at root), in the
    * new top-to-bottom order. */
@@ -67,8 +77,19 @@ interface GanttChartViewProps {
   onGridHeaderClick?: (columnId: string, target: HTMLElement) => void;
 }
 
+/** Payload for onLinkEdit — everything a caller needs to render a type/lag edit popover anchored at the click position. */
+export interface LinkEditInfo {
+  linkId: string;
+  sourceId: string;
+  targetId: string;
+  type: GanttLink["type"];
+  lag: number;
+  top: number;
+  left: number;
+}
 
-const GRID_WIDTH_RATIO = 0.32;
+
+const GRID_WIDTH_RATIO = 0.35;
 
 // Row/scale-header pixel sizes, kept as named constants (instead of the
 // previous inline literals) since the chart-height calculation below has to
@@ -84,6 +105,14 @@ const LINK_TYPE_MAP: Record<GanttLink["type"], string> = {
   s2s: "1", // start_to_start
   e2e: "2", // finish_to_finish
   s2e: "3", // start_to_finish
+};
+
+/** Reverse of LINK_TYPE_MAP — used to translate dhtmlx's own inferred link type (from which connector dots were dragged) back into our vocabulary. */
+const DHTMLX_TYPE_TO_LINK_TYPE: Record<string, GanttLink["type"]> = {
+  "0": "e2s",
+  "1": "s2s",
+  "2": "e2e",
+  "3": "s2e",
 };
 
 const TYPE_MAP: Record<GanttTask["type"], string> = {
@@ -257,12 +286,15 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   editable,
   onLinkCreate,
   onLinkDelete,
+  onLinkEdit,
   onTaskChange,
   onAddChildTask,
+  onAddTaskBelow,
   onDeleteTask,
   onDuplicateTask,
   onStatusChange,
   onProgressChange,
+  onSelectToggle,
   onReorder,
   onGridHeaderClick,
 }) => {
@@ -279,28 +311,34 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
 
   const onLinkCreateRef = useRef(onLinkCreate);
   const onLinkDeleteRef = useRef(onLinkDelete);
+  const onLinkEditRef = useRef(onLinkEdit);
   const onTaskChangeRef = useRef(onTaskChange);
   const onAddChildTaskRef = useRef(onAddChildTask);
+  const onAddTaskBelowRef = useRef(onAddTaskBelow);
   const onDeleteTaskRef = useRef(onDeleteTask);
   const onDuplicateTaskRef = useRef(onDuplicateTask);
   const onStatusChangeRef = useRef(onStatusChange);
   const onProgressChangeRef = useRef(onProgressChange);
+  const onSelectToggleRef = useRef(onSelectToggle);
   const onReorderRef = useRef(onReorder);
   const onGridHeaderClickRef = useRef(onGridHeaderClick);
   const editableRef = useRef(editable);
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
     onLinkDeleteRef.current = onLinkDelete;
+    onLinkEditRef.current = onLinkEdit;
     onTaskChangeRef.current = onTaskChange;
     onAddChildTaskRef.current = onAddChildTask;
+    onAddTaskBelowRef.current = onAddTaskBelow;
     onDeleteTaskRef.current = onDeleteTask;
     onDuplicateTaskRef.current = onDuplicateTask;
     onStatusChangeRef.current = onStatusChange;
     onProgressChangeRef.current = onProgressChange;
+    onSelectToggleRef.current = onSelectToggle;
     onReorderRef.current = onReorder;
     onGridHeaderClickRef.current = onGridHeaderClick;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onTaskChange, onAddChildTask, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onReorder, onGridHeaderClick, editable]);
+  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onAddTaskBelow, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onSelectToggle, onReorder, onGridHeaderClick, editable]);
 
 
   // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
@@ -340,6 +378,14 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         const rowId = target.dataset.rowId;
         const value = Math.max(0, Math.min(100, Math.round(Number(target.value) || 0)));
         if (rowId) onProgressChangeRef.current?.(rowId, value);
+        return;
+      }
+      // The checkbox embedded in the "selectCheckbox" column (see
+      // ProjectScheduleTab's `columns` memo, only present in bulk-select
+      // mode) — same delegation pattern as status/progress above.
+      if (target instanceof HTMLInputElement && target.classList.contains("gantt-select-checkbox")) {
+        const rowId = target.dataset.rowId;
+        if (rowId) onSelectToggleRef.current?.(rowId);
       }
     };
     document.addEventListener("mousedown", handleDocMouseDown, true);
@@ -447,6 +493,12 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       gantt.attachEvent("onTaskClick", (id: string | number, e: MouseEvent) => {
         if (!editableRef.current) return true;
         const target = e.target as HTMLElement;
+        const addBtn = target.closest<HTMLElement>(".gantt-row-add-btn");
+        if (addBtn) {
+          const rowId = addBtn.dataset.rowAddId ?? String(id);
+          onAddTaskBelowRef.current?.(rowId);
+          return false;
+        }
         const menuBtn = target.closest<HTMLElement>(".gantt-row-menu-btn");
         if (menuBtn) {
           const rowId = menuBtn.dataset.rowMenuId ?? String(id);
@@ -677,8 +729,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     eventIds.push(
       gantt.attachEvent(
         "onAfterLinkAdd",
-        (_id: string | number, link: { source: unknown; target: unknown }) => {
-          onLinkCreateRef.current?.(String(link.source), String(link.target));
+        (_id: string | number, link: { source: unknown; target: unknown; type: unknown }) => {
+          const type = DHTMLX_TYPE_TO_LINK_TYPE[String(link.type)] ?? "e2s";
+          onLinkCreateRef.current?.(String(link.source), String(link.target), type);
         },
       ),
     );
@@ -690,11 +743,25 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         },
       ),
     );
-    
+
+    // Double-click no longer deletes directly (a native window.confirm was
+    // jarring and couldn't expose lag at all) — it reports the link's current
+    // info + click position so the caller can render its own type/lag/delete
+    // popover (see ProjectScheduleTab's link-editor state).
     eventIds.push(
-      gantt.attachEvent("onLinkDblClick", (id: string | number) => {
-        if (window.confirm("Delete this dependency?")) {
-          gantt.deleteLink(id);
+      gantt.attachEvent("onLinkDblClick", (id: string | number, e: MouseEvent) => {
+        const link = gantt.getLink(id);
+        if (link) {
+          const type = DHTMLX_TYPE_TO_LINK_TYPE[String(link.type)] ?? "e2s";
+          onLinkEditRef.current?.({
+            linkId: String(id),
+            sourceId: String(link.source),
+            targetId: String(link.target),
+            type,
+            lag: typeof link.lag === "number" ? link.lag : 0,
+            top: e.clientY,
+            left: e.clientX,
+          });
         }
         return false;
       }),
@@ -726,6 +793,13 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.readonly = !editable;
     gantt.config.drag_links = editable;
     gantt.config.drag_resize = editable;
+    // Lets a bar be dragged left/right to change its start date (kept off
+    // outside edit mode, same as the other drag_* flags) — this is what
+    // feeds the MS-Project-style auto-scheduling cascade in
+    // ProjectScheduleTab (see recalcAfterTaskEdit): moving a task here fires
+    // the same onAfterTaskUpdate/onTaskChange path drag-resize already used,
+    // which now also recomputes dependent tasks' dates.
+    gantt.config.drag_move = editable;
     gantt.config.order_branch = editable;
     gantt.config.order_branch_free = editable;
     if (readyRef.current) gantt.render();
@@ -828,6 +902,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       source: l.source,
       target: l.target,
       type: LINK_TYPE_MAP[l.type],
+      lag: l.lag ?? 0,
     }));
 
     gantt.clearAll();
@@ -873,12 +948,12 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
            full, solid status color on top — so how much of a task is done
            reads at a glance directly on its bar, not just from the Progress
            column. */
-        .gantt_task_line.gantt-status-pending { background: rgba(96, 165, 250, 0.65) !important; border: none !important; }
+        .gantt_task_line.gantt-status-to_do { background: rgba(96, 165, 250, 0.65) !important; border: none !important; }
         .gantt_task_line.gantt-status-in_progress { background: rgba(139, 92, 246, 0.65) !important; border: none !important; }
         .gantt_task_line.gantt-status-on_hold { background: rgba(245, 158, 11, 0.65) !important; border: none !important; }
         .gantt_task_line.gantt-status-completed { background: rgba(16, 185, 129, 0.65) !important; border: none !important; }
         .gantt_task_line .gantt_task_progress { border-radius: 6px 0 0 6px !important; }
-        .gantt_task_line.gantt-status-pending .gantt_task_progress { background: #60a5fa !important; }
+        .gantt_task_line.gantt-status-to_do .gantt_task_progress { background: #60a5fa !important; }
         .gantt_task_line.gantt-status-in_progress .gantt_task_progress { background: #8b5cf6 !important; }
         .gantt_task_line.gantt-status-on_hold .gantt_task_progress { background: #f59e0b !important; }
         .gantt_task_line.gantt-status-completed .gantt_task_progress { background: #10b981 !important; }
@@ -895,7 +970,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_task_line.gantt_project .gantt_task_progress {
           border-radius: 5px 0 0 5px !important;
         }
-        .gantt_milestone.gantt-status-pending .gantt_task_content { background: rgba(96, 165, 250, 0.7) !important; border-color: #3b82f6 !important; }
+        .gantt_milestone.gantt-status-to_do .gantt_task_content { background: rgba(96, 165, 250, 0.7) !important; border-color: #3b82f6 !important; }
         .gantt_milestone.gantt-status-in_progress .gantt_task_content { background: #8b5cf6 !important; border-color: #7c3aed !important; }
         .gantt_milestone.gantt-status-on_hold .gantt_task_content { background: #f59e0b !important; border-color: #d97706 !important; }
         .gantt_milestone.gantt-status-completed .gantt_task_content { background: #10b981 !important; border-color: #059669 !important; }
@@ -995,6 +1070,12 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           font-weight: 400;
         }
 
+        .gantt-row-actions {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 2px;
+        }
         .gantt-row-menu-btn {
           display: inline-flex;
           align-items: center;
@@ -1021,7 +1102,44 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-row-menu-btn:focus-visible {
           outline: none;
         }
-        
+        /* Mirrors gantt-row-menu-btn's look, but only reveals itself on row
+           hover (or its own focus, for keyboard users) — the "..." menu stays
+           always-visible since it's a secondary action, while this "+" is
+           meant to stay out of the way until the row is actually being
+           looked at. */
+        .gantt-row-add-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          padding: 0;
+          line-height: 1;
+          font-size: 15px;
+          font-weight: 700;
+          border-radius: 4px;
+          border: none;
+          outline: none;
+          background: transparent;
+          color: #64748b;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 0.1s ease-out;
+        }
+        .gantt_row:hover .gantt-row-add-btn,
+        .gantt-row-add-btn:focus,
+        .gantt-row-add-btn:focus-visible {
+          opacity: 1;
+        }
+        .gantt-row-add-btn:hover {
+          background: #eff6ff;
+          color: #2563eb;
+        }
+        .gantt-row-add-btn:focus,
+        .gantt-row-add-btn:focus-visible {
+          outline: none;
+        }
+
         .gantt-status-text {
           display: inline-block;
           font-size: 12px;
@@ -1067,6 +1185,12 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-progress-input:focus {
           outline: none;
           border-color: #6366f1;
+        }
+        .gantt-select-checkbox {
+          width: 14px;
+          height: 14px;
+          accent-color: #1e3a8a;
+          cursor: pointer;
         }
 
         .gantt-columns-menu-btn {

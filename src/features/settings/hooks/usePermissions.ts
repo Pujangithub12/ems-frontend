@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { getPermissions, updatePermissions } from "../api/permissions.api";
 
 export function usePermissions() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.permissions(wsId),
     queryFn: getPermissions,
@@ -13,7 +13,7 @@ export function usePermissions() {
 }
 
 export function useUpdatePermissions() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updatePermissions,

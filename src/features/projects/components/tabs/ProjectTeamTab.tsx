@@ -249,7 +249,7 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
                 <Search className="absolute w-3.5 h-3.5 -translate-y-1/2 left-3 top-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search workspace members..."
+                  placeholder="Search organization members..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
@@ -276,8 +276,8 @@ const ProjectTeamTab: React.FC<ProjectTeamTabProps> = ({
               ) : availableUsers.length === 0 ? (
                 <p className="py-6 text-center text-slate-400 text-[12px]">
                   {allUsers.length === 0
-                    ? "No workspace members found."
-                    : "Everyone in the workspace is already on this project."}
+                    ? "No organization members found."
+                    : "Everyone in the organization is already on this project."}
                 </p>
               ) : (
                 availableUsers.map((u) => {

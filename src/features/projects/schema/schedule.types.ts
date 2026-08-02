@@ -13,7 +13,7 @@ export interface ScheduleRow {
   parentId: string;
   predecessorId: string;
   progress: string;
-  /** "pending" | "in_progress" | "on_hold" | "completed", or "" (treated as "pending"). */
+  /** "to_do" | "in_progress" | "on_hold" | "completed", or "" (treated as "to_do"). */
   status: string;
 }
 
@@ -34,7 +34,7 @@ export function emptyScheduleRow(): ScheduleRow {
 
 /** Manually set per task (not derived from progress/dates) — drives both the
  * Status column pill and the Gantt bar color. */
-export type ScheduleStatus = "pending" | "in_progress" | "on_hold" | "completed";
+export type ScheduleStatus = "to_do" | "in_progress" | "on_hold" | "completed";
 
 export interface GanttTask {
   id: string;
@@ -65,17 +65,19 @@ export interface GanttLink {
   source: string;
   target: string;
   type: "e2s" | "s2s" | "e2e" | "s2e";
+  /** Days of delay after the predecessor's reference point; negative = lead/overlap. Feeds the MS-Project-style auto-scheduling cascade (see scheduleAutoSchedule.ts) whenever a dependent task's dates are recomputed. */
+  lag?: number;
 }
 
 /** Colors + labels for each manual status — shared by the Status column pill,
- * the filter dropdown, and the Gantt chart bar coloring. Pending stays the
+ * the filter dropdown, and the Gantt chart bar coloring. To Do stays the
  * "default" blue; the others each get their own distinct color. */
 export const STATUS_META: Record<
   ScheduleStatus,
   { label: string; bar: string; barBorder: string; pillBg: string; pillText: string; dot: string }
 > = {
-  pending: {
-    label: "Pending",
+  to_do: {
+    label: "To Do",
     bar: "#60a5fa",
     barBorder: "#3b82f6",
     pillBg: "#dbeafe",

@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { getEvents, createEvent, deleteEvent } from "../api/events.api";
 
 export function useEvents() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.events(wsId),
     queryFn: getEvents,
@@ -13,7 +13,7 @@ export function useEvents() {
 }
 
 export function useCreateEvent() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createEvent,
@@ -24,7 +24,7 @@ export function useCreateEvent() {
 }
 
 export function useDeleteEvent() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteEvent(id),

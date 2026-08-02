@@ -14,11 +14,13 @@ export function useCreateSubtask() {
       taskId,
       title,
       parentSubTaskId,
+      estimatedDays,
     }: {
       taskId: number;
       title: string;
       parentSubTaskId?: number | null;
-    }) => createSubtask(taskId, { title, parentSubTaskId }),
+      estimatedDays?: number | null;
+    }) => createSubtask(taskId, { title, parentSubTaskId, estimatedDays }),
   });
 }
 
@@ -31,6 +33,7 @@ export function useUpdateSubtask() {
       name,
       progress,
       status,
+      estimatedDays,
     }: {
       taskId: number;
       subTaskId: number;
@@ -38,7 +41,8 @@ export function useUpdateSubtask() {
       name?: string;
       progress?: number;
       status?: string;
-    }) => updateSubtask(taskId, subTaskId, { title, name, progress, status }),
+      estimatedDays?: number | null;
+    }) => updateSubtask(taskId, subTaskId, { title, name, progress, status, estimatedDays }),
   });
 }
 

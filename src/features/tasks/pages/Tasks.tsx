@@ -46,7 +46,7 @@ const TasksPage: React.FC = () => {
     return new Date(t.dueDate).getTime() < new Date(new Date().toDateString()).getTime();
   }).length;
   const inProgressCount = summaryTasks.filter((t) => t.status === "in_progress").length;
-  const pendingCount = summaryTasks.filter((t) => t.status === "pending").length;
+  const pendingCount = summaryTasks.filter((t) => t.status === "to_do").length;
 
   return (
     <div className="flex flex-col min-h-0">
@@ -93,7 +93,7 @@ const TasksPage: React.FC = () => {
 
         <div className="p-3 bg-white border rounded-lg border-slate-200">
           <div className="flex items-start justify-between">
-            <span className="text-[12px] font-medium text-slate-500">Pending</span>
+            <span className="text-[12px] font-medium text-slate-500">To Do</span>
             <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-orange-50">
               <Hourglass className="w-4 h-4 text-orange-700" />
             </div>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Check, Plus, Loader2, Search } from "lucide-react";
-import { useAuth, Workspace } from "../context/AuthProvider";
+import { useAuth, Organization } from "../context/AuthProvider";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -15,72 +15,82 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   </div>
 );
 
-type SwitchWorkspaceModalProps = {
+type SwitchOrganizationModalProps = {
   isOpen: boolean;
   onClose: () => void;
 };
 
-const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
+const SwitchOrganizationModal: React.FC<SwitchOrganizationModalProps> = ({
   isOpen,
   onClose,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newWorkspaceName, setNewWorkspaceName] = useState("");
-  const [newWorkspaceDescription, setNewWorkspaceDescription] = useState("");
+  const [newOrganizationName, setNewOrganizationName] = useState("");
+  const [newOrganizationDescription, setNewOrganizationDescription] = useState("");
+  const [newOrganizationAddress, setNewOrganizationAddress] = useState("");
+  const [newOrganizationContact, setNewOrganizationContact] = useState("");
+  const [newOrganizationEmail, setNewOrganizationEmail] = useState("");
+  const [newOrganizationWebsite, setNewOrganizationWebsite] = useState("");
   const [creating, setCreating] = useState(false);
   const [switchingId, setSwitchingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
-  const { workspace, workspaces, createWorkspace } = useAuth();
+  const { organization, organizations, createOrganization } = useAuth();
 
-  const sortedWorkspaces = useMemo(
+  const sortedOrganizations = useMemo(
     () =>
-      workspaces
-        .filter((w): w is Workspace => w !== null && w !== undefined)
+      organizations
+        .filter((w): w is Organization => w !== null && w !== undefined)
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [workspaces],
+    [organizations],
   );
 
-  const filteredWorkspaces = useMemo(() => {
+  const filteredOrganizations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return sortedWorkspaces;
-    return sortedWorkspaces.filter((w) => w.name.toLowerCase().includes(q));
-  }, [sortedWorkspaces, searchTerm]);
+    if (!q) return sortedOrganizations;
+    return sortedOrganizations.filter((w) => w.name.toLowerCase().includes(q));
+  }, [sortedOrganizations, searchTerm]);
 
   if (!isOpen) return null;
 
   const handleClose = () => {
     setShowCreateForm(false);
-    setNewWorkspaceName("");
-    setNewWorkspaceDescription("");
+    setNewOrganizationName("");
+    setNewOrganizationDescription("");
+    setNewOrganizationAddress("");
+    setNewOrganizationContact("");
+    setNewOrganizationEmail("");
+    setNewOrganizationWebsite("");
     setSwitchingId(null);
     setSearchTerm("");
     onClose();
   };
 
-  const handleSwitch = (workspaceId: number) => {
+  const handleSwitch = (organizationId: number) => {
     if (switchingId !== null) return;
-    setSwitchingId(workspaceId);
+    setSwitchingId(organizationId);
     // The route change is what actually drives the switch — DashboardLayout
-    // picks up the new :workspaceId param and syncs everything else. Keep the
+    // picks up the new :organizationId param and syncs everything else. Keep the
     // modal open with a spinner for a beat so a slow connection doesn't look
     // like a dead click, instead of closing before anything's visibly done.
-    navigate(`/${workspaceId}/dashboard`);
+    navigate(`/${organizationId}/dashboard`);
     window.setTimeout(() => {
       handleClose();
     }, 450);
   };
 
-  const handleCreateWorkspace = async (e: React.FormEvent) => {
+  const handleCreateOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWorkspaceName.trim()) return;
+    if (!newOrganizationName.trim()) return;
     setCreating(true);
     try {
-      const created = await createWorkspace(
-        newWorkspaceName,
-        newWorkspaceDescription,
-      );
+      const created = await createOrganization(newOrganizationName, newOrganizationDescription, {
+        address: newOrganizationAddress.trim() || undefined,
+        contact: newOrganizationContact.trim() || undefined,
+        email: newOrganizationEmail.trim() || undefined,
+        website: newOrganizationWebsite.trim() || undefined,
+      });
       if (created) {
         handleClose();
         navigate(`/${created.id}/dashboard`);
@@ -95,9 +105,9 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
       <div className="w-full max-w-md overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div>
-            <Eyebrow>Workspaces</Eyebrow>
+            <Eyebrow>Organizations</Eyebrow>
             <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-              Switch Workspace
+              Switch Organization
             </h3>
           </div>
           <button
@@ -117,20 +127,20 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search workspaces..."
+                  placeholder="Search organizations..."
                   autoFocus
                   className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
                 />
               </div>
             </div>
             <div className="p-3 space-y-1 max-h-[50vh] overflow-y-auto">
-              {filteredWorkspaces.length === 0 ? (
+              {filteredOrganizations.length === 0 ? (
                 <p className="py-6 text-center text-slate-400 text-[12.5px]">
-                  No workspaces match "{searchTerm}".
+                  No organizations match "{searchTerm}".
                 </p>
               ) : (
-                filteredWorkspaces.map((ws) => {
-                  const isCurrent = workspace?.id === ws.id;
+                filteredOrganizations.map((ws) => {
+                  const isCurrent = organization?.id === ws.id;
                   const isSwitchingTo = switchingId === ws.id;
                   const disabled = switchingId !== null;
                   return (
@@ -158,7 +168,7 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                         ) : (
                           isCurrent && (
                             <div className="text-[11px] text-slate-500">
-                              Current workspace
+                              Current organization
                             </div>
                           )
                         )}
@@ -181,25 +191,25 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                   <Plus className="w-4 h-4" />
                 </div>
                 <div className="text-[13px] font-medium text-slate-900">
-                  Add workspace
+                  Add organization
                 </div>
               </button>
             </div>
           </>
         ) : (
-          <form onSubmit={handleCreateWorkspace} className="p-6 space-y-4">
+          <form onSubmit={handleCreateOrganization} className="p-6 space-y-4">
             <div className="space-y-1.5">
               <label className="text-[12px] font-medium text-slate-600">
                 Name
               </label>
               <input
                 type="text"
-                value={newWorkspaceName}
-                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                value={newOrganizationName}
+                onChange={(e) => setNewOrganizationName(e.target.value)}
                 required
                 autoFocus
                 className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
-                placeholder="My New Workspace"
+                placeholder="My New Organization"
               />
             </div>
             <div className="space-y-1.5">
@@ -207,11 +217,61 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
                 Description (optional)
               </label>
               <textarea
-                value={newWorkspaceDescription}
-                onChange={(e) => setNewWorkspaceDescription(e.target.value)}
+                value={newOrganizationDescription}
+                onChange={(e) => setNewOrganizationDescription(e.target.value)}
                 rows={3}
                 className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
-                placeholder="This is a new workspace"
+                placeholder="This is a new organization"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-slate-600">
+                Address (optional)
+              </label>
+              <textarea
+                value={newOrganizationAddress}
+                onChange={(e) => setNewOrganizationAddress(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                placeholder="Postal address"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-slate-600">
+                  Contact (optional)
+                </label>
+                <input
+                  type="tel"
+                  value={newOrganizationContact}
+                  onChange={(e) => setNewOrganizationContact(e.target.value)}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  placeholder="Phone number"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-medium text-slate-600">
+                  Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={newOrganizationEmail}
+                  onChange={(e) => setNewOrganizationEmail(e.target.value)}
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  placeholder="info@example.com"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[12px] font-medium text-slate-600">
+                Website (optional)
+              </label>
+              <input
+                type="text"
+                value={newOrganizationWebsite}
+                onChange={(e) => setNewOrganizationWebsite(e.target.value)}
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                placeholder="www.example.com"
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -238,4 +298,4 @@ const SwitchWorkspaceModal: React.FC<SwitchWorkspaceModalProps> = ({
   );
 };
 
-export default SwitchWorkspaceModal;
+export default SwitchOrganizationModal;

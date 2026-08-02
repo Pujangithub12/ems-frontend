@@ -1,320 +1,178 @@
 import React, { useMemo, useState } from "react";
-import * as XLSX from "xlsx";
-import {
-  ShoppingCart,
-  Plus,
-  Search,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  X,
-  ChevronDown,
-  Eye,
-  Download,
-  DollarSign,
-  FileStack,
-  Clock3,
-} from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ClipboardList, Package, Plus, RefreshCw, Loader2, AlertCircle, X, Trash2 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
-import { Project, ProcurementItem } from "../../../../types";
-import { formatCost, toNumber, computeItemCostBreakdown, ProcurementItemInput } from "../../../procurement/api/procurement.api";
-import {
-  useProcurementItemsQuery,
-  useCreateProcurementItemMutation,
-  useUpdateProcurementItemMutation,
-  useDeleteProcurementItemMutation,
-} from "../../../procurement/hooks/useProcurement";
-import { useWorkspaceVendorsQuery } from "../../../inventory/hooks/useInventory";
+import { Project, PurchaseRequestPriority } from "../../../../types";
 import { getErrorMessage } from "../../../../lib/errors";
-import ConfirmationModal from "../../../../components/ConfirmationModal";
-import ComboBoxInput from "../../../../components/ComboBoxInput";
-import Pagination from "../../../../components/Pagination";
-import { useRowSelection } from "../../../../hooks/useRowSelection";
-import ProcurementItemDrawer from "../../../procurement/components/ProcurementItemDrawer";
-import ProcurementItemGroupDrawer from "../../../procurement/components/ProcurementItemGroupDrawer";
-import { STATUS_STYLES, CATEGORY_STYLES } from "../../../procurement/components/statusStyles";
-import { groupProcurementItems } from "../../../procurement/utils/groupProcurementItems";
+import ItemNameField from "../../../inventory/components/ItemNameField";
+import {
+  usePurchaseRequestsQuery,
+  useCreatePurchaseRequestMutation,
+  useChangePurchaseRequestStatusMutation,
+} from "../../../procurement/hooks/usePurchaseRequest";
+import { usePurchaseOrdersQuery } from "../../../procurement/hooks/usePurchaseOrder";
+import { PurchaseRequestItemInput } from "../../../procurement/api/purchaseRequest.api";
+import {
+  StatusPill as PrStatusPill,
+  PRIORITY_STYLES,
+  PurchaseRequestDetailDrawer,
+} from "../../../procurement/pages/PurchaseRequests";
 
 interface ProjectProcurementTabProps {
   project: Project;
 }
 
-type StatusFilter = "all" | ProcurementItem["status"];
+type ItemRow = { itemId: number | null; itemName: string; quantity: string; unit: string; estimatedPrice: string };
+const emptyItemRow: ItemRow = { itemId: null, itemName: "", quantity: "1", unit: "", estimatedPrice: "" };
 
-const CategoryPill: React.FC<{ category: ProcurementItem["category"] }> = ({ category }) => {
-  const c = CATEGORY_STYLES[category];
-  return (
-    <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium" style={{ background: c.bg, color: c.fg }}>
-      {c.label}
-    </span>
-  );
+const PO_STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
+  created: { bg: "#f1f5f9", fg: "#475569", label: "Created" },
+  sent: { bg: "#fef9c3", fg: "#854d0e", label: "Sent" },
+  accepted: { bg: "#dbeafe", fg: "#1e40af", label: "Accepted" },
+  cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelled" },
+  completed: { bg: "#dcfce7", fg: "#166534", label: "Completed" },
 };
 
-const emptyForm: ProcurementItemInput = {
-  itemName: "",
-  category: "hardware",
-  quantity: 1,
-  unit: undefined,
-  estimatedCost: undefined,
-  unitCost: undefined,
-  taxPercent: undefined,
-  discountPercent: undefined,
-  transportCost: undefined,
-  customsCost: undefined,
-  vendorId: null,
-  neededByDate: "",
-  notes: "",
-};
-
-const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; iconBg: string }> = ({ label, value, icon, iconBg }) => (
-  <div className="p-3 bg-white border rounded-lg border-slate-200">
-    <div className="flex items-start justify-between">
-      <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ${iconBg}`}>{icon}</div>
-    </div>
-    <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{value}</div>
-  </div>
-);
-
+/**
+ * Project-scoped view of the procurement pipeline v2 (Purchase Requests + Purchase Orders),
+ * reusing the org-wide pages' detail drawer (PurchaseRequestDetailDrawer) and vendor-quote
+ * selection UI rather than re-implementing it — matches the "reduced form vs. org-wide page"
+ * pattern already used by this tab's sibling ProjectInventoryTab.
+ */
 const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }) => {
   const projectId = String(project.id);
+  const { organizationId } = useParams<{ organizationId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const itemsQuery = useProcurementItemsQuery(projectId);
-  const items = itemsQuery.data ?? [];
-  const loading = itemsQuery.isLoading;
-  const error = itemsQuery.isError
-    ? getErrorMessage(itemsQuery.error, "Failed to load procurement items.")
-    : null;
+  const requestsQuery = usePurchaseRequestsQuery(projectId);
+  const requests = requestsQuery.data ?? [];
+  const ordersQuery = usePurchaseOrdersQuery(projectId);
+  const orders = ordersQuery.data ?? [];
+
   const [refreshing, setRefreshing] = useState(false);
-
-  const createMutation = useCreateProcurementItemMutation();
-  const updateMutation = useUpdateProcurementItemMutation();
-  const deleteMutation = useDeleteProcurementItemMutation();
-  const vendorsQuery = useWorkspaceVendorsQuery();
-  const vendors = vendorsQuery.data ?? [];
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-  const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState<ProcurementItem | null>(null);
-  const [form, setForm] = useState<ProcurementItemInput>(emptyForm);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ProcurementItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
-  const [drawerItemId, setDrawerItemId] = useState<number | null>(null);
-  const [drawerGroupKey, setDrawerGroupKey] = useState<string | null>(null);
-
   const refresh = async () => {
     setRefreshing(true);
-    await itemsQuery.refetch();
+    await Promise.all([requestsQuery.refetch(), ordersQuery.refetch()]);
     setRefreshing(false);
   };
 
-  const filteredItems = useMemo(() => {
-    let rows = items;
-    if (statusFilter !== "all") rows = rows.filter((it) => it.status === statusFilter);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      rows = rows.filter(
-        (it) =>
-          it.itemName.toLowerCase().includes(q) ||
-          (it.vendor?.name || it.vendorName || "").toLowerCase().includes(q) ||
-          (it.poNumber || "").toLowerCase().includes(q),
-      );
-    }
-    return rows;
-  }, [items, search, statusFilter]);
-
-  // One row per item (see groupProcurementItems) — repeat requests for the
-  // same item within this project fold together, same as the workspace-wide
-  // Procurement page; the group's drawer lists each underlying request.
-  const groupedItems = useMemo(() => groupProcurementItems(filteredItems), [filteredItems]);
-
-  const pageItems = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return groupedItems.slice(start, start + pageSize);
-  }, [groupedItems, page, pageSize]);
-
-  const rowSelection = useRowSelection<string>(pageItems.map((g) => g.key));
-  const groupByKey = useMemo(() => new Map(groupedItems.map((g) => [g.key, g])), [groupedItems]);
-
-  const kpis = useMemo(() => {
-    const now = Date.now();
-    return {
-      totalValue: items.reduce((sum, i) => sum + computeItemCostBreakdown(i).total, 0),
-      pending: items.filter((i) => i.status === "pending").length,
-      overdue: items.filter((i) => i.status !== "delivered" && i.neededByDate && new Date(i.neededByDate).getTime() < now).length,
-    };
-  }, [items]);
-
-  const itemNameOptions = useMemo(() => items.map((i) => i.itemName), [items]);
+  // ---- Create Purchase Request form ----
+  // Same two-step review-before-submit flow as the org-wide Purchase Requests
+  // page (see PurchaseRequests.tsx): fill the form, review everything
+  // entered, then "Submit" both creates the PR and immediately moves it to
+  // "submitted" in one action.
+  const [showForm, setShowForm] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [department, setDepartment] = useState("");
+  const [priority, setPriority] = useState<PurchaseRequestPriority>("medium");
+  const [reason, setReason] = useState("");
+  const [items, setItems] = useState<ItemRow[]>([{ ...emptyItemRow }]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const createMutation = useCreatePurchaseRequestMutation();
+  const createStatusMutation = useChangePurchaseRequestStatusMutation();
 
   const openCreateForm = () => {
-    setEditingItem(null);
-    setForm(emptyForm);
+    setDepartment("");
+    setPriority("medium");
+    setReason("");
+    setItems([{ ...emptyItemRow }]);
     setFormError(null);
+    setShowReview(false);
     setShowForm(true);
   };
-
-  const openEditForm = (item: ProcurementItem) => {
-    setEditingItem(item);
-    setForm({
-      itemName: item.itemName,
-      category: item.category,
-      quantity: item.quantity,
-      unit: item.unit || undefined,
-      estimatedCost: item.estimatedCost != null ? toNumber(item.estimatedCost) : undefined,
-      unitCost: item.unitCost != null ? toNumber(item.unitCost) : undefined,
-      taxPercent: item.taxPercent != null ? toNumber(item.taxPercent) : undefined,
-      discountPercent: item.discountPercent != null ? toNumber(item.discountPercent) : undefined,
-      transportCost: item.transportCost != null ? toNumber(item.transportCost) : undefined,
-      customsCost: item.customsCost != null ? toNumber(item.customsCost) : undefined,
-      vendorId: item.vendor?.id ?? null,
-      neededByDate: item.neededByDate ? item.neededByDate.slice(0, 10) : "",
-      notes: item.notes || "",
-    });
-    setFormError(null);
-    setShowForm(true);
-  };
-
   const closeForm = () => {
     setShowForm(false);
-    setEditingItem(null);
-    setForm(emptyForm);
-    setFormError(null);
+    setShowReview(false);
+  };
+  const updateItemRow = (index: number, patch: Partial<ItemRow>) =>
+    setItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const addItemRow = () => setItems((prev) => [...prev, { ...emptyItemRow }]);
+  const removeItemRow = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
+
+  /** Shared by both "Review" and the final "Submit". */
+  const buildPayloadItems = (): PurchaseRequestItemInput[] | null => {
+    const payloadItems: PurchaseRequestItemInput[] = [];
+    for (const row of items) {
+      if (!row.itemName.trim() && !row.itemId) continue;
+      const quantity = parseFloat(row.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        setFormError("Every item needs a valid quantity.");
+        return null;
+      }
+      payloadItems.push({
+        itemName: row.itemName.trim() || undefined,
+        itemId: row.itemId,
+        quantity,
+        unit: row.unit.trim() || undefined,
+        estimatedPrice: row.estimatedPrice ? parseFloat(row.estimatedPrice) : null,
+      });
+    }
+    if (payloadItems.length === 0) {
+      setFormError("Add at least one item.");
+      return null;
+    }
+    return payloadItems;
   };
 
-  const handleSubmitForm = async (e: React.FormEvent) => {
+  /** Form step's submit — validates, then hands off to the review step instead of creating anything yet. */
+  const handleReviewForm = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = form.itemName.trim();
-    if (!trimmedName) {
-      setFormError("Item name is required.");
+    if (!buildPayloadItems()) return;
+    setFormError(null);
+    setShowReview(true);
+  };
+
+  /** Review step's "Submit" — creates the PR and immediately submits it for approval. */
+  const handleConfirmSubmit = async () => {
+    const payloadItems = buildPayloadItems();
+    if (!payloadItems) {
+      setShowReview(false);
       return;
     }
     setSubmitting(true);
     setFormError(null);
     try {
-      const payload: ProcurementItemInput = {
-        itemName: trimmedName,
-        category: form.category || "hardware",
-        quantity: form.quantity && form.quantity > 0 ? form.quantity : 1,
-        unit: form.unit?.trim() || undefined,
-        estimatedCost:
-          form.estimatedCost !== undefined && form.estimatedCost !== null && `${form.estimatedCost}` !== ""
-            ? Number(form.estimatedCost)
-            : null,
-        taxPercent:
-          form.taxPercent !== undefined && form.taxPercent !== null && `${form.taxPercent}` !== ""
-            ? Number(form.taxPercent)
-            : null,
-        discountPercent:
-          form.discountPercent !== undefined && form.discountPercent !== null && `${form.discountPercent}` !== ""
-            ? Number(form.discountPercent)
-            : null,
-        transportCost:
-          form.transportCost !== undefined && form.transportCost !== null && `${form.transportCost}` !== ""
-            ? Number(form.transportCost)
-            : null,
-        customsCost:
-          form.customsCost !== undefined && form.customsCost !== null && `${form.customsCost}` !== ""
-            ? Number(form.customsCost)
-            : null,
-        vendorId: form.vendorId || null,
-        neededByDate: form.neededByDate || null,
-        notes: form.notes?.trim() || undefined,
-      };
-      if (editingItem) {
-        await updateMutation.mutateAsync({ itemId: editingItem.id, input: payload });
-      } else {
-        await createMutation.mutateAsync({ projectId, input: payload });
-      }
-      await itemsQuery.refetch();
+      const created = await createMutation.mutateAsync({
+        projectId,
+        input: { department: department.trim() || undefined, priority, reason: reason.trim() || undefined, items: payloadItems },
+      });
+      await createStatusMutation.mutateAsync({ id: created.id, status: "submitted" });
+      await requestsQuery.refetch();
       closeForm();
     } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to save procurement item."));
+      setFormError(getErrorMessage(err, "Failed to submit purchase request."));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleStatusChange = async (item: ProcurementItem, status: ProcurementItem["status"]) => {
-    setActionError(null);
-    setStatusUpdatingId(item.id);
-    try {
-      await updateMutation.mutateAsync({ itemId: item.id, input: { status } });
-      await itemsQuery.refetch();
-    } catch (err) {
-      setActionError(getErrorMessage(err, "Failed to update status."));
-    } finally {
-      setStatusUpdatingId(null);
-    }
-  };
+  const [drawerId, setDrawerId] = useState<number | null>(null);
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await deleteMutation.mutateAsync(deleteTarget.id);
-      await itemsQuery.refetch();
-      setDeleteTarget(null);
-    } catch (err) {
-      setActionError(getErrorMessage(err, "Failed to delete procurement item."));
-    } finally {
-      setDeleting(false);
-    }
-  };
+  const kpis = useMemo(
+    () => ({
+      requests: requests.length,
+      pendingApproval: requests.filter((r) => r.status === "submitted").length,
+      orders: orders.length,
+      activeOrders: orders.filter((o) => o.status !== "completed" && o.status !== "cancelled").length,
+    }),
+    [requests, orders],
+  );
 
-  const handleBulkDelete = async () => {
-    const requestIds = rowSelection.selectedIds.flatMap((key) => groupByKey.get(key)?.requests.map((r) => r.id) ?? []);
-    if (requestIds.length === 0) return;
-    if (!window.confirm(`Delete ${requestIds.length} selected request(s)? This cannot be undone.`)) return;
-    setActionError(null);
-    try {
-      for (const id of requestIds) {
-        await deleteMutation.mutateAsync(id);
-      }
-      await itemsQuery.refetch();
-      rowSelection.clear();
-    } catch (err) {
-      setActionError(getErrorMessage(err, "Failed to delete selected items."));
-    }
-  };
-
-  const handleExport = (rows: ProcurementItem[]) => {
-    const sheetRows = rows.map((it) => ({
-      "Item Name": it.itemName,
-      "PO Number": it.poNumber || "",
-      Category: it.category,
-      Quantity: it.quantity,
-      Unit: it.unit || "",
-      "Unit Cost": toNumber(it.unitCost ?? it.estimatedCost),
-      "Tax %": it.taxPercent != null ? toNumber(it.taxPercent) : "",
-      "Discount %": it.discountPercent != null ? toNumber(it.discountPercent) : "",
-      "Transport Cost": it.transportCost != null ? toNumber(it.transportCost) : "",
-      "Customs Cost": it.customsCost != null ? toNumber(it.customsCost) : "",
-      "Total Cost": computeItemCostBreakdown(it).total,
-      Vendor: it.vendor?.name || it.vendorName || "",
-      "Needed By": it.neededByDate || "",
-      Status: it.status,
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(sheetRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Procurement");
-    XLSX.writeFile(workbook, `procurement-project-${projectId}.xlsx`);
-  };
+  const loading = requestsQuery.isLoading || ordersQuery.isLoading;
+  const error = requestsQuery.isError
+    ? getErrorMessage(requestsQuery.error, "Failed to load purchase requests.")
+    : ordersQuery.isError
+      ? getErrorMessage(ordersQuery.error, "Failed to load purchase orders.")
+      : null;
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
-        <p className="text-[12px] text-slate-400">Loading procurement items…</p>
+        <p className="text-[12px] text-slate-400">Loading procurement…</p>
       </div>
     );
   }
@@ -333,40 +191,33 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
 
   return (
     <div className="flex flex-col gap-5">
-      {/* KPI strip */}
-      <div className="grid grid-cols-3 gap-3">
-        <KpiCard label="Total PO Value" value={formatCost(kpis.totalValue)} icon={<DollarSign className="w-4 h-4 text-blue-700" />} iconBg="bg-blue-50" />
-        <KpiCard label="Pending Approval" value={String(kpis.pending)} icon={<Clock3 className="w-4 h-4 text-amber-700" />} iconBg="bg-amber-50" />
-        <KpiCard label="Overdue POs" value={String(kpis.overdue)} icon={<FileStack className="w-4 h-4 text-red-700" />} iconBg="bg-red-50" />
+      <div className={`grid grid-cols-2 gap-3 ${isAdmin ? "sm:grid-cols-4" : ""}`}>
+        <div className="p-3 bg-white border rounded-lg border-slate-200">
+          <span className="text-[11px] font-medium text-slate-500">Purchase Requests</span>
+          <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{kpis.requests}</div>
+        </div>
+        <div className="p-3 bg-white border rounded-lg border-slate-200">
+          <span className="text-[11px] font-medium text-slate-500">Pending Approval</span>
+          <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{kpis.pendingApproval}</div>
+        </div>
+        {isAdmin && (
+          <>
+            <div className="p-3 bg-white border rounded-lg border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500">Purchase Orders</span>
+              <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{kpis.orders}</div>
+            </div>
+            <div className="p-3 bg-white border rounded-lg border-slate-200">
+              <span className="text-[11px] font-medium text-slate-500">Active Orders</span>
+              <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{kpis.activeOrders}</div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Search items, PO#, vendors..."
-              className="pl-8 pr-3 py-2 w-64 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
-            />
-          </div>
-          <div className="relative">
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as StatusFilter); setPage(1); }}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="ordered">Ordered</option>
-              <option value="delivered">Delivered</option>
-            </select>
-            <ChevronDown className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none right-2.5 top-1/2 text-slate-400" />
-          </div>
-        </div>
+      <div className="flex items-center justify-between">
+        <h3 className="text-[13px] font-semibold text-slate-900 flex items-center gap-1.5">
+          <ClipboardList size={15} className="text-slate-400" /> Purchase Requests
+        </h3>
         <div className="flex items-center gap-2">
           <button
             onClick={refresh}
@@ -376,164 +227,44 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
           </button>
           <button
-            onClick={() => handleExport(filteredItems)}
-            className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
+            onClick={openCreateForm}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors"
           >
-            <Download size={13} /> Export
+            <Plus size={14} /> New Purchase Request
           </button>
-          {isAdmin && (
-            <button
-              onClick={openCreateForm}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors"
-            >
-              <Plus size={14} /> Request Item
-            </button>
-          )}
         </div>
       </div>
 
-      {actionError && (
-        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
-          <span>{actionError}</span>
-          <button onClick={() => setActionError(null)}>
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {rowSelection.someSelected && isAdmin && (
-        <div className="flex items-center justify-between px-3 py-2 text-[12px] border rounded bg-blue-50 border-blue-200 text-blue-900">
-          <span>{rowSelection.selectedIds.length} item(s) selected</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() =>
-                handleExport(rowSelection.selectedIds.flatMap((key) => groupByKey.get(key)?.requests ?? []))
-              }
-              className="px-2 py-1 font-medium rounded hover:bg-blue-100"
-            >
-              Export Selected
-            </button>
-            <button onClick={handleBulkDelete} className="px-2 py-1 font-medium text-red-700 rounded hover:bg-red-50">
-              Delete Selected
-            </button>
-            <button onClick={rowSelection.clear} className="p-1 rounded hover:bg-blue-100">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
-        {filteredItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
-              <ShoppingCart className="w-6 h-6 text-slate-400" />
-            </div>
-            <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
-              No procurement items{statusFilter !== "all" || search ? " match your filters" : " yet"}
-            </h3>
-            <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
-              {isAdmin && statusFilter === "all" && !search
-                ? "Request an item to start tracking purchases for this project."
-                : "Try adjusting your search or status filter."}
-            </p>
+      <div className="overflow-hidden bg-white border rounded-lg border-slate-200">
+        {requests.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <p className="text-slate-500 text-[12px]">No purchase requests for this project yet.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                  {isAdmin && (
-                    <th className="w-8 px-3 py-2">
-                      <input type="checkbox" checked={rowSelection.allSelected} onChange={rowSelection.toggleAll} className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900" />
-                    </th>
-                  )}
-                  <th className="px-3 py-2 font-medium text-left">Item</th>
-                  <th className="px-3 py-2 font-medium text-left">Category</th>
-                  <th className="px-3 py-2 font-medium text-left">Total Qty</th>
-                  <th className="px-3 py-2 font-medium text-left">Total Cost</th>
-                  <th className="px-3 py-2 font-medium text-left">Vendor</th>
-                  <th className="px-3 py-2 font-medium text-left">Needed By</th>
+                  <th className="px-3 py-2 font-medium text-left">PR #</th>
+                  <th className="px-3 py-2 font-medium text-left">Items</th>
+                  <th className="px-3 py-2 font-medium text-left">Priority</th>
                   <th className="px-3 py-2 font-medium text-left">Status</th>
                   <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((group) => (
-                  <tr key={group.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    {isAdmin && (
-                      <td className="px-3 py-2">
-                        <input type="checkbox" checked={rowSelection.selected.has(group.key)} onChange={() => rowSelection.toggle(group.key)} className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900" />
-                      </td>
-                    )}
-                    <td className="px-3 py-2">
-                      <button onClick={() => setDrawerGroupKey(group.key)} className="font-medium text-left text-slate-800 hover:text-blue-900 hover:underline">
-                        {group.itemName}
-                      </button>
-                      <div className="text-slate-400 text-[11px]">
-                        {group.requests.length} request{group.requests.length === 1 ? "" : "s"}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2"><CategoryPill category={group.category} /></td>
+                {requests.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-3 py-2 font-medium text-slate-800">{r.prNumber || `#${r.id}`}</td>
                     <td className="px-3 py-2 text-slate-600">
-                      {group.totalQuantity}
-                      {group.unitLabel ? ` ${group.unitLabel}` : ""}
+                      {r.items[0]?.itemName}
+                      {r.items.length > 1 ? ` +${r.items.length - 1} more` : ""}
                     </td>
-                    <td className="px-3 py-2 font-medium text-slate-800">{formatCost(group.totalCost)}</td>
-                    <td className="px-3 py-2 text-slate-600">{group.vendorLabel}</td>
-                    <td className="px-3 py-2 text-slate-600">
-                      {group.earliestNeededBy
-                        ? new Date(group.earliestNeededBy).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-                        : "--"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {isAdmin && group.requests.length === 1 ? (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={group.requests[0].status}
-                            disabled={statusUpdatingId === group.requests[0].id}
-                            onChange={(e) => handleStatusChange(group.requests[0], e.target.value as ProcurementItem["status"])}
-                            className="px-2 py-1 text-[11px] font-medium rounded appearance-none cursor-pointer outline-none disabled:opacity-60"
-                            style={{
-                              background: STATUS_STYLES[group.requests[0].status].bg,
-                              color: STATUS_STYLES[group.requests[0].status].fg,
-                            }}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="approved">Approved</option>
-                            <option value="ordered">Ordered</option>
-                            <option value="delivered">Delivered</option>
-                          </select>
-                          {statusUpdatingId === group.requests[0].id && (
-                            <Loader2 size={12} className="animate-spin text-slate-400" />
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-1 max-w-[160px]">
-                          {(Object.keys(group.statusCounts) as ProcurementItem["status"][]).map((status) => {
-                            const count = group.statusCounts[status];
-                            if (!count) return null;
-                            const s = STATUS_STYLES[status];
-                            return (
-                              <span
-                                key={status}
-                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
-                                style={{ background: s.bg, color: s.fg }}
-                              >
-                                {count} {s.label}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </td>
+                    <td className={`px-3 py-2 font-medium capitalize ${PRIORITY_STYLES[r.priority]}`}>{r.priority}</td>
+                    <td className="px-3 py-2"><PrStatusPill status={r.status} /></td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => setDrawerGroupKey(group.key)}
-                        className="flex items-center gap-1 px-2 py-1 ml-auto rounded text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                      >
-                        <Eye size={13} /> View
+                      <button onClick={() => setDrawerId(r.id)} className="px-2 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50">
+                        View
                       </button>
                     </td>
                   </tr>
@@ -542,174 +273,157 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
             </table>
           </div>
         )}
-        <Pagination page={page} pageSize={pageSize} total={groupedItems.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </div>
 
-      {/* Add/Edit item modal */}
-      {showForm && (
+      {isAdmin && (
+        <>
+          <h3 className="text-[13px] font-semibold text-slate-900 flex items-center gap-1.5">
+            <Package size={15} className="text-slate-400" /> Purchase Orders
+          </h3>
+          <div className="overflow-hidden bg-white border rounded-lg border-slate-200">
+            {orders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <p className="text-slate-500 text-[12px]">
+                  No purchase orders yet — generate one from an approved purchase request's Vendor Selection.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                      <th className="px-3 py-2 font-medium text-left">PO #</th>
+                      <th className="px-3 py-2 font-medium text-left">Vendor</th>
+                      <th className="px-3 py-2 font-medium text-left">Type</th>
+                      <th className="px-3 py-2 font-medium text-left">Status</th>
+                      <th className="px-3 py-2 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => {
+                      const s = PO_STATUS_STYLES[o.status];
+                      return (
+                        <tr key={o.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                          <td className="px-3 py-2 font-medium text-slate-800">{o.poNumber || `#${o.id}`}</td>
+                          <td className="px-3 py-2 text-slate-600">{o.vendor?.name || "--"}</td>
+                          <td className="px-3 py-2 text-slate-600 capitalize">{o.purchaseType}</td>
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: s.bg, color: s.fg }}>
+                              {s.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              onClick={() => navigate(`/${organizationId}/purchase-orders/${o.id}`)}
+                              className="px-2 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {showForm && !showReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+          <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h3 className="text-[14px] font-semibold text-slate-900">
-                {editingItem ? "Edit Procurement Item" : "Request Procurement Item"}
-              </h3>
+              <h3 className="text-[14px] font-semibold text-slate-900">New Purchase Request</h3>
               <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmitForm} className="p-4 space-y-3">
-              {formError && (
-                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>
-              )}
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Item name</label>
-                <ComboBoxInput
-                  autoFocus
-                  value={form.itemName}
-                  onChange={(v) => setForm({ ...form, itemName: v })}
-                  options={itemNameOptions}
-                  placeholder="e.g. Solar panel mounting brackets"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Category</label>
-                  <div className="relative">
-                    <select
-                      value={form.category || "hardware"}
-                      onChange={(e) => setForm({ ...form, category: e.target.value as ProcurementItem["category"] })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="hardware">Hardware</option>
-                      <option value="software">Software</option>
-                      <option value="service">Service</option>
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Quantity</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Unit cost</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.estimatedCost ?? ""}
-                    onChange={(e) => setForm({ ...form, estimatedCost: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Unit</label>
-                  <input
-                    value={form.unit || ""}
-                    onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                    placeholder="e.g. pcs, kg, box"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Tax %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    value={form.taxPercent ?? ""}
-                    onChange={(e) => setForm({ ...form, taxPercent: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Discount %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    value={form.discountPercent ?? ""}
-                    onChange={(e) => setForm({ ...form, discountPercent: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-              </div>
+            <form onSubmit={handleReviewForm} className="p-4 space-y-3 overflow-y-auto">
+              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Transport cost (Rs)</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Department</label>
                   <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.transportCost ?? ""}
-                    onChange={(e) => setForm({ ...form, transportCost: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    placeholder="0.00"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    placeholder="Optional"
                     className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Customs cost (Rs)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.customsCost ?? ""}
-                    onChange={(e) => setForm({ ...form, customsCost: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    placeholder="0.00"
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Priority</label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as PurchaseRequestPriority)}
                     className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Vendor</label>
-                  <div className="relative">
-                    <select
-                      value={form.vendorId ?? ""}
-                      onChange={(e) => setForm({ ...form, vendorId: e.target.value ? Number(e.target.value) : null })}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-400"
-                    >
-                      <option value="">No vendor</option>
-                      {vendors.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-500">Needed by</label>
-                  <input
-                    type="date"
-                    value={form.neededByDate || ""}
-                    onChange={(e) => setForm({ ...form, neededByDate: e.target.value })}
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
                 </div>
               </div>
               <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-500">Notes</label>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Reason</label>
                 <textarea
-                  value={form.notes || ""}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
                   rows={2}
-                  placeholder="Optional"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 resize-none"
+                  placeholder="Why is this needed?"
+                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none resize-none focus:border-blue-400"
                 />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-medium text-slate-900">Items</label>
+                  <button type="button" onClick={addItemRow} className="flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:underline">
+                    <Plus size={11} /> Add item
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {items.map((row, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 border rounded-lg border-slate-200">
+                      <div className="flex-[2] min-w-0">
+                        <ItemNameField
+                          itemId={row.itemId}
+                          currentName={row.itemName}
+                          onSelect={(item) => updateItemRow(i, { itemId: item.id, itemName: item.name })}
+                          className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
+                        />
+                      </div>
+                      <input
+                        value={row.quantity}
+                        onChange={(e) => updateItemRow(i, { quantity: e.target.value })}
+                        placeholder="Qty"
+                        type="number"
+                        min="1"
+                        className="w-16 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                      />
+                      <input
+                        value={row.unit}
+                        onChange={(e) => updateItemRow(i, { unit: e.target.value })}
+                        placeholder="Unit"
+                        className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                      />
+                      <input
+                        value={row.estimatedPrice}
+                        onChange={(e) => updateItemRow(i, { estimatedPrice: e.target.value })}
+                        placeholder="Est. price"
+                        type="number"
+                        min="0"
+                        className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                      />
+                      {items.length > 1 && (
+                        <button type="button" onClick={() => removeItemRow(i)} className="p-1.5 text-slate-400 hover:text-red-600">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeForm} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50">
@@ -717,11 +431,9 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
                 >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {editingItem ? "Save Changes" : "Request Item"}
+                  Review
                 </button>
               </div>
             </form>
@@ -729,32 +441,95 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
         </div>
       )}
 
-      <ProcurementItemGroupDrawer
-        group={drawerGroupKey ? groupByKey.get(drawerGroupKey) ?? null : null}
-        onClose={() => setDrawerGroupKey(null)}
+      {/* Review step — everything just entered, read-only, before it's actually created+submitted. */}
+      {showForm && showReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Review Purchase Request</h3>
+              <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Department</div>
+                  <div className="text-[13px] font-medium text-slate-900">{department.trim() || "--"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Priority</div>
+                  <div className={`text-[13px] font-medium capitalize ${PRIORITY_STYLES[priority]}`}>{priority}</div>
+                </div>
+              </div>
+
+              {reason.trim() && (
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Reason</div>
+                  <div className="text-[13px] text-slate-900">{reason.trim()}</div>
+                </div>
+              )}
+
+              <div>
+                <div className="mb-1.5 text-[11px] font-medium text-slate-500">Items</div>
+                <div className="overflow-hidden border rounded-lg border-slate-200">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="border-b bg-slate-50 border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                        <th className="px-3 py-2 font-medium text-left">Item</th>
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium text-left">Unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Est. Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .filter((row) => row.itemName.trim() || row.itemId)
+                        .map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-2 text-slate-800">{row.itemName || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.quantity || "--"}</td>
+                            <td className="px-3 py-2 text-slate-600">{row.unit || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.estimatedPrice || "--"}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReview(false)}
+                disabled={submitting}
+                className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+              >
+                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <PurchaseRequestDetailDrawer
+        id={drawerId}
         isAdmin={isAdmin}
-        onViewRequest={(id) => setDrawerItemId(id)}
-        onEditRequest={(item) => {
-          setDrawerGroupKey(null);
-          openEditForm(item);
-        }}
-        onDeleteRequest={(item) => {
-          setDrawerGroupKey(null);
-          setDeleteTarget(item);
-        }}
-        onStatusChange={handleStatusChange}
-        statusUpdatingId={statusUpdatingId}
-      />
-
-      <ProcurementItemDrawer itemId={drawerItemId} onClose={() => setDrawerItemId(null)} isAdmin={isAdmin} />
-
-      <ConfirmationModal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        isLoading={deleting}
-        title="Delete Procurement Item"
-        message={`Delete "${deleteTarget?.itemName}"? This cannot be undone.`}
+        vendors={[]}
+        onClose={() => setDrawerId(null)}
+        onChanged={() => requestsQuery.refetch()}
       />
     </div>
   );

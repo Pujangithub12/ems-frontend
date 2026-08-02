@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { fetchFileAccess, setFileAccess } from "../api/documents.api";
 
-/** Explicit grants set directly on one file/folder — shared by both the project Documents tab and the workspace Documents page. */
+/** Explicit grants set directly on one file/folder — shared by both the project Documents tab and the organization Documents page. */
 export function useFileAccessQuery(fileId: number | null) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.fileAccess(wsId, fileId ?? -1),
     queryFn: () => fetchFileAccess(fileId as number),
@@ -14,7 +14,7 @@ export function useFileAccessQuery(fileId: number | null) {
 }
 
 export function useSetFileAccessMutation() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({

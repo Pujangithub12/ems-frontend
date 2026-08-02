@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getSiteVisitRequests,
   createSiteVisitRequest,
@@ -9,7 +9,7 @@ import {
 } from "../api/siteVisitRequests.api";
 
 export function useSiteVisitRequests() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.siteVisitRequests(wsId),
     queryFn: getSiteVisitRequests,
@@ -18,7 +18,7 @@ export function useSiteVisitRequests() {
 }
 
 export function useCreateSiteVisitRequest() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateSiteVisitRequestPayload) => createSiteVisitRequest(payload),
@@ -29,7 +29,7 @@ export function useCreateSiteVisitRequest() {
 }
 
 export function useUpdateSiteVisitRequestStatus() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: "approved" | "rejected" }) =>

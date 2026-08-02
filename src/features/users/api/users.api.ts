@@ -20,16 +20,16 @@ export type UpdateUserPayload = Partial<{
   role: string;
 }>;
 
-/** GET /api/users — every member of the current workspace. */
+/** GET /api/users — every member of the current organization. */
 export async function getUsers(): Promise<User[]> {
   const res = await api.get<User[]>("/api/users");
   return res.data;
 }
 
 /**
- * POST /api/users/invite — sends a workspace invite for a brand-new email
+ * POST /api/users/invite — sends an organization invite for a brand-new email
  * (no account created yet), or, if the email already has an account from
- * another workspace, immediately adds that existing account as a member here
+ * another organization, immediately adds that existing account as a member here
  * instead. Returns the backend's message so the caller can show which one
  * happened.
  */
@@ -43,7 +43,7 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
   await api.put(`/api/users/${id}`, payload);
 }
 
-/** DELETE /api/users/:id — removes a member from the workspace. */
+/** DELETE /api/users/:id — removes a member from the organization. */
 export async function deleteUser(id: number): Promise<void> {
   await api.delete(`/api/users/${id}`);
 }
@@ -58,7 +58,7 @@ export async function changeMyPassword(payload: {
 
 /**
  * PUT /api/me — the signed-in user's own contact details. Returns `any`
- * (not the workspace-member `User` type above) since the caller feeds this
+ * (not the organization-member `User` type above) since the caller feeds this
  * straight into AuthProvider's separately-typed session `User` shape.
  */
 export async function updateMyProfile(payload: {

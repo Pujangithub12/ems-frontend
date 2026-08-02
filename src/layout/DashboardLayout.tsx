@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
-import { setActiveWorkspaceId } from "../api/axios";
+import { setActiveOrganizationId } from "../api/axios";
 import {
   LayoutDashboard,
   Briefcase,
@@ -17,17 +17,22 @@ import {
   Menu,
   X,
   BarChart3,
-  Bell,
   ChevronDown,
+  ChevronRight,
   Settings,
   RefreshCcw,
   User as UserRoundIcon,
   UserPlus,
   Truck,
   Building2,
+  FileText,
+  BellOff,
 } from "lucide-react";
 
-import SwitchWorkspaceModal from "../components/SwitchWorkspaceModal";
+import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
+import NotificationBell from "../components/NotificationBell";
+import NotificationSettingsPanel from "../components/NotificationSettingsPanel";
+import { useNotificationMute } from "../features/notifications/hooks/useNotificationMute";
 import SidebarLink from "../components/SidebarLink";
 import SidebarDropdown from "../components/SidebarDropdown";
 import { useLeaveRequests } from "../features/approvals/hooks/useLeaveRequests";
@@ -78,25 +83,28 @@ const Avatar: React.FC<{ name: string; size?: number; dark?: boolean }> = ({
 );
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout, loading, workspace, workspaces, selectWorkspace } = useAuth();
+  const { user, logout, loading, organization, organizations, selectOrganization } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const { workspaceId: workspaceIdParam } = useParams<{ workspaceId: string }>();
+  const { organizationId: organizationIdParam } = useParams<{ organizationId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
-  const [showSwitchWorkspaceModal, setShowSwitchWorkspaceModal] =
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = React.useState(false);
+  const [showSwitchOrganizationModal, setShowSwitchOrganizationModal] =
     React.useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
+  const { isMuted: notificationsMuted } = useNotificationMute();
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const paramWorkspaceId = workspaceIdParam ? Number(workspaceIdParam) : null;
-  const isValidParamId = paramWorkspaceId !== null && Number.isInteger(paramWorkspaceId);
+  const paramOrganizationId = organizationIdParam ? Number(organizationIdParam) : null;
+  const isValidParamId = paramOrganizationId !== null && Number.isInteger(paramOrganizationId);
 
-  // Every outgoing request is scoped to whatever workspace the URL says, set
+  // Every outgoing request is scoped to whatever organization the URL says, set
   // synchronously during render (not an effect) so it's already correct
   // before any child page's data-fetching effect can fire on this same pass —
-  // this is what makes switching workspaces take effect immediately.
+  // this is what makes switching organizations take effect immediately.
   if (isValidParamId) {
-    setActiveWorkspaceId(paramWorkspaceId);
+    setActiveOrganizationId(paramOrganizationId);
   }
 
   React.useEffect(() => {
@@ -105,23 +113,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     }
   }, [loading, user, navigate]);
 
-  // Keep the display context (workspace name, etc.) in sync with the URL,
-  // and bounce away from a workspace id the user isn't actually a member of
+  // Keep the display context (organization name, etc.) in sync with the URL,
+  // and bounce away from an organization id the user isn't actually a member of
   // (stale bookmark, removed membership, ...).
   React.useEffect(() => {
-    if (loading || !user || !isValidParamId || workspaces.length === 0) return;
+    if (loading || !user || !isValidParamId || organizations.length === 0) return;
 
-    const targetExists = workspaces.some((w) => w.id === paramWorkspaceId);
+    const targetExists = organizations.some((w) => w.id === paramOrganizationId);
     if (!targetExists) {
-      const fallback = workspace ?? workspaces[0];
+      const fallback = organization ?? organizations[0];
       if (fallback) navigate(`/${fallback.id}/dashboard`, { replace: true });
       return;
     }
 
-    if (workspace?.id !== paramWorkspaceId) {
-      selectWorkspace(paramWorkspaceId!);
+    if (organization?.id !== paramOrganizationId) {
+      selectOrganization(paramOrganizationId!);
     }
-  }, [loading, user, isValidParamId, paramWorkspaceId, workspaces, workspace, navigate, selectWorkspace]);
+  }, [loading, user, isValidParamId, paramOrganizationId, organizations, organization, navigate, selectOrganization]);
 
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -130,6 +138,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         !userMenuRef.current.contains(e.target as Node)
       ) {
         setUserMenuOpen(false);
+        setNotificationSettingsOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -208,7 +217,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           className="text-[12px] text-slate-400 tracking-[0.1em] uppercase"
           style={{ fontFamily: "'JetBrains Mono', monospace" }}
         >
-          Loading workspace
+          Loading organization
         </div>
       </div>
     );
@@ -216,7 +225,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   if (!user) return null;
 
-  const prefix = `/${paramWorkspaceId}`;
+  const prefix = `/${paramOrganizationId}`;
 
   // Combined into a single "Tasks" route and removed "/mytask"
   const navItems = [
@@ -245,22 +254,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "inventory",
     },
     {
-      path: `${prefix}/procurement`,
-      label: "Purchase Order",
+      path: `${prefix}/purchase-requests`,
+      label: "Purchase Requests",
       icon: ShoppingCart,
       id: "procurement",
     },
     {
-      path: `${prefix}/goods-received`,
-      label: "Goods Received",
+      path: `${prefix}/purchase-orders`,
+      label: "Purchase Orders",
       icon: Truck,
-      id: "goods-received",
+      id: "purchase-orders",
     },
     {
       path: `${prefix}/vendors`,
       label: "Vendors",
       icon: Building2,
       id: "vendors",
+    },
+    {
+      path: `${prefix}/proforma-invoices`,
+      label: "Proforma Invoices",
+      icon: FileText,
+      id: "proforma-invoices",
     },
     {
       path: `${prefix}/tasks`,
@@ -320,7 +335,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     reports.find((item) => item.path === location.pathname)?.label ||
     system.find((item) => item.path === location.pathname)?.label ||
     "Dashboard";
-  // Nested project details route (/:workspaceId/project/:id/details) has no
+  // Nested project details route (/:organizationId/project/:id/details) has no
   // exact navItems match, so it falls through to a breadcrumb instead of a title.
   const isProjectDetails = /^\/[^/]+\/project\/[^/]+\/details/.test(location.pathname);
 
@@ -328,18 +343,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   // repeated currentTitle verbatim (e.g. "Tasks" under "Tasks").
   const sectionDescriptions: Record<string, string> = {
     project: "Track and manage all your projects",
-    documents: "Browse and manage workspace files",
+    documents: "Browse and manage organization files",
     inventory: "Stock items across all your projects",
     procurement: "Purchase requests across all your projects",
-    "goods-received": "Purchase orders received across all your projects",
+    "purchase-orders": "Purchase orders across all your projects",
     vendors: "Suppliers and vendors across all your projects",
+    "proforma-invoices": "Proforma invoices across all your purchase orders",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     leaverequests: "Review and approve requests",
     reports: "Inventory & procurement analytics",
     users: "Manage people and permissions",
-    settings: "Workspace configuration and preferences",
+    settings: "Organization configuration and preferences",
   };
 
   const handleLogout = () => {
@@ -351,15 +367,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     <div className="flex min-h-screen bg-[#F6F7F9]">
       {/* Desktop Sidebar */}
       <aside className="sticky top-0 flex-col flex-shrink-0 hidden w-56 h-screen border-r lg:flex bg-slate-900 border-slate-800">
-        {/* Brand / Current Workspace */}
+        {/* Brand / Current Organization */}
         <div className="p-3">
           <div className="flex items-center w-full gap-2.5 px-2.5 py-2.5">
             <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
-              {workspace?.name.charAt(0).toUpperCase() || "EM"}
+              {organization?.name.charAt(0).toUpperCase() || "EM"}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-bold tracking-tight leading-tight truncate text-[14px] text-white">
-                {workspace?.name || "EMS Workspace"}
+                {organization?.name || "EMS Organization"}
               </div>
               <div
                 className="text-[10px] text-slate-400 tracking-[0.08em] uppercase"
@@ -376,18 +392,31 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <Eyebrow>Operations</Eyebrow>
           <div className="h-1.5" />
           {navItems.map((it) => {
-            if (it.id === "goods-received" || it.id === "vendors") return null;
+            if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
             if (it.id === "procurement") {
-              const goodsReceived = navItems.find((n) => n.id === "goods-received")!;
+              if (!isAdmin) {
+                return (
+                  <SidebarLink
+                    key={it.id}
+                    to={it.path}
+                    icon={it.icon}
+                    label={it.label}
+                    badgeCount={it.badgeCount}
+                  />
+                );
+              }
+              const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
               const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+              const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
               return (
                 <SidebarDropdown
                   key="purchase"
                   icon={ShoppingCart}
                   label="Procurement"
                   items={[
-                    { to: it.path, label: "Purchase Order" },
-                    { to: goodsReceived.path, label: "Goods Received" },
+                    { to: it.path, label: "Purchase Requests" },
+                    { to: purchaseOrders.path, label: "Purchase Orders" },
+                    { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                     { to: vendorsItem.path, label: "Vendors" },
                   ]}
                 />
@@ -440,18 +469,32 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Operations</Eyebrow>
               <div className="h-1.5" />
               {navItems.map((it) => {
-                if (it.id === "goods-received" || it.id === "vendors") return null;
+                if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
                 if (it.id === "procurement") {
-                  const goodsReceived = navItems.find((n) => n.id === "goods-received")!;
+                  if (!isAdmin) {
+                    return (
+                      <SidebarLink
+                        key={it.id}
+                        to={it.path}
+                        icon={it.icon}
+                        label={it.label}
+                        badgeCount={it.badgeCount}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      />
+                    );
+                  }
+                  const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
                   const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+                  const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                   return (
                     <SidebarDropdown
                       key="purchase"
                       icon={ShoppingCart}
                       label="Procurement"
                       items={[
-                        { to: it.path, label: "Purchase Order" },
-                        { to: goodsReceived.path, label: "Goods Received" },
+                        { to: it.path, label: "Purchase Requests" },
+                        { to: purchaseOrders.path, label: "Purchase Orders" },
+                        { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                         { to: vendorsItem.path, label: "Vendors" },
                       ]}
                       onNavigate={() => setIsMobileMenuOpen(false)}
@@ -518,7 +561,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               {isProjectDetails
                 ? "Projects · Details"
                 : activeSection === "overview"
-                  ? "EMS Workspace · Management"
+                  ? "EMS Organization · Management"
                   : sectionDescriptions[activeSection] || currentTitle}
             </div>
           </div>
@@ -527,10 +570,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="relative hidden ml-auto md:block"></div>
 
           {/* Notifications */}
-          <button className="relative p-2 rounded hover:bg-slate-100 text-slate-600">
-            <Bell className="w-4 h-4" />
-            <span className="absolute w-[7px] h-[7px] rounded-full bg-red-700 top-[7px] right-[7px] border-[1.5px] border-white" />
-          </button>
+          <NotificationBell />
 
           {/* User menu */}
           <div className="relative" ref={userMenuRef}>
@@ -604,14 +644,29 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     </button>
                   )}
                   <button
+                    onClick={() => setNotificationSettingsOpen((o) => !o)}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <BellOff className="w-3.5 h-3.5 opacity-70" />
+                    Notification Settings
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {notificationsMuted && (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                          Muted
+                        </span>
+                      )}
+                      <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                    </span>
+                  </button>
+                  <button
                     onClick={() => {
                       setUserMenuOpen(false);
-                      setShowSwitchWorkspaceModal(true);
+                      setShowSwitchOrganizationModal(true);
                     }}
                     className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
                   >
                     <RefreshCcw className="w-3.5 h-3.5 opacity-70" />
-                    Switch workspace
+                    Switch organization
                   </button>
                   <button
                     onClick={handleLogout}
@@ -623,13 +678,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 </div>
               </div>
             )}
+            {notificationSettingsOpen && (
+              <div className="absolute right-[272px] top-[calc(100% + 6px)] z-50">
+                <NotificationSettingsPanel onClose={() => setNotificationSettingsOpen(false)} />
+              </div>
+            )}
           </div>
         </div>
 
         {/* Page content */}
         <div className="flex-1 overflow-auto no-scrollbar">
           <div
-            key={paramWorkspaceId ?? "default"}
+            key={paramOrganizationId ?? "default"}
             className="duration-300 animate-in fade-in slide-in-from-bottom-2"
           >
             {children}
@@ -637,9 +697,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         </div>
       </main>
 
-      <SwitchWorkspaceModal
-        isOpen={showSwitchWorkspaceModal}
-        onClose={() => setShowSwitchWorkspaceModal(false)}
+      <SwitchOrganizationModal
+        isOpen={showSwitchOrganizationModal}
+        onClose={() => setShowSwitchOrganizationModal(false)}
       />
     </div>
   );

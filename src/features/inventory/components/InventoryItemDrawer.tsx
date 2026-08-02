@@ -24,7 +24,7 @@ import {
   useUploadInventoryAttachmentMutation,
   useDeleteInventoryAttachmentMutation,
 } from "../hooks/useInventory";
-import { formatCost, toNumber } from "../../procurement/api/procurement.api";
+import { formatCost, toNumber } from "../../../lib/currency";
 import { getErrorMessage } from "../../../lib/errors";
 
 const formatDate = (value?: string | null) =>
@@ -459,9 +459,9 @@ const InventoryItemDrawer: React.FC<{
               detail.purchaseHistory.map((p) => (
                 <div key={p.id} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-[12px]">
                   <span className="text-slate-700">
-                    {p.poNumber || `#${p.id}`} · {p.quantity} units
+                    {p.purchaseOrder?.poNumber || `#${p.id}`} · {p.quantity} units
                   </span>
-                  <span className="text-slate-500">{formatCost(toNumber(p.estimatedCost))}</span>
+                  <span className="text-slate-500">{formatCost(toNumber(p.unitPrice) * p.quantity)}</span>
                 </div>
               ))
             )}

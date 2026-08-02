@@ -14,7 +14,6 @@ import {
   Calendar,
   Users as UsersIcon,
   MoreVertical,
-  ListChecks,
   AlertTriangle,
   Clock3,
 } from "lucide-react";
@@ -74,28 +73,9 @@ const StatusPill: React.FC<{ status: string }> = ({ status }) => {
   );
 };
 
-/** Small labeled stat used in the project row's meta strip. */
-const StatBlock: React.FC<{
-  icon: React.ElementType;
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-  valueClassName?: string;
-}> = ({ icon: Icon, label, children, className = "", valueClassName = "text-slate-700" }) => (
-  <div className={`flex items-center gap-2 ${className}`}>
-    <div className="flex items-center justify-center flex-shrink-0 rounded-md w-7 h-7 bg-slate-50">
-      <Icon className="w-3.5 h-3.5 text-slate-400" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="text-[10px] uppercase tracking-[0.05em] text-slate-400">{label}</div>
-      <div className={`text-[12.5px] font-medium truncate ${valueClassName}`}>{children}</div>
-    </div>
-  </div>
-);
-
 const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, workspace } = useAuth();
+  const { user, organization } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const {
@@ -328,18 +308,18 @@ const ProjectsPage: React.FC = () => {
         />
       )}
 
-      {/* List */}
+      {/* Grid */}
       {loading ? (
-        <div className="flex flex-col gap-2">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div
               key={i}
-              className="h-[68px] bg-white border border-slate-200 rounded-lg animate-pulse"
+              className="h-[248px] bg-white border border-slate-200 rounded-xl animate-pulse"
             />
           ))}
         </div>
       ) : filteredProjects.length > 0 ? (
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProjects.map((project) => {
             const iconStyle =
               PROJECT_ICON_STYLES[project.status] || PROJECT_ICON_STYLES.pending;
@@ -348,39 +328,26 @@ const ProjectsPage: React.FC = () => {
               key={project.id}
               role="button"
               tabIndex={0}
-              onClick={() => navigate(`/${workspace?.id}/project/${project.id}/details`)}
+              onClick={() => navigate(`/${organization?.id}/project/${project.id}/details`)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  navigate(`/${workspace?.id}/project/${project.id}/details`);
+                  navigate(`/${organization?.id}/project/${project.id}/details`);
                 }
               }}
-              className="relative flex flex-col w-full gap-3 px-5 py-4 text-left transition-shadow bg-white border rounded-lg shadow-sm cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              className="relative flex flex-col w-full h-full p-5 text-left transition-shadow bg-white border rounded-xl shadow-sm cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
-              {/* Top band: icon, name, status/priority, menu */}
-              <div className="flex items-start gap-3">
+              {/* Top band: icon + menu */}
+              <div className="flex items-start justify-between">
                 <div
                   className={`flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-lg ${iconStyle.bg}`}
                 >
                   <FolderKanban className={`w-5 h-5 ${iconStyle.text}`} />
                 </div>
 
-                <div className="flex-1 min-w-0 pr-8">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-semibold text-[15px] tracking-tight text-slate-900 truncate">
-                      {project.name}
-                    </h3>
-                    <StatusPill status={project.status} />
-                    {project.priority && <PriorityPill priority={project.priority} />}
-                  </div>
-                  <p className="mt-1 text-slate-500 text-[12.5px] line-clamp-1">
-                    {project.description || "No description provided."}
-                  </p>
-                </div>
-
                 {/* 3-dot menu (Admin Only) */}
                 {isAdmin && (
-                  <div className="absolute z-10 flex-shrink-0 top-3.5 right-4">
+                  <div className="relative z-10 flex-shrink-0">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -433,61 +400,79 @@ const ProjectsPage: React.FC = () => {
               )}
               </div>
 
-              {/* Meta strip: progress, task breakdown, deadline, team */}
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-3 border-t border-slate-100">
-                <StatBlock icon={ListChecks} label="Progress" className="w-56">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
-                        style={{ width: `${project.progress || 0}%` }}
-                      ></div>
-                    </div>
-                    <span className="flex-shrink-0 text-[11px]">{project.progress || 0}%</span>
-                  </div>
-                </StatBlock>
+              {/* Name + status/priority */}
+              <div className="mt-3">
+                <h3 className="font-semibold text-[15px] tracking-tight text-slate-900 truncate">
+                  {project.name}
+                </h3>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <StatusPill status={project.status} />
+                  {project.priority && <PriorityPill priority={project.priority} />}
+                </div>
+              </div>
 
-                <StatBlock icon={Clock3} label="Tasks" className="w-36">
-                  {project.doneCount || 0}/{project.tasksCount || 0} done
-                  {(project.inProgressCount || 0) > 0 && (
-                    <span className="text-slate-400"> · {project.inProgressCount} active</span>
-                  )}
-                </StatBlock>
+              <p className="flex-1 mt-2 text-slate-500 text-[12.5px] line-clamp-2">
+                {project.description || "No description provided."}
+              </p>
 
-                <StatBlock
-                  icon={AlertTriangle}
-                  label="Overdue"
-                  className="w-24"
-                  valueClassName={(project.overdueCount || 0) > 0 ? "text-red-600" : "text-slate-700"}
+              {/* Progress */}
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <Eyebrow>Progress</Eyebrow>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {project.progress || 0}%
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-1.5 rounded-full bg-blue-900 transition-all duration-500"
+                    style={{ width: `${project.progress || 0}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Meta grid: tasks, deadline, overdue, team */}
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 pt-3 mt-3 text-[11.5px] border-t border-slate-100">
+                <div className="flex items-center min-w-0 gap-1.5 text-slate-600">
+                  <Clock3 className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate">
+                    {project.doneCount || 0}/{project.tasksCount || 0} tasks
+                  </span>
+                </div>
+                <div className="flex items-center min-w-0 gap-1.5 text-slate-600">
+                  <Calendar className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate">
+                    {project.dueDate
+                      ? new Date(project.dueDate).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })
+                      : "No date"}
+                  </span>
+                </div>
+                <div
+                  className={`flex items-center gap-1.5 ${
+                    (project.overdueCount || 0) > 0 ? "text-red-600" : "text-slate-600"
+                  }`}
                 >
-                  {project.overdueCount || 0}
-                </StatBlock>
-
-                <StatBlock icon={Calendar} label="Deadline" className="w-32">
-                  {project.dueDate
-                    ? new Date(project.dueDate).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "No date"}
-                </StatBlock>
-
-                <div className="flex items-center gap-2 ml-auto">
+                  <AlertTriangle className="flex-shrink-0 w-3.5 h-3.5" />
+                  {project.overdueCount || 0} overdue
+                </div>
+                <div className="flex items-center justify-end">
                   {project.assignees && project.assignees.length > 0 ? (
                     <div className="flex flex-shrink-0 -space-x-1.5">
-                      {project.assignees.slice(0, 4).map((u) => (
+                      {project.assignees.slice(0, 3).map((u) => (
                         <div
                           key={u.id}
-                          className="w-[26px] h-[26px] rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[10px] font-semibold"
+                          className="w-[22px] h-[22px] rounded-full bg-blue-900 border-2 border-white flex items-center justify-center text-white text-[9px] font-semibold"
                           title={u.fullName}
                         >
                           {u.fullName.charAt(0)}
                         </div>
                       ))}
-                      {project.assignees.length > 4 && (
-                        <div className="flex items-center justify-center w-[26px] h-[26px] text-[10px] font-semibold text-white border-2 border-white rounded-full bg-slate-400">
-                          +{project.assignees.length - 4}
+                      {project.assignees.length > 3 && (
+                        <div className="flex items-center justify-center w-[22px] h-[22px] text-[9px] font-semibold text-white border-2 border-white rounded-full bg-slate-400">
+                          +{project.assignees.length - 3}
                         </div>
                       )}
                     </div>

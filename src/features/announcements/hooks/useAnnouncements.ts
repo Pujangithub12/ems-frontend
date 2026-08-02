@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getAnnouncements,
   createAnnouncement,
@@ -9,7 +9,7 @@ import {
 } from "../api/announcements.api";
 
 export function useAnnouncements() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.announcements(wsId),
     queryFn: getAnnouncements,
@@ -18,7 +18,7 @@ export function useAnnouncements() {
 }
 
 export function useCreateAnnouncement() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateAnnouncementPayload) => createAnnouncement(payload),
@@ -29,7 +29,7 @@ export function useCreateAnnouncement() {
 }
 
 export function useDeleteAnnouncement() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteAnnouncement(id),

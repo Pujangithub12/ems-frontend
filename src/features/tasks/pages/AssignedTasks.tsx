@@ -43,6 +43,8 @@ import {
   PauseCircle,
   User as UserRoundIcon,
   MoreVertical,
+  Flag,
+  ListTree,
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 
@@ -63,7 +65,7 @@ type Project = {
   name: string;
   description?: string;
   dueDate?: string;
-  status: "pending" | "in_progress" | "completed" | "on_hold";
+  status: "to_do" | "in_progress" | "completed" | "on_hold";
   priority: "high" | "medium" | "low";
   assignees?: Array<{ id: number; fullName: string }>;
   createdAt: string;
@@ -86,6 +88,11 @@ type Task = {
   projectName?: string;
   project?: { id: number; name: string; status?: string };
   createdBy?: { id: number; fullName: string };
+  /** Gantt-nested children (Task.parentTaskId, set via the Schedule tab's
+   * "add child task") — shown nested under this task's "Linked Tasks"
+   * section instead of as their own top-level card. */
+  childTasks?: Array<{ id: number; title: string; status?: string; progress?: number }>;
+  parentTaskId?: number | null;
 };
 
 const formatLongDate = (dateString: string) =>
@@ -103,7 +110,7 @@ const getStatusMeta = (status: string) => {
     return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
   if (v === "on_hold")
     return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
 };
 
 const formatDate = (dateString: string) =>
@@ -187,7 +194,7 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
     } else if (v === "inprogress" || v === "in_progress") {
       bg = "#DBEAFE";
       fg = "#1E3A8A";
-    } else if (v === "pending") {
+    } else if (v === "to_do") {
       bg = "#FEF3C7";
       fg = "#B45309";
     } else if (v === "onhold" || v === "on_hold") {
@@ -195,6 +202,17 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
       fg = "#B91C1C";
       label = "On Hold";
     }
+  }
+  if (type === "priority") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
+        style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
+      >
+        <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
+        {label}
+      </span>
+    );
   }
   return (
     <span
@@ -306,6 +324,7 @@ const AssignedTasks: React.FC = () => {
   type ModalSubTask = {
     id: string;
     title: string;
+    estimatedDays?: string;
     subTasks?: ModalSubTask[];
   };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
@@ -339,6 +358,7 @@ const AssignedTasks: React.FC = () => {
     id: string | number;
     title: string;
     progress?: number;
+    estimatedDays?: number | null;
     history?: { id: string; date: string; title: string; progress: number }[];
     subTasks: DetailedSubTask[];
   };
@@ -346,6 +366,12 @@ const AssignedTasks: React.FC = () => {
     Record<number, DetailedSubTask[]>
   >({});
   const [newSubTaskTitle, setNewSubTaskTitle] = useState<
+    Record<number, string>
+  >({});
+  // Estimated days for the "add subtask to existing task" inline form —
+  // keyed by task id, same pattern as newSubTaskTitle above. Weights this
+  // subtask's contribution to the parent task's rolled-up progress.
+  const [newSubTaskEstimatedDays, setNewSubTaskEstimatedDays] = useState<
     Record<number, string>
   >({});
   const [expandedNestedSubTasks, setExpandedNestedSubTasks] = useState<
@@ -405,6 +431,10 @@ const AssignedTasks: React.FC = () => {
   );
 
   const filteredTasks = assignedTasks.filter((task) => {
+    // Gantt-nested children (Task.parentTaskId, set via the Schedule tab's
+    // "add child task") aren't top-level cards — they're shown nested under
+    // their parent's "Linked Tasks" section in the detail drawer instead.
+    if (task.parentTaskId != null) return false;
     const matchesSearch = task.title
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
@@ -486,6 +516,7 @@ const AssignedTasks: React.FC = () => {
       id: st.id,
       title: st.title,
       progress: st.progress || 0,
+      estimatedDays: st.estimatedDays ?? null,
       history: st.history || [],
       subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
@@ -494,12 +525,17 @@ const AssignedTasks: React.FC = () => {
     subTasks.map((st) => ({
       id: st.id.toString(),
       title: st.title,
+      estimatedDays: st.estimatedDays != null ? String(st.estimatedDays) : "",
       subTasks: convertToModal(st.subTasks || []),
     }));
 
+  // Weighted by estimatedDays (mirrors backend's computeAverageLeafProgress
+  // in subtaskTree.ts) so a big subtask finishing moves the parent's
+  // progress more than a small one does, instead of every subtask counting
+  // equally. A leaf with no estimatedDays set falls back to a weight of 1.
   const computeAverageLeafProgress = (subTasks: DetailedSubTask[]): number => {
-    let sum = 0;
-    let count = 0;
+    let weightedSum = 0;
+    let totalWeight = 0;
 
     const visit = (list: DetailedSubTask[]) => {
       for (const st of list) {
@@ -509,14 +545,18 @@ const AssignedTasks: React.FC = () => {
         } else {
           const v = typeof st.progress === "number" ? st.progress : 0;
           const clamped = Math.max(0, Math.min(100, v));
-          sum += clamped;
-          count += 1;
+          const weight =
+            typeof st.estimatedDays === "number" && st.estimatedDays > 0
+              ? st.estimatedDays
+              : 1;
+          weightedSum += clamped * weight;
+          totalWeight += weight;
         }
       }
     };
 
     visit(subTasks || []);
-    return count === 0 ? 0 : Math.round(sum / count);
+    return totalWeight === 0 ? 0 : Math.round(weightedSum / totalWeight);
   };
 
   const updateSubTaskProgressInTree = (
@@ -870,10 +910,16 @@ const AssignedTasks: React.FC = () => {
   ) => {
     const title = overrideTitle ?? (newSubTaskTitle[taskId] || "");
     if (!title.trim()) return;
+    const estimatedDaysRaw = overrideTitle ? "" : newSubTaskEstimatedDays[taskId] || "";
+    const estimatedDays =
+      estimatedDaysRaw.trim() === "" || Number.isNaN(Number(estimatedDaysRaw))
+        ? null
+        : Number(estimatedDaysRaw);
 
     const newSubTask: DetailedSubTask = {
       id: `temp-${Date.now()}`,
       title,
+      estimatedDays,
       subTasks: [],
     };
 
@@ -895,6 +941,7 @@ const AssignedTasks: React.FC = () => {
 
     if (!overrideTitle) {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
+      setNewSubTaskEstimatedDays((prev) => ({ ...prev, [taskId]: "" }));
     }
 
     try {
@@ -902,6 +949,7 @@ const AssignedTasks: React.FC = () => {
         taskId,
         title,
         parentSubTaskId: parentId ? Number(parentId) : null,
+        estimatedDays,
       });
 
       if (data.subTasks) {
@@ -1401,7 +1449,7 @@ const AssignedTasks: React.FC = () => {
             className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
           >
             <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
+            <option value="to_do">To Do</option>
             <option value="in_progress">In Progress</option>
             <option value="on_hold">On Hold</option>
             <option value="completed">Completed</option>
@@ -1600,7 +1648,7 @@ const AssignedTasks: React.FC = () => {
                               onClick={() =>
                                 handleStatusChange(
                                   task.id,
-                                  completed ? "pending" : "completed",
+                                  completed ? "to_do" : "completed",
                                 )
                               }
                               className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
@@ -1664,7 +1712,7 @@ const AssignedTasks: React.FC = () => {
                                 }
                                 className={`text-[12px] font-medium bg-transparent outline-none appearance-none cursor-pointer text-right pr-4 ${statusColor}`}
                               >
-                                <option value="pending">Pending</option>
+                                <option value="to_do">To Do</option>
                                 <option value="in_progress">In Progress</option>
                                 <option value="on_hold">On Hold</option>
                                 <option value="completed">Completed</option>
@@ -1881,6 +1929,23 @@ const AssignedTasks: React.FC = () => {
                           }}
                           className="flex-1 px-3 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
                           placeholder="Sub-task title"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={subTask.estimatedDays ?? ""}
+                          onChange={(e) => {
+                            const updated = [...newSubTasks];
+                            updated[idx] = {
+                              ...subTask,
+                              estimatedDays: e.target.value,
+                            };
+                            setNewSubTasks(updated);
+                          }}
+                          className="w-16 px-2.5 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                          placeholder="Days"
+                          title="Estimated days — weights this sub-task's share of the task's progress"
                         />
                         <button
                           type="button"
@@ -2157,6 +2222,23 @@ const AssignedTasks: React.FC = () => {
                           className="flex-1 px-3 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
                           placeholder="Sub-task title"
                         />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={subTask.estimatedDays ?? ""}
+                          onChange={(e) => {
+                            const updated = [...editSubTasks];
+                            updated[idx] = {
+                              ...subTask,
+                              estimatedDays: e.target.value,
+                            };
+                            setEditSubTasks(updated);
+                          }}
+                          className="w-16 px-2.5 py-1.5 text-[13px] bg-white border rounded border-slate-200 focus:outline-none focus:border-blue-900 transition-colors"
+                          placeholder="Days"
+                          title="Estimated days — weights this sub-task's share of the task's progress"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -2280,8 +2362,8 @@ const AssignedTasks: React.FC = () => {
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
-              <div className="w-full max-w-xl overflow-hidden bg-white border shadow-2xl rounded-md border-slate-100 max-h-[85vh] flex flex-col">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+              <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
                 <div className="flex items-start justify-between flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="min-w-0">
                     <h3 className="text-[18px] font-semibold text-slate-900 truncate">
@@ -2377,6 +2459,27 @@ const AssignedTasks: React.FC = () => {
                         className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                         placeholder="Enter sub-task title"
                       />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={newSubTaskEstimatedDays[expandedTaskId] || ""}
+                        onChange={(e) =>
+                          setNewSubTaskEstimatedDays((prev) => ({
+                            ...prev,
+                            [expandedTaskId]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSubTaskToTask(expandedTaskId);
+                          }
+                        }}
+                        className="w-24 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        placeholder="Days"
+                        title="Estimated days — weights this sub-task's share of the task's progress"
+                      />
                       <button
                         type="button"
                         onClick={() => addSubTaskToTask(expandedTaskId)}
@@ -2397,6 +2500,40 @@ const AssignedTasks: React.FC = () => {
                       )}
                     </div>
                   </div>
+
+                  {t.childTasks && t.childTasks.length > 0 && (
+                    <div className="pt-6 border-t border-slate-100">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <ListTree className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                        <SectionLabel>Linked Tasks</SectionLabel>
+                      </div>
+                      <div className="space-y-1.5">
+                        {t.childTasks.map((child) => {
+                          const childMeta = getStatusMeta(child.status || "to_do");
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() => setExpandedTaskId(child.id)}
+                              className="flex items-center justify-between w-full gap-2 px-3 py-1.5 text-left border rounded border-slate-200 hover:bg-slate-50"
+                            >
+                              <span className="text-[13px] text-slate-700 truncate">{child.title}</span>
+                              <span className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-[11px] text-slate-400">
+                                  {typeof child.progress === "number" ? `${child.progress}%` : ""}
+                                </span>
+                                <span
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap"
+                                  style={{ background: childMeta.bg, color: childMeta.fg }}
+                                >
+                                  {childMeta.label}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="pt-6 border-t border-slate-100">
                     <div className="flex items-center justify-between gap-2 mb-2.5">

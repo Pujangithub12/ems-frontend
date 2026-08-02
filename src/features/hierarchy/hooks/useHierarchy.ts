@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { getHierarchy, saveHierarchy } from "../api/hierarchy.api";
 import { HierarchyPerson } from "../../../types";
 
 export function useHierarchy() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.hierarchy(wsId),
     queryFn: getHierarchy,
@@ -18,7 +18,7 @@ export function useHierarchy() {
  * updates immediately, before the server confirms — rolled back on error.
  */
 export function useSaveHierarchy() {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: saveHierarchy,

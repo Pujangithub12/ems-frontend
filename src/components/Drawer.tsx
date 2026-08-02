@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 /**
  * Generic right-side slide-over panel. Visual/z-index/overlay convention
  * matches OrgTree.tsx's inline PersonDrawer, generalized into a reusable
- * component with a slide-in transition.
+ * component with a slide-in transition. Rendered via a portal straight to
+ * document.body — some call sites mount this deep inside a tab-content tree
+ * (e.g. ProjectTasksTab), and if any ancestor there establishes its own
+ * containing block (transform/filter/etc.), a plain `position: fixed`
+ * overlay gets anchored to that ancestor's box instead of the real
+ * viewport, leaving a lighter, undimmed strip wherever that box falls short
+ * of the true top of the screen. The portal sidesteps that entirely.
  */
 const Drawer: React.FC<{
   open: boolean;
@@ -30,7 +37,7 @@ const Drawer: React.FC<{
 
   if (!mounted) return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 bg-slate-900/45 transition-opacity duration-200"
@@ -61,7 +68,8 @@ const Drawer: React.FC<{
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 };
 

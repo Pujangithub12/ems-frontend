@@ -1,9 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchInventoryItems,
-  fetchWorkspaceInventory,
+  fetchOrganizationInventory,
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,
@@ -17,16 +17,16 @@ import {
   deleteInventorySerial,
   uploadInventoryAttachment,
   deleteInventoryAttachment,
-  fetchWorkspaceWarehouses,
+  fetchOrganizationWarehouses,
   createWarehouse,
   deleteWarehouse,
-  fetchWorkspacePendingTransfers,
-  fetchWorkspaceInventoryTransactions,
-  fetchWorkspaceVendors,
+  fetchOrganizationPendingTransfers,
+  fetchOrganizationInventoryTransactions,
+  fetchOrganizationVendors,
   createVendor,
   updateVendor,
   deleteVendor,
-  fetchWorkspaceItems,
+  fetchOrganizationItems,
   createCatalogItem,
   InventoryItemInput,
 } from "../api/inventory.api";
@@ -34,7 +34,7 @@ import { InventorySerial } from "../../../types";
 
 /** Thin query-hook wrappers around inventoryApi.ts, for the project Inventory tab. */
 export function useInventoryItemsQuery(projectId: string) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.inventory(wsId, projectId),
     queryFn: () => fetchInventoryItems(projectId),
@@ -42,12 +42,12 @@ export function useInventoryItemsQuery(projectId: string) {
   });
 }
 
-/** Aggregated across every project in the workspace, for the sidebar Inventory page. */
-export function useWorkspaceInventoryQuery() {
-  const wsId = useWorkspaceId();
+/** Aggregated across every project in the organization, for the sidebar Inventory page. */
+export function useOrganizationInventoryQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspaceInventory(wsId),
-    queryFn: () => fetchWorkspaceInventory(),
+    queryKey: queryKeys.organizationInventory(wsId),
+    queryFn: () => fetchOrganizationInventory(),
     enabled: Number.isFinite(wsId),
   });
 }
@@ -74,7 +74,7 @@ export function useDeleteInventoryItemMutation() {
 
 /** The item-detail drawer payload — only fetched while the drawer is open. */
 export function useInventoryItemDetailQuery(itemId: number | null) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.inventoryItemDetail(wsId, itemId ?? -1),
     queryFn: () => fetchInventoryItemDetail(itemId as number),
@@ -167,11 +167,11 @@ export function useDeleteInventoryAttachmentMutation() {
   });
 }
 
-export function useWorkspaceWarehousesQuery() {
-  const wsId = useWorkspaceId();
+export function useOrganizationWarehousesQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspaceWarehouses(wsId),
-    queryFn: () => fetchWorkspaceWarehouses(),
+    queryKey: queryKeys.organizationWarehouses(wsId),
+    queryFn: () => fetchOrganizationWarehouses(),
     enabled: Number.isFinite(wsId),
   });
 }
@@ -196,42 +196,59 @@ export function useUpdateVendorMutation() {
       input,
     }: {
       vendorId: number;
-      input: { name?: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string | null };
+      input: {
+        name?: string;
+        code?: string;
+        location?: string;
+        contact?: string;
+        contractExpiryDate?: string | null;
+        contactPerson?: string;
+        address?: string;
+        email?: string;
+      };
     }) => updateVendor(vendorId, input),
   });
 }
 
-export function useWorkspacePendingTransfersQuery() {
-  const wsId = useWorkspaceId();
+export function useOrganizationPendingTransfersQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspacePendingTransfers(wsId),
-    queryFn: () => fetchWorkspacePendingTransfers(),
+    queryKey: queryKeys.organizationPendingTransfers(wsId),
+    queryFn: () => fetchOrganizationPendingTransfers(),
     enabled: Number.isFinite(wsId),
   });
 }
 
-export function useWorkspaceInventoryTransactionsQuery() {
-  const wsId = useWorkspaceId();
+export function useOrganizationInventoryTransactionsQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspaceInventoryTransactions(wsId),
-    queryFn: () => fetchWorkspaceInventoryTransactions(),
+    queryKey: queryKeys.organizationInventoryTransactions(wsId),
+    queryFn: () => fetchOrganizationInventoryTransactions(),
     enabled: Number.isFinite(wsId),
   });
 }
 
-export function useWorkspaceVendorsQuery() {
-  const wsId = useWorkspaceId();
+export function useOrganizationVendorsQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspaceVendors(wsId),
-    queryFn: () => fetchWorkspaceVendors(),
+    queryKey: queryKeys.organizationVendors(wsId),
+    queryFn: () => fetchOrganizationVendors(),
     enabled: Number.isFinite(wsId),
   });
 }
 
 export function useCreateVendorMutation() {
   return useMutation({
-    mutationFn: (input: { name: string; code?: string; location?: string; contact?: string; contractExpiryDate?: string }) =>
-      createVendor(input),
+    mutationFn: (input: {
+      name: string;
+      code?: string;
+      location?: string;
+      contact?: string;
+      contractExpiryDate?: string;
+      contactPerson?: string;
+      address?: string;
+      email?: string;
+    }) => createVendor(input),
   });
 }
 
@@ -242,11 +259,11 @@ export function useDeleteVendorMutation() {
 }
 
 /** The shared item catalog — used by both the Inventory and Procurement "Add item" forms to keep item naming consistent. */
-export function useWorkspaceItemCatalogQuery() {
-  const wsId = useWorkspaceId();
+export function useOrganizationItemCatalogQuery() {
+  const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.workspaceItemCatalog(wsId),
-    queryFn: () => fetchWorkspaceItems(),
+    queryKey: queryKeys.organizationItemCatalog(wsId),
+    queryFn: () => fetchOrganizationItems(),
     enabled: Number.isFinite(wsId),
   });
 }

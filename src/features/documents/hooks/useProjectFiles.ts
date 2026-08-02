@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
-import { useWorkspaceId } from "../../../hooks/useWorkspaceId";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchProjectFiles,
   uploadFile,
@@ -11,7 +11,7 @@ import {
 
 /** Thin query-hook wrappers around the existing documentsApi.ts service functions. */
 export function useProjectFilesQuery(projectId: string) {
-  const wsId = useWorkspaceId();
+  const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.projectFiles(wsId, projectId),
     queryFn: () => fetchProjectFiles(projectId),

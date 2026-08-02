@@ -13,13 +13,21 @@ export type Task = {
   assignedUsers: AssignedUser[];
   files?: string[];
   createdAt: string;
-  subTasks: { id: number; title: string; status: string; children?: any[] }[];
+  subTasks: { id: number; title: string; status: string; estimatedDays?: number | null; children?: any[] }[];
   projectName?: string;
   project?: { id: number; name: string; status?: string };
   createdBy?: { id: number; fullName: string };
+  /** Gantt-nested children (Task.parentTaskId, set via the Schedule tab's
+   * "add child task") — each child is also its own entry in the fetched
+   * task list (just filtered out of the top-level view client-side), this
+   * is a lightweight summary for the nested display. */
+  childTasks?: Array<{ id: number; title: string; status?: string; progress?: number }>;
+  /** Set when this task is itself one of the above — a Gantt-nested child of
+   * another task, not a top-level task. */
+  parentTaskId?: number | null;
 };
 
-/** GET /api/tasks — the full workspace task list (used by both the summary bar and the task list pages). */
+/** GET /api/tasks — the full organization task list (used by both the summary bar and the task list pages). */
 export async function getTasks(): Promise<Task[]> {
   const res = await api.get<Task[]>("/api/tasks");
   return Array.isArray(res.data) ? res.data : [];
@@ -70,6 +78,16 @@ export async function updateTask(
 /** PUT /api/tasks/:id/status */
 export async function updateTaskStatus(id: number, status: string): Promise<void> {
   await api.put(`/api/tasks/${id}/status`, { status });
+}
+
+/** PUT /api/tasks/:id/progress — dedicated endpoint, deliberately separate from
+ * the general updateTask() above: PUT /api/tasks/:id recomputes progress from
+ * subtasks (when the task has any) right after applying whatever was sent,
+ * which would silently clobber a direct progress edit back to the subtask
+ * average. This endpoint just sets the value, no recompute. */
+export async function updateTaskProgress(id: number, progress: number): Promise<Task> {
+  const res = await api.put(`/api/tasks/${id}/progress`, { progress });
+  return res.data.task ?? res.data;
 }
 
 /** DELETE /api/tasks/:id */

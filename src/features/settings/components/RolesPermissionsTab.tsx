@@ -50,7 +50,7 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   "Site Visit Requests": MapPin,
   "Expense Requests": Wallet,
   Calendar: CalendarDays,
-  Workspace: SettingsIcon,
+  Organization: SettingsIcon,
   "Org Hierarchy": Network,
 };
 

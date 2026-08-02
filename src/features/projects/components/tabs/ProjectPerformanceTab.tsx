@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, MonthlyPerformance } from "../../../../types";
-import { toNumber, formatCost } from "../../../procurement/api/procurement.api";
+import { toNumber, formatCost } from "../../../../lib/currency";
 import {
   MONTH_NAMES,
   formatEnergy,

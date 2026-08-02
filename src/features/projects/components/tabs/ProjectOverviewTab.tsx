@@ -14,8 +14,8 @@ import { Project } from "../../../../types";
 import { flattenProjectTasks } from "../../../tasks/utils/taskUtils";
 import { useAuth } from "../../../../context/AuthProvider";
 import { useUpdateProject } from "../../hooks/useProjects";
-import { useProcurementItemsQuery } from "../../../procurement/hooks/useProcurement";
-import { formatCost, toNumber } from "../../../procurement/api/procurement.api";
+import { usePurchaseOrdersQuery } from "../../../procurement/hooks/usePurchaseOrder";
+import { formatCost, toNumber } from "../../../../lib/currency";
 import { useMonthlyPerformanceQuery } from "../../hooks/useMonthlyPerformance";
 import { MONTH_NAMES, formatEnergy } from "../../api/performance.api";
 import { getErrorMessage } from "../../../../lib/errors";
@@ -35,7 +35,7 @@ interface ProjectOverviewTabProps {
 const DONUT_BUCKETS: { key: string; label: string; color: string; statuses: string[] }[] = [
   { key: "completed", label: "Completed", color: "#10b981", statuses: ["completed"] },
   { key: "in_progress", label: "In Progress", color: "#3b82f6", statuses: ["in_progress"] },
-  { key: "to_do", label: "To Do", color: "#94a3b8", statuses: ["pending"] },
+  { key: "to_do", label: "To Do", color: "#94a3b8", statuses: ["to_do"] },
   { key: "blocked", label: "Blocked", color: "#f43f5e", statuses: ["on_hold"] },
 ];
 
@@ -180,16 +180,22 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
   const projectManager = project.assignees?.[0];
 
   const donutCounts = DONUT_BUCKETS.reduce<Record<string, number>>((acc, bucket) => {
-    acc[bucket.key] = allTasks.filter((t) => bucket.statuses.includes(t.status || "pending")).length;
+    acc[bucket.key] = allTasks.filter((t) => bucket.statuses.includes(t.status || "to_do")).length;
     return acc;
   }, {});
 
-  // Project Financials + Procurement Budget Usage (moved here from the Procurement tab)
-  const procurementQuery = useProcurementItemsQuery(String(project.id));
-  const procurementItems = procurementQuery.data ?? [];
+  // Project Financials + Procurement Budget Usage (moved here from the Procurement tab).
+  // Committed spend is measured from Purchase Orders (actual commitments), not Purchase
+  // Requests (not yet committed to a vendor).
+  const purchaseOrdersQuery = usePurchaseOrdersQuery(String(project.id));
+  const purchaseOrders = purchaseOrdersQuery.data ?? [];
   const totalSpend = useMemo(
-    () => procurementItems.reduce((sum, it) => sum + toNumber(it.estimatedCost), 0),
-    [procurementItems],
+    () =>
+      purchaseOrders.reduce(
+        (sum, po) => sum + po.items.reduce((itemSum, item) => itemSum + item.quantity * toNumber(item.unitPrice), 0),
+        0,
+      ),
+    [purchaseOrders],
   );
 
   const updateProjectMutation = useUpdateProject();

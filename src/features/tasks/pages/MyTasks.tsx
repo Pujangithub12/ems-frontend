@@ -44,6 +44,7 @@ import {
   User as UserRoundIcon,
   UserPlus,
   MessageSquare,
+  Flag,
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 
@@ -54,7 +55,7 @@ type Project = {
   name: string;
   description?: string;
   dueDate?: string;
-  status: "pending" | "in_progress" | "completed" | "on_hold";
+  status: "to_do" | "in_progress" | "completed" | "on_hold";
   priority: "high" | "medium" | "low";
   assignees?: Array<{ id: number; fullName: string }>;
   createdAt: string;
@@ -94,7 +95,7 @@ const getStatusMeta = (status: string) => {
     return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
   if (v === "on_hold")
     return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
 };
 
 const formatDate = (dateString: string) =>
@@ -171,7 +172,7 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
     } else if (v === "inprogress" || v === "in_progress") {
       bg = "#DBEAFE";
       fg = "#1E3A8A";
-    } else if (v === "pending") {
+    } else if (v === "to_do") {
       bg = "#FEF3C7";
       fg = "#B45309";
     } else if (v === "onhold" || v === "on_hold") {
@@ -179,6 +180,17 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
       fg = "#B91C1C";
       label = "On Hold";
     }
+  }
+  if (type === "priority") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
+        style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
+      >
+        <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
+        {label}
+      </span>
+    );
   }
   return (
     <span
@@ -234,7 +246,12 @@ const MyTasks: React.FC = () => {
   const [newProgress, setNewProgress] = useState(0);
   const [newProjectId, setNewProjectId] = useState<number | null>(null);
 
-  type ModalSubTask = { id: string; title: string; subTasks?: ModalSubTask[] };
+  type ModalSubTask = {
+    id: string;
+    title: string;
+    estimatedDays?: string;
+    subTasks?: ModalSubTask[];
+  };
   const [newSubTasks, setNewSubTasks] = useState<ModalSubTask[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState("");
 
@@ -284,6 +301,7 @@ const MyTasks: React.FC = () => {
     id: string | number;
     title: string;
     progress?: number;
+    estimatedDays?: number | null;
     history?: { id: string; date: string; title: string; progress: number }[];
     subTasks: DetailedSubTask[];
   };
@@ -297,6 +315,12 @@ const MyTasks: React.FC = () => {
 
   // Sub-task specific states
   const [newSubTaskTitle, setNewSubTaskTitle] = useState<
+    Record<number, string>
+  >({});
+  // Estimated days for the "add subtask to existing task" inline form —
+  // keyed by task id, same pattern as newSubTaskTitle above. Weights this
+  // subtask's contribution to the parent task's rolled-up progress.
+  const [newSubTaskEstimatedDays, setNewSubTaskEstimatedDays] = useState<
     Record<number, string>
   >({});
   const [showSubTaskUpdatePopup, setShowSubTaskUpdatePopup] = useState(false);
@@ -355,29 +379,39 @@ const MyTasks: React.FC = () => {
       id: st.id,
       title: st.title,
       progress: st.progress || 0,
+      estimatedDays: st.estimatedDays ?? null,
       history: st.history || [],
       subTasks: convertToDetailed(st.children || st.subTasks || []),
     }));
   };
 
+  // Weighted by estimatedDays (mirrors backend's computeAverageLeafProgress
+  // in subtaskTree.ts) so a big subtask finishing moves the parent's
+  // progress more than a small one does, instead of every subtask counting
+  // equally. A leaf with no estimatedDays set falls back to a weight of 1.
   const computeAverageLeafProgress = (subTasks: DetailedSubTask[]): number => {
-    let sum = 0,
-      count = 0;
+    let weightedSum = 0,
+      totalWeight = 0;
     const visit = (list: DetailedSubTask[]) => {
       for (const st of list) {
         const children = st.subTasks || [];
         if (children.length > 0) visit(children);
         else {
-          sum += Math.max(
+          const clamped = Math.max(
             0,
             Math.min(100, typeof st.progress === "number" ? st.progress : 0),
           );
-          count += 1;
+          const weight =
+            typeof st.estimatedDays === "number" && st.estimatedDays > 0
+              ? st.estimatedDays
+              : 1;
+          weightedSum += clamped * weight;
+          totalWeight += weight;
         }
       }
     };
     visit(subTasks || []);
-    return count === 0 ? 0 : Math.round(sum / count);
+    return totalWeight === 0 ? 0 : Math.round(weightedSum / totalWeight);
   };
 
   const updateSubTaskProgressInTree = (
@@ -701,9 +735,15 @@ const MyTasks: React.FC = () => {
   ) => {
     const title = overrideTitle ?? (newSubTaskTitle[taskId] || "");
     if (!title.trim()) return;
+    const estimatedDaysRaw = overrideTitle ? "" : newSubTaskEstimatedDays[taskId] || "";
+    const estimatedDays =
+      estimatedDaysRaw.trim() === "" || Number.isNaN(Number(estimatedDaysRaw))
+        ? null
+        : Number(estimatedDaysRaw);
     const newSubTask: DetailedSubTask = {
       id: `temp-${Date.now()}`,
       title,
+      estimatedDays,
       subTasks: [],
     };
     let updatedSubTasks: DetailedSubTask[];
@@ -719,14 +759,17 @@ const MyTasks: React.FC = () => {
       updatedSubTasks = [...(taskSubTasks[taskId] || []), newSubTask];
     }
     setTaskSubTasks((prev) => ({ ...prev, [taskId]: updatedSubTasks }));
-    if (!overrideTitle)
+    if (!overrideTitle) {
       setNewSubTaskTitle((prev) => ({ ...prev, [taskId]: "" }));
+      setNewSubTaskEstimatedDays((prev) => ({ ...prev, [taskId]: "" }));
+    }
 
     try {
       const data = await createSubtaskMutation.mutateAsync({
         taskId,
         title,
         parentSubTaskId: parentId ? Number(parentId) : null,
+        estimatedDays,
       });
       if (data.subTasks) {
         const detailed = convertToDetailed(data.subTasks);
@@ -1163,7 +1206,7 @@ const MyTasks: React.FC = () => {
             className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
           >
             <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
+            <option value="to_do">To Do</option>
             <option value="inprogress">In Progress</option>
             <option value="on_hold">On Hold</option>
             <option value="completed">Completed</option>
@@ -1312,7 +1355,7 @@ const MyTasks: React.FC = () => {
                               onClick={() =>
                                 handleStatusChange(
                                   task.id,
-                                  completed ? "pending" : "completed",
+                                  completed ? "to_do" : "completed",
                                 )
                               }
                               className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
@@ -1372,7 +1415,7 @@ const MyTasks: React.FC = () => {
                                 }
                                 className={`text-[12px] font-medium bg-transparent outline-none appearance-none cursor-pointer text-right pr-4 ${statusColor}`}
                               >
-                                <option value="pending">Pending</option>
+                                <option value="to_do">To Do</option>
                                 <option value="in_progress">In Progress</option>
                                 <option value="on_hold">On Hold</option>
                                 <option value="completed">Completed</option>
@@ -1441,8 +1484,8 @@ const MyTasks: React.FC = () => {
           const t = selectedTask;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-              <div className="w-full max-w-xl overflow-hidden bg-white border shadow-2xl rounded-md border-slate-100 max-h-[85vh] flex flex-col">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+              <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
                 <div className="flex items-start justify-between flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="min-w-0">
                     <h3 className="text-[18px] font-semibold text-slate-900 truncate">
@@ -1534,6 +1577,27 @@ const MyTasks: React.FC = () => {
                         }}
                         className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                         placeholder="Enter sub-task title"
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={newSubTaskEstimatedDays[t.id] || ""}
+                        onChange={(e) =>
+                          setNewSubTaskEstimatedDays((prev) => ({
+                            ...prev,
+                            [t.id]: e.target.value,
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addSubTaskToTask(t.id);
+                          }
+                        }}
+                        className="w-24 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        placeholder="Days"
+                        title="Estimated days — weights this sub-task's share of the task's progress"
                       />
                       <button
                         type="button"
@@ -2362,6 +2426,23 @@ const MyTasks: React.FC = () => {
                           }}
                           className="flex-1 px-2.5 py-1.5 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
                           placeholder="Sub-task title"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={subTask.estimatedDays ?? ""}
+                          onChange={(e) => {
+                            const updated = [...newSubTasks];
+                            updated[idx] = {
+                              ...subTask,
+                              estimatedDays: e.target.value,
+                            };
+                            setNewSubTasks(updated);
+                          }}
+                          className="w-16 px-2.5 py-1.5 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                          placeholder="Days"
+                          title="Estimated days — weights this sub-task's share of the task's progress"
                         />
                         <button
                           type="button"

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./features/auth/pages/Login";
 import CreateAccount from "./features/auth/pages/CreateAccount";
@@ -9,8 +9,10 @@ import Dashboard from "./features/dashboard/pages/Dashboard";
 import Announcements from "./features/announcements/pages/Announcements";
 import Documents from "./features/documents/pages/Documents";
 import Inventory from "./features/inventory/pages/Inventory";
-import Procurement from "./features/procurement/pages/Procurement";
-import GoodsReceived from "./features/procurement/pages/GoodsReceived";
+import PurchaseRequests from "./features/procurement/pages/PurchaseRequests";
+import PurchaseOrders from "./features/procurement/pages/PurchaseOrders";
+import PurchaseOrderDetail from "./features/procurement/pages/PurchaseOrderDetail";
+import ProformaInvoices from "./features/procurement/pages/ProformaInvoices";
 import Vendors from "./features/procurement/pages/Vendors";
 import Users from "./features/users/pages/Users";
 import ProjectPage from "./features/projects/pages/Projects";
@@ -22,13 +24,14 @@ import Settings from "./features/settings/pages/Settings";
 import Profile from "./features/users/pages/Profile";
 import DashboardLayout from "./layout/DashboardLayout";
 import { AuthProvider, useAuth } from "./context/AuthProvider";
+import { NotificationSocketProvider } from "./context/NotificationSocketProvider";
 import TasksPage from "./features/tasks/pages/Tasks";
 import AccessForbiddenModal from "./components/AccessForbiddenModal";
 import { setAccessForbiddenHandler } from "./api/axios";
 
 /** Mounted once near the app root — registers with the axios response
  * interceptor so a WORKSPACE_ACCESS_FORBIDDEN error from anywhere in the app
- * (a blocked workspace switch/create attempt) surfaces this modal. */
+ * (a blocked organization switch/create attempt) surfaces this modal. */
 const GlobalAccessForbiddenModal: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -41,36 +44,54 @@ const GlobalAccessForbiddenModal: React.FC = () => {
 };
 
 /**
- * Resolves "/" and any unmatched path to the caller's current workspace —
- * the URL (not a shared cookie) is the source of truth for which workspace
- * is active, so every real page lives under /:workspaceId/...
+ * Resolves "/" and any unmatched path to the caller's current organization —
+ * the URL (not a shared cookie) is the source of truth for which organization
+ * is active, so every real page lives under /:organizationId/...
  */
 const RootRedirect: React.FC = () => {
-  const { user, workspace, loading } = useAuth();
+  const { user, organization, loading } = useAuth();
 
   if (loading) return null;
   if (!user) return <Navigate replace to="/login" />;
-  if (workspace) return <Navigate replace to={`/${workspace.id}/dashboard`} />;
+  if (organization) return <Navigate replace to={`/${organization.id}/dashboard`} />;
   return null;
 };
 
 /**
+ * Purchase Orders and Vendors are admin/super_admin-only pages (any employee can raise a
+ * Purchase Request, but browsing PO/vendor pricing is admin territory) — bounces anyone else
+ * back to Purchase Requests. Mirrors RootRedirect's loading/no-user handling.
+ */
+const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  const { organizationId } = useParams<{ organizationId: string }>();
+
+  if (loading) return null;
+  if (!user) return <Navigate replace to="/login" />;
+  if (user.role !== "admin" && user.role !== "super_admin") {
+    return <Navigate replace to={`/${organizationId}/purchase-requests`} />;
+  }
+  return <>{children}</>;
+};
+
+/**
  * "/" specifically: logged-out visitors see the public marketing home page;
- * logged-in users still fall through to their workspace dashboard. Unmatched
+ * logged-in users still fall through to their organization dashboard. Unmatched
  * paths (the "*" route) keep using RootRedirect's straight-to-login behavior.
  */
 const RootPage: React.FC = () => {
-  const { user, workspace, loading } = useAuth();
+  const { user, organization, loading } = useAuth();
 
   if (loading) return null;
   if (!user) return <Home />;
-  if (workspace) return <Navigate replace to={`/${workspace.id}/dashboard`} />;
+  if (organization) return <Navigate replace to={`/${organization.id}/dashboard`} />;
   return null;
 };
 
 function App() {
   return (
     <AuthProvider>
+      <NotificationSocketProvider>
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <GlobalAccessForbiddenModal />
         <Routes>
@@ -83,7 +104,7 @@ function App() {
           <Route path="/login/admin" element={<Navigate replace to="/login" />} />
 
           <Route
-            path="/:workspaceId/dashboard"
+            path="/:organizationId/dashboard"
             element={
               <DashboardLayout>
                 <Dashboard />
@@ -91,7 +112,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/tasks"
+            path="/:organizationId/tasks"
             element={
               <DashboardLayout>
                 <TasksPage />
@@ -99,7 +120,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/project"
+            path="/:organizationId/project"
             element={
               <DashboardLayout>
                 <ProjectPage />
@@ -107,7 +128,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/project/:id/details"
+            path="/:organizationId/project/:id/details"
             element={
               <DashboardLayout>
                 <ProjectDetails />
@@ -115,7 +136,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/announcements"
+            path="/:organizationId/announcements"
             element={
               <DashboardLayout>
                 <Announcements />
@@ -123,7 +144,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/documents"
+            path="/:organizationId/documents"
             element={
               <DashboardLayout>
                 <Documents />
@@ -131,7 +152,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/inventory"
+            path="/:organizationId/inventory"
             element={
               <DashboardLayout>
                 <Inventory />
@@ -139,31 +160,55 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/procurement"
+            path="/:organizationId/purchase-requests"
             element={
               <DashboardLayout>
-                <Procurement />
+                <PurchaseRequests />
               </DashboardLayout>
             }
           />
           <Route
-            path="/:workspaceId/goods-received"
+            path="/:organizationId/purchase-orders"
             element={
-              <DashboardLayout>
-                <GoodsReceived />
-              </DashboardLayout>
+              <RequireAdmin>
+                <DashboardLayout>
+                  <PurchaseOrders />
+                </DashboardLayout>
+              </RequireAdmin>
             }
           />
           <Route
-            path="/:workspaceId/vendors"
+            path="/:organizationId/purchase-orders/:id"
             element={
-              <DashboardLayout>
-                <Vendors />
-              </DashboardLayout>
+              <RequireAdmin>
+                <DashboardLayout>
+                  <PurchaseOrderDetail />
+                </DashboardLayout>
+              </RequireAdmin>
             }
           />
           <Route
-            path="/:workspaceId/task"
+            path="/:organizationId/proforma-invoices"
+            element={
+              <RequireAdmin>
+                <DashboardLayout>
+                  <ProformaInvoices />
+                </DashboardLayout>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/:organizationId/vendors"
+            element={
+              <RequireAdmin>
+                <DashboardLayout>
+                  <Vendors />
+                </DashboardLayout>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/:organizationId/task"
             element={
               <DashboardLayout>
                 <TasksPage />
@@ -171,7 +216,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/users"
+            path="/:organizationId/users"
             element={
               <DashboardLayout>
                 <Users />
@@ -179,7 +224,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/calendar"
+            path="/:organizationId/calendar"
             element={
               <DashboardLayout>
                 <CalendarPage />
@@ -187,7 +232,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/leaverequests"
+            path="/:organizationId/leaverequests"
             element={
               <DashboardLayout>
                 <Approvals />
@@ -195,7 +240,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/reports"
+            path="/:organizationId/reports"
             element={
               <DashboardLayout>
                 <Reports />
@@ -203,7 +248,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/settings"
+            path="/:organizationId/settings"
             element={
               <DashboardLayout>
                 <Settings />
@@ -211,7 +256,7 @@ function App() {
             }
           />
           <Route
-            path="/:workspaceId/profile"
+            path="/:organizationId/profile"
             element={
               <DashboardLayout>
                 <Profile />
@@ -222,6 +267,7 @@ function App() {
           <Route path="*" element={<RootRedirect />} />
         </Routes>
       </div>
+      </NotificationSocketProvider>
     </AuthProvider>
   );
 }

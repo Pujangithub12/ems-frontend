@@ -207,7 +207,7 @@ const TeamDonut: React.FC<{ segments: TeamSegment[]; total: number }> = ({ segme
 // ---- Component --------------------------------------------------------------
 
 const Dashboard: React.FC = () => {
-  const { user, workspace } = useAuth();
+  const { user, organization } = useAuth();
   const navigate = useNavigate();
 
   const {
@@ -359,7 +359,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-slate-100",
       iconText: "text-slate-600",
       valueText: "text-slate-900",
-      onClick: () => navigate(`/${workspace?.id}/tasks`),
+      onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "Due Today",
@@ -369,7 +369,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-blue-50",
       iconText: "text-blue-700",
       valueText: "text-slate-900",
-      onClick: () => navigate(`/${workspace?.id}/tasks`),
+      onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "Overdue",
@@ -379,7 +379,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-red-50",
       iconText: "text-red-700",
       valueText: "text-red-600",
-      onClick: () => navigate(`/${workspace?.id}/tasks`),
+      onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "High Priority",
@@ -389,7 +389,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-red-50",
       iconText: "text-red-700",
       valueText: "text-slate-900",
-      onClick: () => navigate(`/${workspace?.id}/tasks`),
+      onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "To Approve",
@@ -399,7 +399,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-amber-50",
       iconText: "text-amber-700",
       valueText: "text-slate-900",
-      onClick: () => navigate(`/${workspace?.id}/leaverequests`),
+      onClick: () => navigate(`/${organization?.id}/leaverequests`),
     },
     {
       label: "Done This Week",
@@ -409,7 +409,7 @@ const Dashboard: React.FC = () => {
       iconBg: "bg-emerald-50",
       iconText: "text-emerald-700",
       valueText: "text-emerald-600",
-      onClick: () => navigate(`/${workspace?.id}/tasks`),
+      onClick: () => navigate(`/${organization?.id}/tasks`),
     },
   ];
 
@@ -422,7 +422,7 @@ const Dashboard: React.FC = () => {
             {greeting}, {firstName}
           </h2>
           <p className="text-slate-500 mt-1 text-[14px]">
-            Here's what's happening across your workspace.
+            Here's what's happening across your organization.
           </p>
         </div>
         <div className="flex flex-wrap items-center self-end gap-2 mt-2">
@@ -471,7 +471,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Project Progress Snapshot</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/project`)}
+              onClick={() => navigate(`/${organization?.id}/project`)}
               className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View All Projects
@@ -496,7 +496,7 @@ const Dashboard: React.FC = () => {
                 return (
                   <button
                     key={p.id}
-                    onClick={() => navigate(`/${workspace?.id}/project/${p.id}/details`)}
+                    onClick={() => navigate(`/${organization?.id}/project/${p.id}/details`)}
                     className={`w-full text-left grid grid-cols-[1fr_180px_120px_120px] gap-3 items-center py-3.5 hover:bg-slate-50 transition-colors ${
                       idx < topProjects.length - 1 ? "border-b border-slate-100" : ""
                     }`}
@@ -546,7 +546,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Today's Schedule</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/calendar`)}
+              onClick={() => navigate(`/${organization?.id}/calendar`)}
               className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View Calendar
@@ -604,7 +604,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-5 pt-3 pb-3 border-b border-slate-200">
             <div className="text-[13px] font-medium text-slate-900">Notifications</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/activities`)}
+              onClick={() => navigate(`/${organization?.id}/activities`)}
               className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View All
@@ -646,7 +646,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-5 py-3 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Team Availability</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/users`)}
+              onClick={() => navigate(`/${organization?.id}/users`)}
               className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View Team
@@ -675,7 +675,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-5 py-4 border-b border-slate-200">
             <div className="font-semibold text-[15px] text-slate-900">Construction Progress Today</div>
             <button
-              onClick={() => navigate(`/${workspace?.id}/project`)}
+              onClick={() => navigate(`/${organization?.id}/project`)}
               className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
             >
               View Details
