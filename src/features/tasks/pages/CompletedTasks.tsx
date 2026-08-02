@@ -50,7 +50,7 @@ const getStatusMeta = (status: string) => {
     return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
   if (v === "on_hold")
     return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
 };
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -130,7 +130,7 @@ const CompletedTasks: React.FC = () => {
   const handleUnComplete = async (taskId: number) => {
     setStatusError(null);
     try {
-      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: "pending" });
+      await updateTaskStatusMutation.mutateAsync({ id: taskId, status: "to_do" });
       if (expandedTaskId === taskId) setExpandedTaskId(null);
     } catch (err) {
       setStatusError(getErrorMessage(err, "Status update failed"));
@@ -406,8 +406,8 @@ const CompletedTasks: React.FC = () => {
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 p-6">
-              <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+              <div className="w-full max-w-lg h-full bg-white border-l border-slate-200 shadow-2xl overflow-hidden flex flex-col animate-drawer-slide-in">
                 <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
                   <div className="min-w-0">
                     <Eyebrow>Task Details</Eyebrow>

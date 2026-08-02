@@ -22,6 +22,10 @@ export function useSaveScheduleMutation(projectId: string | undefined) {
       if (projectId) {
         queryClient.setQueryData(queryKeys.schedule(wsId, projectId), data);
       }
+      // Schedule and Task tabs now share the same Task rows (see
+      // schedule.service.ts) — a schedule save can create/update tasks the
+      // Kanban board (and any other useTasks()-backed view) needs to see too.
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
     },
   });
 }

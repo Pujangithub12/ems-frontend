@@ -226,32 +226,25 @@ const PurchaseOrdersPage: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-left">Items</th>
                       <th className="px-3 py-2 font-medium text-left">Status</th>
                       <th className="px-3 py-2 font-medium text-left">Created</th>
-                      <th className="px-3 py-2 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((o) => (
-                      <tr key={o.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-800">{o.poNumber || `#${o.id}`}</td>
-                        <td className="px-3 py-2 text-slate-600">{o.project?.name || "--"}</td>
-                        <td className="px-3 py-2 text-slate-600">{o.vendor?.name || "--"}</td>
-                        <td className="px-3 py-2"><PurchaseTypePill type={o.purchaseType} /></td>
-                        <td className="px-3 py-2 text-slate-600">
+                      <tr
+                        key={o.id}
+                        onClick={() => navigate(`/${organizationId}/purchase-orders/${o.id}`)}
+                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <td className="px-3 py-3 font-medium text-slate-800">{o.poNumber || `#${o.id}`}</td>
+                        <td className="px-3 py-3 text-slate-600">{o.project?.name || "--"}</td>
+                        <td className="px-3 py-3 text-slate-600">{o.vendor?.name || "--"}</td>
+                        <td className="px-3 py-3"><PurchaseTypePill type={o.purchaseType} /></td>
+                        <td className="px-3 py-3 text-slate-600">
                           {o.items[0]?.itemName}
                           {o.items.length > 1 ? ` +${o.items.length - 1} more` : ""}
                         </td>
-                        <td className="px-3 py-2"><StatusPill status={o.status} /></td>
-                        <td className="px-3 py-2 text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => navigate(`/${organizationId}/purchase-orders/${o.id}`)}
-                              className="px-2 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50"
-                            >
-                              View
-                            </button>
-                          </div>
-                        </td>
+                        <td className="px-3 py-3"><StatusPill status={o.status} /></td>
+                        <td className="px-3 py-3 text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>

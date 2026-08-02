@@ -48,7 +48,7 @@ export function rowsToDto(rows: ScheduleRow[]): ScheduleDto {
       row.progress.trim() === "" || Number.isNaN(Number(row.progress))
         ? null
         : Math.max(0, Math.min(100, Number(row.progress))),
-    status: row.status.trim() === "" ? "pending" : row.status.trim(),
+    status: row.status.trim() === "" ? "to_do" : row.status.trim(),
   }));
 
   const links: ScheduleTaskLinkDto[] = rows.flatMap((row) =>

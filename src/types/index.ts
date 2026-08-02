@@ -29,9 +29,16 @@ export type ProjectTask = {
   description?: string;
   dueDate?: string;
   priority?: "high" | "medium" | "low";
-  status?: "pending" | "in_progress" | "completed" | "on_hold";
+  status?: "to_do" | "in_progress" | "completed" | "on_hold";
   progress?: number;
   assignedUsers?: Array<{ id: number; fullName: string }>;
+  /** Gantt-nested children (Task.parentTaskId, set via the Schedule tab's
+   * "add child task") — each child is also its own top-level entry in the
+   * project's flattened task list, this is just a lightweight summary. */
+  childTasks?: Array<{ id: number; title: string; status?: string; progress?: number }>;
+  /** Set when this task is itself one of the above — a Gantt-nested child of
+   * another task, not a top-level task. */
+  parentTaskId?: number | null;
 };
 
 export type ProjectHeading = {
@@ -339,6 +346,8 @@ export type ProformaInvoice = {
   filePath?: string | null;
   status: ProformaInvoiceStatus;
   items: ProformaInvoiceItem[];
+  /** Only present when fetched from the org-wide Proforma Invoices list (not when embedded in PurchaseOrder.proformaInvoices). */
+  purchaseOrder?: { id: number; poNumber?: string | null; vendor?: Vendor | null; project?: { id: number; name: string } | null } | null;
   createdAt: string;
   updatedAt: string;
 };

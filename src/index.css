@@ -24,6 +24,26 @@
   }
 }
 
+/* Right-side drawer entrance — CSS animations (unlike transitions) run
+ * automatically on mount, so this needs no open/visible state to trigger it.
+ * Used by the task-detail popups in MyTasks/AssignedTasks/CompletedTasks,
+ * matching Drawer.tsx's slide-in/fade-in feel without duplicating its
+ * mount-delay state machine into each of those large pages. */
+@keyframes drawer-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-drawer-slide-in {
+  animation: drawer-slide-in 0.2s ease-out;
+}
+@keyframes drawer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-drawer-fade-in {
+  animation: drawer-fade-in 0.2s ease-out;
+}
+
 /* Modern, slim, rounded scrollbars app-wide (Chromium/WebKit + Firefox). */
 * {
   scrollbar-width: thin;

@@ -33,10 +33,10 @@ export default function StickyHorizontalScrollbar({
     let raf = 0;
     const tick = () => {
       const box = target.getBoundingClientRect();
-      const needsScroll = target.scrollWidth > target.clientWidth + 1;
+      const scrollNeeded = target.scrollWidth > target.clientWidth + 1;
       const anyPartVisible = box.top < window.innerHeight && box.bottom > 0;
 
-      if (needsScroll && anyPartVisible) {
+      if (scrollNeeded && anyPartVisible) {
         setRect((prev) =>
           prev && prev.left === box.left && prev.width === box.width
             ? prev
@@ -96,8 +96,6 @@ export default function StickyHorizontalScrollbar({
         overflowX: "auto",
         overflowY: "hidden",
         zIndex: 60,
-        background: "#fff",
-        borderTop: "1px solid #e2e8f0",
       }}
     >
       <div style={{ width: scrollWidth, height: 1 }} />

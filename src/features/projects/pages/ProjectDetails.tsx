@@ -98,7 +98,7 @@ const ProjectDetails: React.FC = () => {
 
   const allTasks = flattenProjectTasks(project);
   const total = project.tasksCount ?? allTasks.length;
-  const completedCount = allTasks.filter((t) => (t.status || "pending") === "completed").length;
+  const completedCount = allTasks.filter((t) => (t.status || "to_do") === "completed").length;
   const progress = project.progress ?? (total > 0 ? Math.round((completedCount / total) * 100) : 0);
 
   const renderTabContent = () => {
@@ -106,7 +106,7 @@ const ProjectDetails: React.FC = () => {
       case "overview":
         return <ProjectOverviewTab project={project} onNavigateTab={setActiveTab} />;
       case "schedule":
-        return <ProjectScheduleTab projectId={String(project.id)} />;
+        return <ProjectScheduleTab projectId={String(project.id)} onScheduleUpdate={loadProject} />;
       case "tasks":
         return <ProjectTasksTab project={project} onTaskUpdate={loadProject} />;
       case "documents":

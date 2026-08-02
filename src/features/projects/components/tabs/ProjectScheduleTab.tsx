@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 import {
   Upload,
-  X,
   AlertCircle,
   Pencil,
   CloudUpload,
@@ -12,6 +11,10 @@ import {
   Filter,
   Download,
   Plus,
+  Loader2,
+  SquareCheckBig,
+  Trash2,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -28,10 +31,14 @@ import {
   LINK_TYPE_TO_GANTT,
   GANTT_TYPE_TO_LINK_TYPE,
 } from "../../utils/predecessorTokens";
+import { recalcAfterTaskEdit, recalcAfterLinkEdit } from "../../utils/scheduleAutoSchedule";
 import GanttChartView, { ScheduleColumnDef, ScheduleScale, LinkEditInfo } from "../GanttChartView";
+import { deleteTask } from "../../../tasks/api/tasks.api";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalScrollbar";
+import Drawer from "../../../../components/Drawer";
+import { useRowSelection } from "../../../../hooks/useRowSelection";
 
 /**
  * ProjectScheduleTab
@@ -40,12 +47,19 @@ import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalSc
  * a single source of truth — `scheduleRows` — which can be populated three ways:
  *   1. Uploading an Excel/CSV sheet
  *   2. Editing directly on the chart — inline task-name editing, the "+"
- *      button to add a task, and drag-resizing a bar to change its duration
- *      (see GanttChartView's onTaskChange)
+ *      button to add a task, and dragging/resizing a bar to move it or
+ *      change its duration (see GanttChartView's onTaskChange)
  *   3. Loading whatever was last saved for this project from the backend
  *
  * Whichever way the rows are populated, "Save to Backend" persists the whole
  * schedule (PUT /api/projects/:projectId/schedule — full replace).
+ *
+ * MS-Project-style auto-scheduling (see scheduleAutoSchedule.ts): moving a
+ * task's dates, or creating/editing a dependency, recomputes every task
+ * downstream of it in the dependency graph — FS/SS/FF/SF + lag, cascading
+ * transitively. A task's own duration is never touched by this, only its
+ * start date. Only fires from these interactive edits; loading a saved
+ * schedule or an Excel upload never silently rewrites its dates.
  *
  * Expected columns (header matching is case-insensitive and whitespace-tolerant):
  *   ID              optional, e.g. "1", "1.1" — auto-generated if omitted
@@ -105,6 +119,10 @@ interface ParsedRow {
 interface ProjectScheduleTabProps {
   /** Which project's schedule to load/save. Required for backend persistence. */
   projectId: string;
+  /** Called after a successful save or task delete so the Task tab (and
+   * project header stats) can refresh — Schedule and Task tabs now share the
+   * same Task rows, so a Gantt-side change needs to surface there too. */
+  onScheduleUpdate?: () => void;
 }
 
 // ---- Constants ---------------------------------------------------------
@@ -262,15 +280,15 @@ function formatDateLabel(date: Date): string {
   return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
 }
 
-const VALID_STATUSES = new Set<ScheduleStatus>(["pending", "in_progress", "on_hold", "completed"]);
+const VALID_STATUSES = new Set<ScheduleStatus>(["to_do", "in_progress", "on_hold", "completed"]);
 
 /** Case/spacing-tolerant normalization ("On Hold", "on-hold" -> "on_hold"),
- * falling back to "pending" for anything missing/unrecognized (e.g. an
+ * falling back to "to_do" for anything missing/unrecognized (e.g. an
  * Excel upload with no Status column, or a stray typo in one). */
 function normalizeStatus(raw: string | undefined | null): ScheduleStatus {
-  if (!raw) return "pending";
+  if (!raw) return "to_do";
   const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  return VALID_STATUSES.has(key as ScheduleStatus) ? (key as ScheduleStatus) : "pending";
+  return VALID_STATUSES.has(key as ScheduleStatus) ? (key as ScheduleStatus) : "to_do";
 }
 
 /** Convert normalized rows (from an Excel upload) into editable ScheduleRow
@@ -505,13 +523,13 @@ function buildGanttData(normalizedRows: NormalizedRow[]): { tasks: GanttTask[]; 
 
     let progress =
       type === "summary" ? summaryProgress.get(row.id) ?? 0 : row.progress ?? 0;
-    // Pending/Completed always display 0/100 regardless of whatever stray
+    // To Do/Completed always display 0/100 regardless of whatever stray
     // value is stored (e.g. a status changed elsewhere, or a Completed row
     // straight off an Excel import with a stale Progress column) — kept in
     // sync display-side the same way the status rollup above is, on top of
     // the source-of-truth enforcement in handleStatusChange/the backend DTO.
     if (type !== "summary") {
-      if (status === "pending") progress = 0;
+      if (status === "to_do") progress = 0;
       else if (status === "completed") progress = 100;
     }
 
@@ -602,13 +620,17 @@ function dedupeRowIds(rows: ScheduleRow[]): ScheduleRow[] {
 
 // ---- Component -------------------------------------------------------------
 
-const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) => {
+const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onScheduleUpdate }) => {
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("day");
   const [viewTab, setViewTab] = useState<ViewTab>("gantt");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  // Right-side drawer housing the Excel-format instructions + the actual
+  // upload control — opened from the toolbar's "Upload Excel Sheet" button
+  // instead of that button triggering a file picker directly.
+  const [showUploadDrawer, setShowUploadDrawer] = useState(false);
   // Gantt-view-only column visibility — starts empty so only Id/Task Name
   // show by default, matching ClickUp/GanttPro's minimal default grid. The
   // "+" button lives in the grid's own header row (see the "columnsMenuBtn"
@@ -644,6 +666,17 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // Task id awaiting delete confirmation (via ConfirmationModal, see below)
   // — set by the row menu's "Delete task" click, cleared on cancel/confirm.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // True while confirmDeleteTask's real backend delete is in flight — drives
+  // ConfirmationModal's isLoading spinner (delete is no longer purely local).
+  const [deletingTask, setDeletingTask] = useState(false);
+  // Bulk-select mode (toggled via the toolbar's checkbox-icon button, left of
+  // the Gantt/List switcher) — while on, every row gets a checkbox (see the
+  // "selectCheckbox" column below) and a selection bar with a bulk-delete
+  // action appears above the chart. Off by default; turning it off clears
+  // whatever was selected, same as a "Cancel" would.
+  const [selectMode, setSelectMode] = useState(false);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -767,11 +800,43 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     return ganttTasks.filter((t) => t.type === "summary" || t.status === statusFilter);
   }, [ganttTasks, statusFilter]);
 
+  const rowSelection = useRowSelection<string>(useMemo(() => visibleTasks.map((t) => t.id), [visibleTasks]));
+
   // `width` here is a relative weight, not a pixel value — GanttChartView
   // scales these proportionally to fill the 25%-of-container grid area it
   // reserves for the table (the remaining 75% is the chart).
   const columns: ScheduleColumnDef[] = useMemo(
     () => [
+      // Bulk-select checkbox — only present while selectMode is on (toggled
+      // via the toolbar's checkbox-icon button). Has to be its own leading
+      // column rather than folded into the "text" tree column below, since
+      // dhtmlx only supports one `tree: true` column and renders its own
+      // indent/expand-arrow inside it. Checked state is recomputed from
+      // rowSelection.selected on every render; toggling posts a "change"
+      // event picked up via document-level delegation in GanttChartView
+      // (see onSelectToggle there), same pattern as the status/progress cells.
+      // onmousedown stops propagation so dhtmlx's own row drag-to-reorder
+      // (order_branch, active while editMode is on — see the "Row
+      // drag-to-reorder" config below) never sees the mousedown: dhtmlx
+      // treats *any* mousedown+slight pointer movement anywhere in a grid
+      // row as "start dragging this row" since it has no concept of our
+      // raw-HTML checkbox as a distinct control, which was visibly yanking
+      // the clicked task's bar up/down in the timeline on every checkbox click.
+      ...(selectMode
+        ? [
+            {
+              id: "selectCheckbox",
+              header: "",
+              width: 34,
+              fixedWidth: true,
+              align: "center" as const,
+              render: (t: GanttTask) =>
+                `<input type="checkbox" class="gantt-select-checkbox" data-row-id="${t.id}"${
+                  rowSelection.selected.has(t.id) ? " checked" : ""
+                } onmousedown="event.stopPropagation()" />`,
+            },
+          ]
+        : []),
       // The id (e.g. "1", "1.1") is shown inline as a prefix inside this same
       // column instead of a separate "Id" column — dhtmlx renders the tree
       // indent/expand-arrow first, then this template as the cell's content,
@@ -860,27 +925,30 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       // reference layout's own trailing column: the header embeds a plain
       // "+" button (raw HTML; dhtmlx renders column labels unescaped) that
       // opens the show/hide-fields popover (see handleGridHeaderClick), and
-      // each row's body cell (edit mode only) embeds a "..." that opens the
-      // row-options menu (Add subtask / Duplicate / Delete task) — wired up
-      // in GanttChartView's onTaskClick via the "gantt-row-menu-btn" class +
-      // openRowMenu, same as before, just relocated here from the Id column.
+      // each row's body cell (edit mode only) embeds a hover-revealed "+"
+      // (adds a new sibling task directly below this row — see
+      // handleAddTaskBelow, wired up in GanttChartView's onTaskClick via the
+      // "gantt-row-add-btn" class) and a "..." that opens the row-options
+      // menu (Add subtask / Duplicate / Delete task) — wired up via the
+      // "gantt-row-menu-btn" class + openRowMenu, same as before, just
+      // relocated here from the Id column.
       ...(viewTab === "gantt"
         ? [
             {
               id: "columnsMenuBtn",
               header: '<button type="button" class="gantt-columns-menu-btn" title="Show/hide columns">+</button>',
-              width: 50,
+              width: 74,
               fixedWidth: true,
               align: "center" as const,
               render: (t: GanttTask) =>
                 editMode
-                  ? `<button type="button" class="gantt-row-menu-btn" data-row-menu-id="${t.id}" title="Task options">&#8230;</button>`
+                  ? `<span class="gantt-row-actions"><button type="button" class="gantt-row-add-btn" data-row-add-id="${t.id}" title="Add task below">+</button><button type="button" class="gantt-row-menu-btn" data-row-menu-id="${t.id}" title="Task options">&#8230;</button></span>`
                   : "",
             },
           ]
         : []),
     ],
-    [editMode, viewTab, visibleFields],
+    [editMode, viewTab, visibleFields, selectMode, rowSelection.selected],
   );
 
   const scales = useMemo(() => SCALES[zoomLevel], [zoomLevel]);
@@ -892,15 +960,19 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // updates local state; it's saved to the backend the same way any other
   // edit is, via the existing "Save to Backend" button.
   const handleLinkCreate = useCallback((sourceId: string, targetId: string, ganttType: GanttLink["type"]) => {
-    setScheduleRows((rows) =>
-      rows.map((row) => {
+    setScheduleRows((rows) => {
+      const next = rows.map((row) => {
         if (row.id !== targetId || sourceId === targetId) return row;
         const existing = parsePredecessorList(row.predecessorId);
         if (existing.some((t) => t.id === sourceId)) return row;
         const nextTokens = [...existing, { id: sourceId, type: GANTT_TYPE_TO_LINK_TYPE[ganttType], lag: 0 }];
         return { ...row, predecessorId: nextTokens.map(formatPredecessorToken).join(",") };
-      }),
-    );
+      });
+      // MS-Project-style auto-scheduling: a fresh dependency immediately
+      // snaps the new successor (and anything downstream of it) into place
+      // relative to its predecessor, same as creating a link in MS Project.
+      return recalcAfterLinkEdit(next, targetId);
+    });
   }, []);
 
   const handleLinkDelete = useCallback((sourceId: string, targetId: string) => {
@@ -915,14 +987,17 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
 
   /** Patches an existing dependency's type/lag (from the double-click edit popover — see linkEditor state below). */
   const handleLinkUpdate = useCallback((sourceId: string, targetId: string, patch: { type?: ScheduleLinkType; lag?: number }) => {
-    setScheduleRows((rows) =>
-      rows.map((row) => {
+    setScheduleRows((rows) => {
+      const next = rows.map((row) => {
         if (row.id !== targetId) return row;
         const existing = parsePredecessorList(row.predecessorId);
         const nextTokens = existing.map((t) => (t.id === sourceId ? { ...t, ...patch } : t));
         return { ...row, predecessorId: nextTokens.map(formatPredecessorToken).join(",") };
-      }),
-    );
+      });
+      // Changing a dependency's type or lag re-anchors the successor exactly
+      // the same way creating the link did.
+      return recalcAfterLinkEdit(next, targetId);
+    });
   }, []);
 
   /** Opens the type/lag/delete popover for a double-clicked dependency arrow. */
@@ -943,16 +1018,25 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
   // Nothing is sent to the backend until "Save to Backend" is clicked.
   const handleTaskChange = useCallback(
     (id: string, changes: { text?: string; start?: Date; duration?: number }) => {
-      setScheduleRows((rows) =>
-        rows.map((row) => {
+      setScheduleRows((rows) => {
+        const next = rows.map((row) => {
           if (row.id !== id) return row;
-          const next = { ...row };
-          if (changes.text !== undefined) next.taskName = changes.text;
-          if (changes.start !== undefined) next.startDate = formatDateInput(changes.start);
-          if (changes.duration !== undefined) next.duration = String(changes.duration);
-          return next;
-        }),
-      );
+          const updated = { ...row };
+          if (changes.text !== undefined) updated.taskName = changes.text;
+          if (changes.start !== undefined) updated.startDate = formatDateInput(changes.start);
+          if (changes.duration !== undefined) updated.duration = String(changes.duration);
+          return updated;
+        });
+        // Dragging a bar (move or resize) shifts its dates directly above —
+        // MS-Project-style auto-scheduling then cascades that change to
+        // whatever else depends on it (see scheduleAutoSchedule.ts). Also
+        // runs after a plain rename, since dhtmlx reports the task's full
+        // current record on every update either way; harmless no-op there
+        // since the dates it "changed to" are the ones it already had.
+        return changes.start !== undefined || changes.duration !== undefined
+          ? recalcAfterTaskEdit(next, id)
+          : next;
+      });
     },
     [],
   );
@@ -964,8 +1048,13 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setScheduleRows((rows) => {
       const existingIds = new Set(rows.map((r) => r.id));
       let n = rows.length + 1;
-      let newId = String(n);
-      while (existingIds.has(newId)) newId = String(++n);
+      // "temp-" prefixed (same convention TaskController.ts already uses for
+      // unsaved subtasks) so a brand-new row's id can never collide with a
+      // real Task.id once schedule rows are loaded from the backend — see
+      // schedule.service.ts's saveSchedule, which treats any id that doesn't
+      // resolve to an existing Task as a new row to create.
+      let newId = `temp-${n}`;
+      while (existingIds.has(newId)) newId = `temp-${++n}`;
 
       const { tasks } = buildGanttData(rows as NormalizedRow[]);
       const lastEnd = tasks.length > 0 ? tasks[tasks.length - 1].end : new Date();
@@ -991,8 +1080,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setScheduleRows((rows) => {
       const existingIds = new Set(rows.map((r) => r.id));
       let n = rows.length + 1;
-      let newId = String(n);
-      while (existingIds.has(newId)) newId = String(++n);
+      let newId = `temp-${n}`;
+      while (existingIds.has(newId)) newId = `temp-${++n}`;
 
       const { tasks } = buildGanttData(rows as NormalizedRow[]);
       const parentTask = tasks.find((t) => t.id === parentId);
@@ -1014,42 +1103,150 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     });
   }, []);
 
-  // Deletes a task row and cascades to every descendant under it (a summary
-  // row can't be left with orphaned children pointing at a parentId that no
-  // longer exists). Confirmed via a ConfirmationModal (see pendingDeleteId
-  // below) before this fires — GanttChartView's row menu calls straight
-  // through without its own confirmation. Nothing is sent to the backend
-  // until "Done Editing" auto-saves.
-  const handleDeleteTask = useCallback((id: string) => {
+  // Adds a new sibling task immediately below the row whose hover "+" was
+  // clicked (same parentId as that row, so it lands at the same nesting
+  // level) — inserted right after the anchor row's own subtree (all of its
+  // descendants, if any) rather than in the middle of them, same
+  // insert-after-subtree approach as handleDuplicateTask below.
+  const handleAddTaskBelow = useCallback((anchorId: string) => {
     setScheduleRows((rows) => {
-      const idsToRemove = new Set<string>([id]);
+      const existingIds = new Set(rows.map((r) => r.id));
+      let n = rows.length + 1;
+      let newId = `temp-${n}`;
+      while (existingIds.has(newId)) newId = `temp-${++n}`;
+
+      const anchorRow = rows.find((r) => r.id === anchorId);
+      const { tasks } = buildGanttData(rows as NormalizedRow[]);
+      const anchorTask = tasks.find((t) => t.id === anchorId);
+
+      const newRow: ScheduleRow = {
+        ...emptyScheduleRow(),
+        id: newId,
+        parentId: anchorRow?.parentId ?? "",
+        taskName: "New Task",
+        duration: "1",
+        startDate: formatDateInput(anchorTask?.end ?? new Date()),
+      };
+
+      const idsInSubtree = new Set<string>([anchorId]);
       let changed = true;
       while (changed) {
         changed = false;
         for (const row of rows) {
+          if (row.parentId && idsInSubtree.has(row.parentId) && !idsInSubtree.has(row.id)) {
+            idsInSubtree.add(row.id);
+            changed = true;
+          }
+        }
+      }
+      const lastIndexInSubtree = rows.reduce(
+        (max, row, i) => (idsInSubtree.has(row.id) ? i : max),
+        -1,
+      );
+      const next = [...rows];
+      next.splice(lastIndexInSubtree + 1, 0, newRow);
+      return next;
+    });
+  }, []);
+
+  // Deletes a task row and cascades to every descendant under it (a summary
+  // row can't be left with orphaned children pointing at a parentId that no
+  // longer exists). Confirmed via a ConfirmationModal (see pendingDeleteId
+  // below) before this fires — GanttChartView's row menu calls straight
+  // through without its own confirmation. Since Schedule and Task tabs now
+  // share the same Task rows (see schedule.service.ts), this is a REAL,
+  // immediate backend delete — not deferred to the next "Done Editing" save
+  // the way it used to be, since a task can carry real comments/subtasks/
+  // assignees that shouldn't be destroyed as a side effect of some later,
+  // unrelated save. A "temp-…" row was never persisted, so only rows with a
+  // real numeric id hit the backend; everything is still removed from local
+  // state either way for immediate feedback.
+  const handleDeleteTask = useCallback(
+    async (id: string) => {
+      const idsToRemove = new Set<string>([id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const row of scheduleRows) {
           if (row.parentId && idsToRemove.has(row.parentId) && !idsToRemove.has(row.id)) {
             idsToRemove.add(row.id);
             changed = true;
           }
         }
       }
-      return rows.filter((row) => !idsToRemove.has(row.id));
-    });
-  }, []);
+
+      const realId = Number(id);
+      if (Number.isInteger(realId)) {
+        await deleteTask(realId);
+      }
+
+      setScheduleRows((rows) => rows.filter((row) => !idsToRemove.has(row.id)));
+    },
+    [scheduleRows],
+  );
 
   // Confirms the delete requested via the row menu (pendingDeleteId, set by
   // onDeleteTask={setPendingDeleteId} on GanttChartView below).
-  const confirmDeleteTask = useCallback(() => {
-    if (pendingDeleteId) handleDeleteTask(pendingDeleteId);
-    setPendingDeleteId(null);
-  }, [pendingDeleteId, handleDeleteTask]);
+  const confirmDeleteTask = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    setDeletingTask(true);
+    setBackendError(null);
+    try {
+      await handleDeleteTask(pendingDeleteId);
+      setPendingDeleteId(null);
+      onScheduleUpdate?.();
+    } catch (err) {
+      setBackendError(getErrorMessage(err, "Failed to delete task."));
+    } finally {
+      setDeletingTask(false);
+    }
+  }, [pendingDeleteId, handleDeleteTask, onScheduleUpdate]);
+
+  // Bulk delete for the checkbox-select toolbar (see selectMode/rowSelection
+  // above) — unions each selected row's own descendant cascade (same logic
+  // as handleDeleteTask, but computed once across every selected id rather
+  // than looping handleDeleteTask, which would redo the cascade scan against
+  // an increasingly stale `scheduleRows` closure on each iteration), then
+  // fires one deleteTask call per real (non-"temp-") id in parallel.
+  const confirmBulkDeleteTasks = useCallback(async () => {
+    if (rowSelection.selectedIds.length === 0) return;
+    setBulkDeleting(true);
+    setBackendError(null);
+    try {
+      const idsToRemove = new Set<string>(rowSelection.selectedIds);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const row of scheduleRows) {
+          if (row.parentId && idsToRemove.has(row.parentId) && !idsToRemove.has(row.id)) {
+            idsToRemove.add(row.id);
+            changed = true;
+          }
+        }
+      }
+
+      const realIds = Array.from(idsToRemove)
+        .map((rid) => Number(rid))
+        .filter((n) => Number.isInteger(n));
+      await Promise.all(realIds.map((n) => deleteTask(n)));
+
+      setScheduleRows((rows) => rows.filter((row) => !idsToRemove.has(row.id)));
+      rowSelection.clear();
+      setPendingBulkDelete(false);
+      onScheduleUpdate?.();
+    } catch (err) {
+      setBackendError(getErrorMessage(err, "Failed to delete selected tasks."));
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [rowSelection, scheduleRows, onScheduleUpdate]);
 
   // Fired when the status <select> in the "status" column is changed (see
   // GanttChartView's onStatusChange) — folded into scheduleRows the same way
   // inline task-name edits and drag-resizes are. Nothing is sent to the
   // backend until "Done Editing" auto-saves.
   //
-  // Progress is kept in sync with the new status: Pending always resets to
+  // Progress is kept in sync with the new status: To Do always resets to
   // 0, Completed always jumps to 100. In Progress leaves the existing value
   // alone (it's already freely editable). On Hold also leaves it alone, but
   // additionally freezes the Progress column (disabled, see the `columns`
@@ -1058,7 +1255,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setScheduleRows((rows) =>
       rows.map((row) => {
         if (row.id !== id) return row;
-        if (status === "pending") return { ...row, status, progress: "0" };
+        if (status === "to_do") return { ...row, status, progress: "0" };
         if (status === "completed") return { ...row, status, progress: "100" };
         return { ...row, status };
       }),
@@ -1075,7 +1272,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     setScheduleRows((rows) =>
       rows.map((row) => {
         if (row.id !== id) return row;
-        const status = progress <= 0 ? "pending" : progress >= 100 ? "completed" : "in_progress";
+        const status = progress <= 0 ? "to_do" : progress >= 100 ? "completed" : "in_progress";
         return { ...row, progress: String(progress), status };
       }),
     );
@@ -1093,8 +1290,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
       const existingIds = new Set(rows.map((r) => r.id));
       let n = existingIds.size + 1;
       const nextId = () => {
-        let candidate = String(n);
-        while (existingIds.has(candidate)) candidate = String(++n);
+        let candidate = `temp-${n}`;
+        while (existingIds.has(candidate)) candidate = `temp-${++n}`;
         existingIds.add(candidate);
         n++;
         return candidate;
@@ -1172,6 +1369,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         setScheduleRows(dtoToRows(saved));
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2500);
+        onScheduleUpdate?.();
       } catch (err) {
         const message = getErrorMessage(err, "Failed to save the schedule.");
         setBackendError(message);
@@ -1179,7 +1377,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         throw new Error(message);
       }
     },
-    [projectId, saveScheduleMutation],
+    [projectId, saveScheduleMutation, onScheduleUpdate],
   );
 
   // "Edit Schedule" just flips the local edit-mode switch; "Done Editing"
@@ -1265,7 +1463,18 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
         }
 
         const normalized = bestJsonData.map(normalizeRow);
+        // This only replaces the local working view, not anything server-side
+        // — saveSchedule (see schedule.service.ts) never deletes a task just
+        // for being absent from a save's payload. Since an uploaded sheet's
+        // own ID column essentially never matches a real Task.id, every
+        // uploaded row is treated as brand-new on the next save rather than
+        // updating an existing task, so a re-upload effectively ADDS these as
+        // new tasks — any tasks not in the sheet stay exactly as they are in
+        // the database (with all their comments/attachments/assignees
+        // intact), just not visible in this Gantt view again until the tab
+        // is reloaded and re-fetches the full task list.
         setScheduleRows(normalizedRowsToScheduleRows(normalized));
+        setShowUploadDrawer(false);
       } catch (err) {
         console.error("Error parsing Excel file:", err);
         setUploadError("Failed to parse the file. Please make sure it's a valid .xlsx/.csv with the expected columns.");
@@ -1275,12 +1484,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
     reader.onerror = () => setUploadError("Could not read the selected file.");
 
     reader.readAsArrayBuffer(file);
-  };
-
-  const clearGantt = () => {
-    setScheduleRows([]);
-    setUploadError(null);
-    setFileName(null);
   };
 
   const handleExportCsv = () => {
@@ -1314,92 +1517,28 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
           <div className="fixed inset-0 z-30 bg-slate-900/10 pointer-events-none transition-opacity duration-200" />,
           document.body,
         )}
-      {scheduleRows.length === 0 ? (
-        <div className="flex flex-col justify-center items-center py-16 text-center rounded border border-dashed border-slate-200">
-          <div className="flex justify-center items-center mb-3 w-12 h-12 rounded bg-slate-100">
-            <Upload className="w-6 h-6 text-slate-400" />
-          </div>
-          <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
-            {loadingInitial ? "Loading schedule..." : "Add a Schedule"}
-          </h3>
-          <p className="text-slate-500 text-[12px] max-w-sm mx-auto mb-4">
-            Upload an Excel file to generate an interactive Gantt chart.
-          </p>
-
-          <div className="flex relative gap-2 items-center">
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="excel-upload"
-            />
-            <label
-              htmlFor="excel-upload"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-              Upload Excel Sheet
-            </label>
-          </div>
-
-          {!loadingInitial && (
-            <button
-              onClick={() => {
-                setEditMode(true);
-                handleAddTask();
-              }}
-              className="flex items-center gap-1.5 mt-3 text-[12px] font-medium text-blue-900 hover:text-blue-700"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Or start from scratch
-            </button>
-          )}
-
-          {uploadError && (
-            <div className="flex gap-2 items-start p-3 mt-4 max-w-md text-xs text-left text-rose-700 bg-rose-50 rounded border border-rose-200">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{uploadError}</span>
-            </div>
-          )}
-
-          {backendError && (
-            <div className="flex gap-2 items-start p-3 mt-4 max-w-md text-xs text-left text-rose-700 bg-rose-50 rounded border border-rose-200">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{backendError}</span>
-            </div>
-          )}
-
-          <div className="p-4 mt-6 max-w-md text-xs text-left rounded border text-slate-500 bg-slate-50 border-slate-200">
-            <p className="mb-2 font-semibold text-slate-700">Schedule Format:</p>
-            <p>Whether uploading a sheet or typing it in, these are the fields (any header casing works in Excel):</p>
-            <ul className="pl-5 mt-2 space-y-1 list-disc">
-              <li><strong>ID</strong> (optional) — unique task identifier, e.g. "1", "1.1". Needed for Parent ID / Predecessor ID references.</li>
-              <li><strong>Task Name</strong> — task label (required)</li>
-              <li><strong>Duration</strong> — length in days (0 marks a milestone)</li>
-              <li><strong>Start Date</strong> — date the task begins</li>
-              <li><strong>Progress</strong> (optional) — percent complete, 0-100</li>
-              <li><strong>Status</strong> (optional) — Pending, In Progress, On Hold, or Completed; defaults to Pending. Drives the bar's color.</li>
-              <li><strong>Parent ID</strong> (optional) — ID of the owning summary task</li>
-              <li>
-                <strong>Predecessor ID</strong> (optional) — comma-separated IDs this task depends on. Add a
-                relationship type and/or lag right after the id, MS-Project style: a bare id (e.g. "3") means
-                Finish-to-Start with no lag; "5FS+2" = Finish-to-Start, 2 days after; "7SS-1" = Start-to-Start,
-                1 day lead. Types: FS, SS, FF, SF.
-              </li>
-            </ul>
-            <p className="mt-2 text-slate-400">
-              Rows with no Start Date / Duration, referenced by at least one other row's Parent ID, become summary bars.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div>
+      <div>
           {/* Toolbar — a single flat row of minimal, icon+text controls
               (borderless, hover background) matching the reference design's
               clean, airy toolbar instead of the previous two boxed rows. */}
           <div className="flex flex-wrap gap-1 justify-between items-center pb-2 border-b border-slate-100">
             <div className="flex flex-wrap items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectMode((prev) => {
+                    if (prev) rowSelection.clear();
+                    return !prev;
+                  });
+                }}
+                title={selectMode ? "Exit select mode" : "Select tasks"}
+                className={`flex items-center justify-center w-7 h-7 mr-1 rounded-md transition-colors ${
+                  selectMode ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <SquareCheckBig className="w-3.5 h-3.5" />
+              </button>
+
               <div className="flex items-center gap-0.5 p-0.5 mr-1 bg-slate-100 rounded-md">
                 <ViewTabButton icon={<LayoutGrid className="w-3 h-3" />} label="Gantt" active={viewTab === "gantt"} onClick={() => setViewTab("gantt")} />
                 <ViewTabButton icon={<Rows3 className="w-3 h-3" />} label="List" active={viewTab === "list"} onClick={() => setViewTab("list")} />
@@ -1419,20 +1558,14 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
                 </select>
               </div>
 
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="excel-upload-toolbar"
-              />
-              <label
-                htmlFor="excel-upload-toolbar"
+              <button
+                type="button"
+                onClick={() => setShowUploadDrawer(true)}
                 className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-slate-600 rounded-md hover:bg-slate-100 cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
                 Upload Excel Sheet
-              </label>
+              </button>
 
               {viewTab === "gantt" && <ZoomSlider level={zoomLevel} onChange={setZoomLevel} />}
             </div>
@@ -1441,7 +1574,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
               {fileName && <span className="text-[11px] text-slate-400 truncate max-w-[160px] mr-1">{fileName}</span>}
 
               <ToolbarButton icon={<Download className="w-3.5 h-3.5" />} label="Export" onClick={handleExportCsv} />
-              <ToolbarButton icon={<X className="w-3.5 h-3.5" />} label="Clear" onClick={clearGantt} />
 
               {/* Always mounted (visibility toggled via `invisible` rather than
                   conditional rendering) so this button's slot in the flex-wrap
@@ -1496,69 +1628,78 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             </div>
           )}
 
+          {loadingInitial && scheduleRows.length === 0 && (
+            <div className="flex items-center gap-2 py-10 justify-center text-slate-400 text-[12px]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading schedule…
+            </div>
+          )}
+
+          {selectMode && rowSelection.someSelected && (
+            <div className="flex items-center justify-between px-3 py-2 mt-2 text-[12.5px] bg-blue-50 border border-blue-200 rounded-md text-blue-900">
+              <span className="font-medium">{rowSelection.selectedIds.length} selected</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPendingBulkDelete(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-white bg-red-600 rounded hover:bg-red-700"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Selected
+                </button>
+                <button
+                  type="button"
+                  onClick={rowSelection.clear}
+                  title="Clear selection"
+                  className="p-1 rounded text-blue-700 hover:bg-blue-100"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* -mx-6 cancels the page's own p-6 gutter (see ProjectDetails.tsx,
               shared by every tab) so the chart genuinely spans the full
               content width instead of sitting inset within it. Scoped to
-              just this card, not the whole tab, so the toolbar/legend above
-              and below stay normally aligned with the rest of the page.
+              just this card, not the whole tab, so the toolbar above stays
+              normally aligned with the rest of the page.
               Only horizontal overflow is handled here — vertical scrolling
               happens *inside* GanttChartView itself (a fixed/content-aware
               height there, not this wrapper) so the grid/date-scale header
               rows stay fixed in place while the rows beneath scroll, instead
               of scrolling away along with everything else. */}
-          <div
-            ref={chartScrollRef}
-            className={`overflow-x-auto no-scrollbar bg-white border-y border-slate-200 -mx-6 ${editMode ? "relative z-40" : ""}`}
-          >
-            <div className="min-w-[600px]">
-              <GanttChartView
-                tasks={visibleTasks}
-                links={ganttLinks}
-                scales={scales}
-                columns={columns}
-                showChart={viewTab === "gantt"}
-                editable={editMode}
-                onLinkCreate={handleLinkCreate}
-                onLinkDelete={handleLinkDelete}
-                onLinkEdit={handleLinkEditRequest}
-                onTaskChange={handleTaskChange}
-                onAddChildTask={handleAddChildTask}
-                onDeleteTask={setPendingDeleteId}
-                onDuplicateTask={handleDuplicateTask}
-                onStatusChange={handleStatusChange}
-                onProgressChange={handleProgressChange}
-                onReorder={handleReorder}
-                onGridHeaderClick={handleGridHeaderClick}
-              />
-              {editMode && (
-                <div className="flex items-center px-3 py-2 border-t border-slate-100 bg-slate-50/40">
-                  <button
-                    onClick={handleAddTask}
-                    className="flex items-center gap-1.5 text-[12px] font-medium text-blue-700 hover:text-blue-800 hover:underline"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add a task
-                  </button>
-                </div>
-              )}
+          <div className="bg-white border-y border-slate-200 -mx-6">
+            <div
+              ref={chartScrollRef}
+              className={`overflow-x-auto no-scrollbar ${editMode ? "relative z-40" : ""}`}
+            >
+              <div className="min-w-[600px]">
+                <GanttChartView
+                  tasks={visibleTasks}
+                  links={ganttLinks}
+                  scales={scales}
+                  columns={columns}
+                  showChart={viewTab === "gantt"}
+                  editable={editMode}
+                  onLinkCreate={handleLinkCreate}
+                  onLinkDelete={handleLinkDelete}
+                  onLinkEdit={handleLinkEditRequest}
+                  onTaskChange={handleTaskChange}
+                  onAddChildTask={handleAddChildTask}
+                  onAddTaskBelow={handleAddTaskBelow}
+                  onDeleteTask={setPendingDeleteId}
+                  onDuplicateTask={handleDuplicateTask}
+                  onStatusChange={handleStatusChange}
+                  onProgressChange={handleProgressChange}
+                  onSelectToggle={rowSelection.toggle}
+                  onReorder={handleReorder}
+                  onGridHeaderClick={handleGridHeaderClick}
+                />
+              </div>
             </div>
           </div>
           {viewTab === "gantt" && <StickyHorizontalScrollbar targetRef={chartScrollRef} />}
-
-          {/* Status color legend — matches the bar colors (see
-              GanttChartView's gantt-status-* classes) and the Status
-              column's pill colors, both driven by the same STATUS_META. */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 items-center px-1 mt-6">
-            {(Object.keys(STATUS_META) as ScheduleStatus[]).map((key) => (
-              <div key={key} className="flex items-center gap-1.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: STATUS_META[key].dot }}
-                />
-                <span className="text-[11px] text-slate-500">{STATUS_META[key].label}</span>
-              </div>
-            ))}
-          </div>
 
           {/* Show/hide-fields popover — anchored to the "+" button embedded
               in the grid's own header row (see handleGridHeaderClick), so
@@ -1659,11 +1800,90 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId }) =>
             isOpen={pendingDeleteId != null}
             onClose={() => setPendingDeleteId(null)}
             onConfirm={confirmDeleteTask}
+            isLoading={deletingTask}
             title="Delete Task"
             message="Delete this task? Any subtasks under it will be deleted too."
           />
+
+          <ConfirmationModal
+            isOpen={pendingBulkDelete}
+            onClose={() => setPendingBulkDelete(false)}
+            onConfirm={confirmBulkDeleteTasks}
+            isLoading={bulkDeleting}
+            title="Delete Selected Tasks"
+            message={`Delete ${rowSelection.selectedIds.length} selected task${
+              rowSelection.selectedIds.length === 1 ? "" : "s"
+            }? Any subtasks under them will be deleted too.`}
+          />
+      </div>
+
+      {/* Excel-format instructions + the actual upload control, relocated
+          here from the old empty-state screen — the Gantt chart (even
+          blank) is now shown by default instead of an upload prompt, so
+          this only surfaces on demand via the toolbar's "Upload Excel
+          Sheet" button. */}
+      <Drawer
+        open={showUploadDrawer}
+        onClose={() => setShowUploadDrawer(false)}
+        title="Upload Excel Sheet"
+        subtitle="Import or replace this project's schedule from a spreadsheet"
+        width={420}
+      >
+        <div className="p-5">
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="excel-upload-drawer"
+          />
+          <label
+            htmlFor="excel-upload-drawer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            Upload Excel Sheet
+          </label>
+
+          {uploadError && (
+            <div className="flex gap-2 items-start p-3 mt-3 text-xs text-left text-rose-700 bg-rose-50 rounded border border-rose-200">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{uploadError}</span>
+            </div>
+          )}
+
+          <div className="mt-5 text-xs text-left text-slate-500">
+            <p className="mb-2 font-semibold text-slate-700">Schedule Format:</p>
+            <p>Whether uploading a sheet or typing it in, these are the fields (any header casing works in Excel):</p>
+            <ul className="pl-5 mt-2 space-y-1 list-disc">
+              <li><strong>ID</strong> (optional) — unique task identifier, e.g. "1", "1.1". Needed for Parent ID / Predecessor ID references.</li>
+              <li><strong>Task Name</strong> — task label (required)</li>
+              <li><strong>Duration</strong> — length in days (0 marks a milestone)</li>
+              <li><strong>Start Date</strong> — date the task begins</li>
+              <li><strong>Progress</strong> (optional) — percent complete, 0-100</li>
+              <li><strong>Status</strong> (optional) — To Do, In Progress, On Hold, or Completed; defaults to To Do. Drives the bar's color.</li>
+              <li><strong>Parent ID</strong> (optional) — ID of the owning summary task</li>
+              <li>
+                <strong>Predecessor ID</strong> (optional) — comma-separated IDs this task depends on. Add a
+                relationship type and/or lag right after the id, MS-Project style: a bare id (e.g. "3") means
+                Finish-to-Start with no lag; "5FS+2" = Finish-to-Start, 2 days after; "7SS-1" = Start-to-Start,
+                1 day lead. Types: FS, SS, FF, SF.
+              </li>
+            </ul>
+            <p className="mt-2 text-slate-400">
+              Rows with no Start Date / Duration, referenced by at least one other row's Parent ID, become summary bars.
+            </p>
+            <p className="mt-2 text-slate-400">
+              Dragging a task's bar, or adding/editing a dependency, auto-schedules every task downstream of it
+              according to the dependency type and lag — duration always stays fixed; only the start date shifts.
+            </p>
+            <p className="mt-2 text-slate-400">
+              Uploading a sheet adds its rows as new tasks — it never updates or removes your existing schedule
+              tasks, even ones not included in the sheet.
+            </p>
+          </div>
         </div>
-      )}
+      </Drawer>
     </div>
   );
 };

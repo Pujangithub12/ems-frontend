@@ -18,6 +18,7 @@ export const queryKeys = {
   dashboard: (wsId: number) => [...queryKeys.all(wsId), "dashboard"] as const,
 
   announcements: (wsId: number) => [...queryKeys.all(wsId), "announcements"] as const,
+  notifications: (wsId: number) => [...queryKeys.all(wsId), "notifications"] as const,
   leaveRequests: (wsId: number) => [...queryKeys.all(wsId), "leaveRequests"] as const,
   siteVisitRequests: (wsId: number) => [...queryKeys.all(wsId), "siteVisitRequests"] as const,
   expenseRequests: (wsId: number) => [...queryKeys.all(wsId), "expenseRequests"] as const,
@@ -51,6 +52,7 @@ export const queryKeys = {
     [...queryKeys.all(wsId), "purchaseOrderDetail", id] as const,
   purchaseOrderCostSheet: (wsId: number, id: number) =>
     [...queryKeys.all(wsId), "purchaseOrderCostSheet", id] as const,
+  allProformaInvoices: (wsId: number) => [...queryKeys.all(wsId), "allProformaInvoices"] as const,
   monthlyPerformance: (wsId: number, projectId: string | number, year: number) =>
     [...queryKeys.all(wsId), "monthlyPerformance", projectId, year] as const,
   inventory: (wsId: number, projectId: string | number) =>

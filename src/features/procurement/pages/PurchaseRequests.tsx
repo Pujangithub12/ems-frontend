@@ -26,7 +26,7 @@ import VendorField from "../../inventory/components/VendorField";
 import Drawer, { DrawerSection, DrawerRow } from "../../../components/Drawer";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import { getErrorMessage } from "../../../lib/errors";
-import { PurchaseRequest, PurchaseRequestPriority, PurchaseRequestStatus } from "../../../types";
+import { PurchaseRequestPriority, PurchaseRequestStatus } from "../../../types";
 import {
   useOrganizationPurchaseRequestsQuery,
   useCreatePurchaseRequestMutation,
@@ -41,9 +41,6 @@ import {
   useDeletePurchaseRequestAttachmentMutation,
 } from "../hooks/usePurchaseRequest";
 import { PurchaseRequestItemInput } from "../api/purchaseRequest.api";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-const purchaseOrderPdfUrl = (id: number) => `${API_BASE}/api/purchase-orders/${id}/pdf`;
 
 export const STATUS_STYLES: Record<PurchaseRequestStatus, { bg: string; fg: string; label: string }> = {
   draft: { bg: "#f1f5f9", fg: "#475569", label: "Draft" },
@@ -142,7 +139,12 @@ const PurchaseRequestsPage: React.FC = () => {
   );
 
   // ---- Create form ----
+  // Two-step flow: fill the form, then review everything you entered before
+  // it's actually created — "Submit" on the review step both creates the PR
+  // and immediately moves it to "submitted", so there's no separate
+  // draft-then-remember-to-submit step left for the user.
   const [showForm, setShowForm] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [formProjectId, setFormProjectId] = useState<number | "">("");
   const [department, setDepartment] = useState("");
   const [priority, setPriority] = useState<PurchaseRequestPriority>("medium");
@@ -151,6 +153,7 @@ const PurchaseRequestsPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const createMutation = useCreatePurchaseRequestMutation();
+  const createStatusMutation = useChangePurchaseRequestStatusMutation();
 
   const openCreateForm = () => {
     setFormProjectId(projects[0]?.id ?? "");
@@ -159,9 +162,13 @@ const PurchaseRequestsPage: React.FC = () => {
     setReason("");
     setItems([{ ...emptyItemRow }]);
     setFormError(null);
+    setShowReview(false);
     setShowForm(true);
   };
-  const closeForm = () => setShowForm(false);
+  const closeForm = () => {
+    setShowForm(false);
+    setShowReview(false);
+  };
 
   const updateItemRow = (index: number, patch: Partial<ItemRow>) => {
     setItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -169,11 +176,12 @@ const PurchaseRequestsPage: React.FC = () => {
   const addItemRow = () => setItems((prev) => [...prev, { ...emptyItemRow }]);
   const removeItemRow = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
 
-  const handleSubmitForm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /** Shared by both "Review" and the final "Submit" — returns the validated
+   * item payload, or null (with formError set) if something's invalid. */
+  const buildPayloadItems = (): PurchaseRequestItemInput[] | null => {
     if (!formProjectId) {
       setFormError("Select a project.");
-      return;
+      return null;
     }
     const payloadItems: PurchaseRequestItemInput[] = [];
     for (const row of items) {
@@ -181,7 +189,7 @@ const PurchaseRequestsPage: React.FC = () => {
       const quantity = parseFloat(row.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setFormError("Every item needs a valid quantity.");
-        return;
+        return null;
       }
       payloadItems.push({
         itemName: row.itemName.trim() || undefined,
@@ -193,37 +201,42 @@ const PurchaseRequestsPage: React.FC = () => {
     }
     if (payloadItems.length === 0) {
       setFormError("Add at least one item.");
+      return null;
+    }
+    return payloadItems;
+  };
+
+  /** Form step's submit — validates, then hands off to the review step instead of creating anything yet. */
+  const handleReviewForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!buildPayloadItems()) return;
+    setFormError(null);
+    setShowReview(true);
+  };
+
+  /** Review step's "Submit" — creates the PR (as draft, per the backend's create endpoint) and
+   * immediately submits it for approval in the same action, so the user never sees/has to
+   * separately act on a lingering draft. */
+  const handleConfirmSubmit = async () => {
+    const payloadItems = buildPayloadItems();
+    if (!payloadItems) {
+      setShowReview(false);
       return;
     }
     setSubmitting(true);
     setFormError(null);
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         projectId: String(formProjectId),
         input: { department: department.trim() || undefined, priority, reason: reason.trim() || undefined, items: payloadItems },
       });
+      await createStatusMutation.mutateAsync({ id: created.id, status: "submitted" });
       await requestsQuery.refetch();
       closeForm();
     } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to create purchase request."));
+      setFormError(getErrorMessage(err, "Failed to submit purchase request."));
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  // ---- Delete ----
-  const deleteMutation = useDeletePurchaseRequestMutation();
-  const [deleteTarget, setDeleteTarget] = useState<PurchaseRequest | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await deleteMutation.mutateAsync(deleteTarget.id);
-      await requestsQuery.refetch();
-      setDeleteTarget(null);
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -326,41 +339,25 @@ const PurchaseRequestsPage: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-left">Priority</th>
                       <th className="px-3 py-2 font-medium text-left">Requested By</th>
                       <th className="px-3 py-2 font-medium text-left">Status</th>
-                      <th className="px-3 py-2 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((r) => (
-                      <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-800">{r.prNumber || `#${r.id}`}</td>
-                        <td className="px-3 py-2 text-slate-600">{r.project?.name || "--"}</td>
-                        <td className="px-3 py-2 text-slate-600">{r.department || "--"}</td>
-                        <td className="px-3 py-2 text-slate-600">
+                      <tr
+                        key={r.id}
+                        onClick={() => setDrawerId(r.id)}
+                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <td className="px-3 py-3 font-medium text-slate-800">{r.prNumber || `#${r.id}`}</td>
+                        <td className="px-3 py-3 text-slate-600">{r.project?.name || "--"}</td>
+                        <td className="px-3 py-3 text-slate-600">{r.department || "--"}</td>
+                        <td className="px-3 py-3 text-slate-600">
                           {r.items[0]?.itemName}
                           {r.items.length > 1 ? ` +${r.items.length - 1} more` : ""}
                         </td>
-                        <td className={`px-3 py-2 font-medium capitalize ${PRIORITY_STYLES[r.priority]}`}>{r.priority}</td>
-                        <td className="px-3 py-2 text-slate-600">{r.requestedBy?.fullName || "--"}</td>
-                        <td className="px-3 py-2"><StatusPill status={r.status} /></td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setDrawerId(r.id)}
-                              className="px-2 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50"
-                            >
-                              View
-                            </button>
-                            {r.status === "draft" && (
-                              <button
-                                onClick={() => setDeleteTarget(r)}
-                                title="Delete"
-                                className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        <td className={`px-3 py-3 font-medium capitalize ${PRIORITY_STYLES[r.priority]}`}>{r.priority}</td>
+                        <td className="px-3 py-3 text-slate-600">{r.requestedBy?.fullName || "--"}</td>
+                        <td className="px-3 py-3"><StatusPill status={r.status} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -372,7 +369,7 @@ const PurchaseRequestsPage: React.FC = () => {
       )}
 
       {/* Create modal */}
-      {showForm && (
+      {showForm && !showReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
@@ -381,7 +378,7 @@ const PurchaseRequestsPage: React.FC = () => {
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmitForm} className="p-4 space-y-3 overflow-y-auto">
+            <form onSubmit={handleReviewForm} className="p-4 space-y-3 overflow-y-auto">
               {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
               <div className="grid grid-cols-3 gap-3">
                 <div>
@@ -487,11 +484,9 @@ const PurchaseRequestsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
                 >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Create Draft
+                  Review
                 </button>
               </div>
             </form>
@@ -499,14 +494,96 @@ const PurchaseRequestsPage: React.FC = () => {
         </div>
       )}
 
-      <ConfirmationModal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        isLoading={deleting}
-        title="Delete Purchase Request"
-        message={`Delete "${deleteTarget?.prNumber || `#${deleteTarget?.id}`}"? This cannot be undone.`}
-      />
+      {/* Review step — everything just entered, read-only, with the actual
+          create+submit action gated behind this explicit confirmation
+          instead of firing straight off the form. */}
+      {showForm && showReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Review Purchase Request</h3>
+              <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Project</div>
+                  <div className="text-[13px] font-medium text-slate-900">
+                    {projects.find((p) => p.id === formProjectId)?.name || "--"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Department</div>
+                  <div className="text-[13px] font-medium text-slate-900">{department.trim() || "--"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Priority</div>
+                  <div className={`text-[13px] font-medium capitalize ${PRIORITY_STYLES[priority]}`}>{priority}</div>
+                </div>
+              </div>
+
+              {reason.trim() && (
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Reason</div>
+                  <div className="text-[13px] text-slate-900">{reason.trim()}</div>
+                </div>
+              )}
+
+              <div>
+                <div className="mb-1.5 text-[11px] font-medium text-slate-500">Items</div>
+                <div className="overflow-hidden border rounded-lg border-slate-200">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="border-b bg-slate-50 border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                        <th className="px-3 py-2 font-medium text-left">Item</th>
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium text-left">Unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Est. Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .filter((row) => row.itemName.trim() || row.itemId)
+                        .map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-2 text-slate-800">{row.itemName || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.quantity || "--"}</td>
+                            <td className="px-3 py-2 text-slate-600">{row.unit || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.estimatedPrice || "--"}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReview(false)}
+                disabled={submitting}
+                className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+              >
+                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PurchaseRequestDetailDrawer
         id={drawerId}
@@ -538,11 +615,14 @@ export const PurchaseRequestDetailDrawer: React.FC<{
   const generatePoMutation = useGeneratePurchaseOrderMutation();
   const uploadAttachmentMutation = useUploadPurchaseRequestAttachmentMutation();
   const deleteAttachmentMutation = useDeletePurchaseRequestAttachmentMutation();
+  const deleteMutation = useDeletePurchaseRequestMutation();
 
   const [quoteVendorId, setQuoteVendorId] = useState<number | "">("");
   const [quotePrice, setQuotePrice] = useState("");
   const [quoteNotes, setQuoteNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const refetchAll = async () => {
     await detailQuery.refetch();
@@ -563,6 +643,21 @@ export const PurchaseRequestDetailDrawer: React.FC<{
   };
 
   const pr = detail?.purchaseRequest;
+
+  const handleDeleteConfirmed = async () => {
+    if (!pr) return;
+    setDeleting(true);
+    try {
+      await deleteMutation.mutateAsync(pr.id);
+      setConfirmDelete(false);
+      onChanged();
+      onClose();
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete purchase request."));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <Drawer
@@ -611,13 +706,22 @@ export const PurchaseRequestDetailDrawer: React.FC<{
             <DrawerSection title="Actions">
               <div className="flex flex-wrap gap-2">
                 {pr!.status === "draft" && (
-                  <button
-                    disabled={busy}
-                    onClick={() => runAction(() => changeStatusMutation.mutateAsync({ id: pr!.id, status: "submitted" }))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
-                  >
-                    <Check size={13} /> Submit for approval
-                  </button>
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={() => runAction(() => changeStatusMutation.mutateAsync({ id: pr!.id, status: "submitted" }))}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                    >
+                      <Check size={13} /> Submit for approval
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 disabled:opacity-60"
+                    >
+                      <Trash2 size={13} /> Delete
+                    </button>
+                  </>
                 )}
                 {isAdmin && pr!.status === "submitted" && (
                   <>
@@ -722,12 +826,12 @@ export const PurchaseRequestDetailDrawer: React.FC<{
                   disabled={busy || !pr!.vendorQuotes.some((q) => q.isSelected)}
                   onClick={() =>
                     runAction(async () => {
-                      const purchaseOrder = await generatePoMutation.mutateAsync(pr!.id);
-                      // Auto-download the generated PO PDF — it's also saved as a PO
-                      // attachment server-side, so it can be re-downloaded later too.
-                      if (purchaseOrder?.id) {
-                        window.open(purchaseOrderPdfUrl(purchaseOrder.id), "_blank");
-                      }
+                      // No PDF here — most of what the PDF needs (delivery
+                      // address, payment terms, incoterms, etc.) isn't filled
+                      // in yet on a freshly-generated PO. Download it from
+                      // the PO detail page once those are filled in; it's
+                      // always rendered live from current data there.
+                      await generatePoMutation.mutateAsync(pr!.id);
                     })
                   }
                   className="flex items-center justify-center w-full gap-1.5 px-3 py-2 mt-3 text-[12px] font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
@@ -795,6 +899,15 @@ export const PurchaseRequestDetailDrawer: React.FC<{
           </DrawerSection>
         </>
       )}
+
+      <ConfirmationModal
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDeleteConfirmed}
+        isLoading={deleting}
+        title="Delete Purchase Request"
+        message={`Delete "${pr?.prNumber || `#${pr?.id}`}"? This cannot be undone.`}
+      />
     </Drawer>
   );
 };

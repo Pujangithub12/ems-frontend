@@ -55,7 +55,7 @@ type Project = {
   name: string;
   description?: string;
   dueDate?: string;
-  status: "pending" | "in_progress" | "completed" | "on_hold";
+  status: "to_do" | "in_progress" | "completed" | "on_hold";
   priority: "high" | "medium" | "low";
   assignees?: Array<{ id: number; fullName: string }>;
   createdAt: string;
@@ -95,7 +95,7 @@ const getStatusMeta = (status: string) => {
     return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
   if (v === "on_hold")
     return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "Pending", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
+  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
 };
 
 const formatDate = (dateString: string) =>
@@ -172,7 +172,7 @@ const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
     } else if (v === "inprogress" || v === "in_progress") {
       bg = "#DBEAFE";
       fg = "#1E3A8A";
-    } else if (v === "pending") {
+    } else if (v === "to_do") {
       bg = "#FEF3C7";
       fg = "#B45309";
     } else if (v === "onhold" || v === "on_hold") {
@@ -1206,7 +1206,7 @@ const MyTasks: React.FC = () => {
             className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
           >
             <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
+            <option value="to_do">To Do</option>
             <option value="inprogress">In Progress</option>
             <option value="on_hold">On Hold</option>
             <option value="completed">Completed</option>
@@ -1355,7 +1355,7 @@ const MyTasks: React.FC = () => {
                               onClick={() =>
                                 handleStatusChange(
                                   task.id,
-                                  completed ? "pending" : "completed",
+                                  completed ? "to_do" : "completed",
                                 )
                               }
                               className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
@@ -1415,7 +1415,7 @@ const MyTasks: React.FC = () => {
                                 }
                                 className={`text-[12px] font-medium bg-transparent outline-none appearance-none cursor-pointer text-right pr-4 ${statusColor}`}
                               >
-                                <option value="pending">Pending</option>
+                                <option value="to_do">To Do</option>
                                 <option value="in_progress">In Progress</option>
                                 <option value="on_hold">On Hold</option>
                                 <option value="completed">Completed</option>
@@ -1484,8 +1484,8 @@ const MyTasks: React.FC = () => {
           const t = selectedTask;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-              <div className="w-full max-w-xl overflow-hidden bg-white border shadow-2xl rounded-md border-slate-100 max-h-[85vh] flex flex-col">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+              <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
                 <div className="flex items-start justify-between flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="min-w-0">
                     <h3 className="text-[18px] font-semibold text-slate-900 truncate">

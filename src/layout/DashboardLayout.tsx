@@ -17,17 +17,22 @@ import {
   Menu,
   X,
   BarChart3,
-  Bell,
   ChevronDown,
+  ChevronRight,
   Settings,
   RefreshCcw,
   User as UserRoundIcon,
   UserPlus,
   Truck,
   Building2,
+  FileText,
+  BellOff,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
+import NotificationBell from "../components/NotificationBell";
+import NotificationSettingsPanel from "../components/NotificationSettingsPanel";
+import { useNotificationMute } from "../features/notifications/hooks/useNotificationMute";
 import SidebarLink from "../components/SidebarLink";
 import SidebarDropdown from "../components/SidebarDropdown";
 import { useLeaveRequests } from "../features/approvals/hooks/useLeaveRequests";
@@ -84,9 +89,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const { organizationId: organizationIdParam } = useParams<{ organizationId: string }>();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = React.useState(false);
   const [showSwitchOrganizationModal, setShowSwitchOrganizationModal] =
     React.useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
+  const { isMuted: notificationsMuted } = useNotificationMute();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const paramOrganizationId = organizationIdParam ? Number(organizationIdParam) : null;
@@ -131,6 +138,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         !userMenuRef.current.contains(e.target as Node)
       ) {
         setUserMenuOpen(false);
+        setNotificationSettingsOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -264,6 +272,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "vendors",
     },
     {
+      path: `${prefix}/proforma-invoices`,
+      label: "Proforma Invoices",
+      icon: FileText,
+      id: "proforma-invoices",
+    },
+    {
       path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
@@ -334,6 +348,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     procurement: "Purchase requests across all your projects",
     "purchase-orders": "Purchase orders across all your projects",
     vendors: "Suppliers and vendors across all your projects",
+    "proforma-invoices": "Proforma invoices across all your purchase orders",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
@@ -377,7 +392,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <Eyebrow>Operations</Eyebrow>
           <div className="h-1.5" />
           {navItems.map((it) => {
-            if (it.id === "purchase-orders" || it.id === "vendors") return null;
+            if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
             if (it.id === "procurement") {
               if (!isAdmin) {
                 return (
@@ -392,6 +407,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               }
               const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
               const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+              const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
               return (
                 <SidebarDropdown
                   key="purchase"
@@ -400,6 +416,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   items={[
                     { to: it.path, label: "Purchase Requests" },
                     { to: purchaseOrders.path, label: "Purchase Orders" },
+                    { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                     { to: vendorsItem.path, label: "Vendors" },
                   ]}
                 />
@@ -452,7 +469,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Eyebrow>Operations</Eyebrow>
               <div className="h-1.5" />
               {navItems.map((it) => {
-                if (it.id === "purchase-orders" || it.id === "vendors") return null;
+                if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
                 if (it.id === "procurement") {
                   if (!isAdmin) {
                     return (
@@ -468,6 +485,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   }
                   const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
                   const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+                  const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                   return (
                     <SidebarDropdown
                       key="purchase"
@@ -476,6 +494,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       items={[
                         { to: it.path, label: "Purchase Requests" },
                         { to: purchaseOrders.path, label: "Purchase Orders" },
+                        { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                         { to: vendorsItem.path, label: "Vendors" },
                       ]}
                       onNavigate={() => setIsMobileMenuOpen(false)}
@@ -551,10 +570,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="relative hidden ml-auto md:block"></div>
 
           {/* Notifications */}
-          <button className="relative p-2 rounded hover:bg-slate-100 text-slate-600">
-            <Bell className="w-4 h-4" />
-            <span className="absolute w-[7px] h-[7px] rounded-full bg-red-700 top-[7px] right-[7px] border-[1.5px] border-white" />
-          </button>
+          <NotificationBell />
 
           {/* User menu */}
           <div className="relative" ref={userMenuRef}>
@@ -628,6 +644,21 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     </button>
                   )}
                   <button
+                    onClick={() => setNotificationSettingsOpen((o) => !o)}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <BellOff className="w-3.5 h-3.5 opacity-70" />
+                    Notification Settings
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {notificationsMuted && (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                          Muted
+                        </span>
+                      )}
+                      <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                    </span>
+                  </button>
+                  <button
                     onClick={() => {
                       setUserMenuOpen(false);
                       setShowSwitchOrganizationModal(true);
@@ -645,6 +676,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     Sign out
                   </button>
                 </div>
+              </div>
+            )}
+            {notificationSettingsOpen && (
+              <div className="absolute right-[272px] top-[calc(100% + 6px)] z-50">
+                <NotificationSettingsPanel onClose={() => setNotificationSettingsOpen(false)} />
               </div>
             )}
           </div>

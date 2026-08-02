@@ -1,5 +1,8 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { queryKeys } from "../../../lib/queryKeys";
+import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
+  fetchAllProformaInvoices,
   createProformaInvoice,
   updateProformaInvoice,
   deleteProformaInvoice,
@@ -8,6 +11,16 @@ import {
   ProformaInvoiceInput,
 } from "../api/proformaInvoice.api";
 import { ProformaInvoiceStatus } from "../../../types";
+
+/** Aggregated across every purchase order in the organization, for the sidebar Proforma Invoices page. */
+export function useAllProformaInvoicesQuery() {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.allProformaInvoices(wsId),
+    queryFn: () => fetchAllProformaInvoices(),
+    enabled: Number.isFinite(wsId),
+  });
+}
 
 /** Thin mutation-hook wrappers around proformaInvoice.api.ts — the PO detail page owns the query (fetched as part of PO detail), these just mutate and the caller refetches the PO. */
 export function useCreateProformaInvoiceMutation() {

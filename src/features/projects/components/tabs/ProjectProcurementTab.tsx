@@ -8,6 +8,7 @@ import ItemNameField from "../../../inventory/components/ItemNameField";
 import {
   usePurchaseRequestsQuery,
   useCreatePurchaseRequestMutation,
+  useChangePurchaseRequestStatusMutation,
 } from "../../../procurement/hooks/usePurchaseRequest";
 import { usePurchaseOrdersQuery } from "../../../procurement/hooks/usePurchaseOrder";
 import { PurchaseRequestItemInput } from "../../../procurement/api/purchaseRequest.api";
@@ -58,7 +59,12 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
   };
 
   // ---- Create Purchase Request form ----
+  // Same two-step review-before-submit flow as the org-wide Purchase Requests
+  // page (see PurchaseRequests.tsx): fill the form, review everything
+  // entered, then "Submit" both creates the PR and immediately moves it to
+  // "submitted" in one action.
   const [showForm, setShowForm] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [department, setDepartment] = useState("");
   const [priority, setPriority] = useState<PurchaseRequestPriority>("medium");
   const [reason, setReason] = useState("");
@@ -66,6 +72,7 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const createMutation = useCreatePurchaseRequestMutation();
+  const createStatusMutation = useChangePurchaseRequestStatusMutation();
 
   const openCreateForm = () => {
     setDepartment("");
@@ -73,23 +80,27 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
     setReason("");
     setItems([{ ...emptyItemRow }]);
     setFormError(null);
+    setShowReview(false);
     setShowForm(true);
   };
-  const closeForm = () => setShowForm(false);
+  const closeForm = () => {
+    setShowForm(false);
+    setShowReview(false);
+  };
   const updateItemRow = (index: number, patch: Partial<ItemRow>) =>
     setItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const addItemRow = () => setItems((prev) => [...prev, { ...emptyItemRow }]);
   const removeItemRow = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
 
-  const handleSubmitForm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /** Shared by both "Review" and the final "Submit". */
+  const buildPayloadItems = (): PurchaseRequestItemInput[] | null => {
     const payloadItems: PurchaseRequestItemInput[] = [];
     for (const row of items) {
       if (!row.itemName.trim() && !row.itemId) continue;
       const quantity = parseFloat(row.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
         setFormError("Every item needs a valid quantity.");
-        return;
+        return null;
       }
       payloadItems.push({
         itemName: row.itemName.trim() || undefined,
@@ -101,19 +112,38 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
     }
     if (payloadItems.length === 0) {
       setFormError("Add at least one item.");
+      return null;
+    }
+    return payloadItems;
+  };
+
+  /** Form step's submit — validates, then hands off to the review step instead of creating anything yet. */
+  const handleReviewForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!buildPayloadItems()) return;
+    setFormError(null);
+    setShowReview(true);
+  };
+
+  /** Review step's "Submit" — creates the PR and immediately submits it for approval. */
+  const handleConfirmSubmit = async () => {
+    const payloadItems = buildPayloadItems();
+    if (!payloadItems) {
+      setShowReview(false);
       return;
     }
     setSubmitting(true);
     setFormError(null);
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         projectId,
         input: { department: department.trim() || undefined, priority, reason: reason.trim() || undefined, items: payloadItems },
       });
+      await createStatusMutation.mutateAsync({ id: created.id, status: "submitted" });
       await requestsQuery.refetch();
       closeForm();
     } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to create purchase request."));
+      setFormError(getErrorMessage(err, "Failed to submit purchase request."));
     } finally {
       setSubmitting(false);
     }
@@ -301,7 +331,7 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
         </>
       )}
 
-      {showForm && (
+      {showForm && !showReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
@@ -310,7 +340,7 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmitForm} className="p-4 space-y-3 overflow-y-auto">
+            <form onSubmit={handleReviewForm} className="p-4 space-y-3 overflow-y-auto">
               {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -401,14 +431,95 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
                 >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Create Draft
+                  Review
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Review step — everything just entered, read-only, before it's actually created+submitted. */}
+      {showForm && showReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Review Purchase Request</h3>
+              <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Department</div>
+                  <div className="text-[13px] font-medium text-slate-900">{department.trim() || "--"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Priority</div>
+                  <div className={`text-[13px] font-medium capitalize ${PRIORITY_STYLES[priority]}`}>{priority}</div>
+                </div>
+              </div>
+
+              {reason.trim() && (
+                <div>
+                  <div className="text-[11px] font-medium text-slate-500">Reason</div>
+                  <div className="text-[13px] text-slate-900">{reason.trim()}</div>
+                </div>
+              )}
+
+              <div>
+                <div className="mb-1.5 text-[11px] font-medium text-slate-500">Items</div>
+                <div className="overflow-hidden border rounded-lg border-slate-200">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="border-b bg-slate-50 border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                        <th className="px-3 py-2 font-medium text-left">Item</th>
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium text-left">Unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Est. Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .filter((row) => row.itemName.trim() || row.itemId)
+                        .map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-2 text-slate-800">{row.itemName || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.quantity || "--"}</td>
+                            <td className="px-3 py-2 text-slate-600">{row.unit || "--"}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{row.estimatedPrice || "--"}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReview(false)}
+                disabled={submitting}
+                className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+              >
+                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Submit
+              </button>
+            </div>
           </div>
         </div>
       )}

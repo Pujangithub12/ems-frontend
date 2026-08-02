@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -19,21 +19,22 @@ import {
   User as UserIcon,
   X,
   Loader2,
-  MoreVertical,
-  Pencil,
   Trash2,
   Flag,
+  Filter,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, ProjectTask } from "../../../../types";
 import { flattenProjectTasks } from "../../../tasks/utils/taskUtils";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
+import Drawer, { DrawerSection } from "../../../../components/Drawer";
 import { useHierarchy } from "../../../hierarchy/hooks/useHierarchy";
 import { getDescendantUserIds } from "../../../../lib/hierarchyAuthority";
 import {
   useUpdateTaskStatus,
   useCreateProjectTask,
   useUpdateTask,
+  useUpdateTaskProgress,
   useDeleteTask,
 } from "../../../tasks/hooks/useTasks";
 import { getErrorMessage } from "../../../../lib/errors";
@@ -43,10 +44,10 @@ interface ProjectTasksTabProps {
   onTaskUpdate?: () => void;
 }
 
-type TaskStatus = "pending" | "in_progress" | "completed" | "on_hold";
+type TaskStatus = "to_do" | "in_progress" | "completed" | "on_hold";
 
 const COLUMNS: { status: TaskStatus; title: string; accent: string }[] = [
-  { status: "pending", title: "Pending", accent: "border-t-slate-400" },
+  { status: "to_do", title: "To Do", accent: "border-t-slate-400" },
   { status: "in_progress", title: "In Progress", accent: "border-t-amber-400" },
   { status: "on_hold", title: "On Hold", accent: "border-t-rose-400" },
   { status: "completed", title: "Completed", accent: "border-t-emerald-500" },
@@ -60,13 +61,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 
 const TaskCardContent: React.FC<{
   task: ProjectTask;
-  canManage?: boolean;
-  isMenuOpen?: boolean;
-  menuRef?: React.RefObject<HTMLDivElement>;
-  onToggleMenu?: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-}> = ({ task, canManage, isMenuOpen, menuRef, onToggleMenu, onEdit, onDelete }) => {
+}> = ({ task }) => {
   return (
     <div className="p-3 bg-white border border-slate-200 rounded-md shadow-sm hover:shadow-md hover:border-slate-300 transition-all">
       <div className="flex items-center justify-between mb-2">
@@ -76,61 +71,16 @@ const TaskCardContent: React.FC<{
         >
           TSK-{String(task.id).padStart(4, "0")}
         </span>
-        <div className="flex items-center gap-1">
-          {task.priority && (
-            <span
-              className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide ${
-                PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium
-              }`}
-            >
-              <Flag className="w-2.5 h-2.5" fill="currentColor" strokeWidth={1.5} />
-              {task.priority}
-            </span>
-          )}
-          {canManage && (
-            <div className="relative">
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleMenu?.();
-                }}
-                className="flex items-center justify-center w-5 h-5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                title="Task options"
-              >
-                <MoreVertical size={13} />
-              </button>
-              {isMenuOpen && (
-                <div
-                  ref={menuRef}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-6 z-20 w-32 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden"
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit?.();
-                    }}
-                    className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    <Pencil size={12} className="text-slate-400" />
-                    Edit
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete?.();
-                    }}
-                    className="flex items-center w-full gap-2 px-3 py-2 text-[12px] text-left text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 size={12} />
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {task.priority && (
+          <span
+            className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide ${
+              PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium
+            }`}
+          >
+            <Flag className="w-2.5 h-2.5" fill="currentColor" strokeWidth={1.5} />
+            {task.priority}
+          </span>
+        )}
       </div>
 
       <h4 className="text-[13px] font-medium text-slate-900 leading-snug mb-2">
@@ -171,13 +121,8 @@ const TaskCardContent: React.FC<{
 
 const TaskCard: React.FC<{
   task: ProjectTask;
-  canManage?: boolean;
-  isMenuOpen?: boolean;
-  menuRef?: React.RefObject<HTMLDivElement>;
-  onToggleMenu?: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-}> = ({ task, canManage, isMenuOpen, menuRef, onToggleMenu, onEdit, onDelete }) => {
+  onOpenDetail?: () => void;
+}> = ({ task, onOpenDetail }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: `task-${task.id}` });
 
@@ -192,17 +137,10 @@ const TaskCard: React.FC<{
       style={style}
       {...attributes}
       {...listeners}
-      className="cursor-grab active:cursor-grabbing"
+      onClick={onOpenDetail}
+      className={isDragging ? "cursor-grabbing" : "cursor-pointer"}
     >
-      <TaskCardContent
-        task={task}
-        canManage={canManage}
-        isMenuOpen={isMenuOpen}
-        menuRef={menuRef}
-        onToggleMenu={onToggleMenu}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
+      <TaskCardContent task={task} />
     </div>
   );
 };
@@ -214,12 +152,7 @@ const TaskColumn: React.FC<{
   tasks: ProjectTask[];
   canAddTask: boolean;
   onAddTask: () => void;
-  canManageTasks: boolean;
-  openMenuTaskId: number | null;
-  menuRef: React.RefObject<HTMLDivElement>;
-  onToggleMenu: (taskId: number) => void;
-  onEditTask: (task: ProjectTask) => void;
-  onDeleteTask: (task: ProjectTask) => void;
+  onOpenDetail: (task: ProjectTask) => void;
 }> = ({
   status,
   title,
@@ -227,12 +160,7 @@ const TaskColumn: React.FC<{
   tasks,
   canAddTask,
   onAddTask,
-  canManageTasks,
-  openMenuTaskId,
-  menuRef,
-  onToggleMenu,
-  onEditTask,
-  onDeleteTask,
+  onOpenDetail,
 }) => {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -256,12 +184,7 @@ const TaskColumn: React.FC<{
           <TaskCard
             key={task.id}
             task={task}
-            canManage={canManageTasks}
-            isMenuOpen={openMenuTaskId === task.id}
-            menuRef={menuRef}
-            onToggleMenu={() => onToggleMenu(task.id)}
-            onEdit={() => onEditTask(task)}
-            onDelete={() => onDeleteTask(task)}
+            onOpenDetail={() => onOpenDetail(task)}
           />
         ))}
         {tasks.length === 0 && (
@@ -425,33 +348,53 @@ const AddTaskModal: React.FC<{
   );
 };
 
-const EditTaskModal: React.FC<{
-  task: ProjectTask;
+type TaskEditPayload = {
+  title: string;
+  description: string;
+  dueDate: string;
+  priority: string;
+  status: TaskStatus;
+  assignedUserIds: number[];
+};
+
+const TaskDetailDrawer: React.FC<{
+  task: ProjectTask | null;
+  canManage: boolean;
   assignees: Array<{ id: number; fullName: string }>;
   onClose: () => void;
-  onSave: (payload: {
-    title: string;
-    description: string;
-    dueDate: string;
-    priority: string;
-    status: TaskStatus;
-    assignedUserIds: number[];
-  }) => Promise<void>;
-}> = ({ task, assignees, onClose, onSave }) => {
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description || "");
-  const [dueDate, setDueDate] = useState(
-    task.dueDate ? task.dueDate.slice(0, 10) : "",
-  );
-  const [priority, setPriority] = useState<string>(task.priority || "medium");
-  const [status, setStatus] = useState<TaskStatus>(
-    (task.status as TaskStatus) || "pending",
-  );
-  const [assignedUserIds, setAssignedUserIds] = useState<number[]>(
-    task.assignedUsers?.map((u) => u.id) || [],
-  );
-  const [submitting, setSubmitting] = useState(false);
+  onSave: (id: number, payload: TaskEditPayload) => Promise<void>;
+  onProgressSave: (id: number, progress: number) => Promise<void>;
+  onDelete: (task: ProjectTask) => void;
+  /** Jumps the drawer to one of this task's Gantt-nested children (see
+   * task.childTasks) so they're reachable from here too, not just the
+   * Schedule tab. */
+  onOpenChild: (id: number) => void;
+}> = ({ task, canManage, assignees, onClose, onSave, onProgressSave, onDelete, onOpenChild }) => {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [status, setStatus] = useState<TaskStatus>("to_do");
+  const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset the form whenever a different task is opened (not on every prop
+  // update, so an in-flight edit isn't clobbered by a background refetch) —
+  // same pattern as PurchaseOrderDetail's OverviewTab.
+  useEffect(() => {
+    if (!task) return;
+    setTitle(task.title);
+    setDescription(task.description || "");
+    setDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
+    setPriority(task.priority || "medium");
+    setStatus((task.status as TaskStatus) || "to_do");
+    setAssignedUserIds(task.assignedUsers?.map((u) => u.id) || []);
+    setProgress(typeof task.progress === "number" ? task.progress : 0);
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
 
   const toggleAssignee = (id: number) => {
     setAssignedUserIds((prev) =>
@@ -459,98 +402,171 @@ const EditTaskModal: React.FC<{
     );
   };
 
-  const handleSubmit = async () => {
+  const handleSave = async () => {
+    if (!task) return;
     if (!title.trim() || !description.trim() || !dueDate) {
       setError("Title, description and due date are required.");
       return;
     }
-    setSubmitting(true);
+    setSaving(true);
     setError(null);
     try {
-      await onSave({ title, description, dueDate, priority, status, assignedUserIds });
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to update task.");
-      setSubmitting(false);
+      // Progress goes through its own dedicated endpoint, and deliberately
+      // AFTER the general field save: PUT /tasks/:id recomputes progress
+      // from the task's subtasks (defaulting to 0 when there are none)
+      // right after applying whatever was sent, which would otherwise
+      // clobber this value straight back to 0/whatever the subtasks imply.
+      await onSave(task.id, { title, description, dueDate, priority, status, assignedUserIds });
+      await onProgressSave(task.id, progress);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to update task."));
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
-          <h3 className="text-[14px] font-semibold text-slate-900">
-            Edit Task &middot; TSK-{String(task.id).padStart(4, "0")}
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded text-slate-500">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-4 space-y-3 overflow-y-auto">
+    <Drawer
+      open={!!task}
+      onClose={onClose}
+      title={task ? task.title : ""}
+      subtitle={task ? `TSK-${String(task.id).padStart(4, "0")}` : undefined}
+    >
+      {task && (
+        <>
           {error && (
-            <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+            <div className="mx-5 mt-4 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
               {error}
             </div>
           )}
-          <div>
-            <label className="text-[11px] font-medium text-slate-500">Title</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              placeholder="Task title"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-slate-500">Description</label>
+
+          <DrawerSection title="Overview">
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Title</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={!canManage}
+                className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                placeholder="Task title"
+              />
+            </div>
+            <div className="flex gap-3 mt-3">
+              <div className="flex-1">
+                <label className="text-[11px] font-medium text-slate-500">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                  disabled={!canManage}
+                  className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  {COLUMNS.map((c) => (
+                    <option key={c.status} value={c.status}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] font-medium text-slate-500">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  disabled={!canManage}
+                  className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] font-medium text-slate-500">Due Date</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  disabled={!canManage}
+                  className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-slate-500">Progress</label>
+                {canManage ? (
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={progress}
+                    onChange={(e) =>
+                      setProgress(Math.max(0, Math.min(100, Number(e.target.value) || 0)))
+                    }
+                    className="w-16 px-2 py-1 text-[12px] text-right border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                ) : (
+                  <span className="text-[12px] font-medium text-slate-500">{progress}%</span>
+                )}
+              </div>
+              {canManage ? (
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={progress}
+                  onChange={(e) => setProgress(Number(e.target.value))}
+                  className="w-full mt-2 accent-blue-900"
+                />
+              ) : (
+                <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-900 rounded-full" style={{ width: `${progress}%` }} />
+                </div>
+              )}
+            </div>
+          </DrawerSection>
+
+          <DrawerSection title="Description">
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 resize-none"
+              disabled={!canManage}
+              rows={4}
+              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 resize-none disabled:bg-slate-50 disabled:text-slate-500"
               placeholder="What needs to be done?"
             />
-          </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-[11px] font-medium text-slate-500">Due Date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-[11px] font-medium text-slate-500">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-slate-500">Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as TaskStatus)}
-              className="w-full mt-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-            >
-              {COLUMNS.map((c) => (
-                <option key={c.status} value={c.status}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          {assignees.length > 0 && (
-            <div>
-              <label className="text-[11px] font-medium text-slate-500">Assign To</label>
-              <div className="mt-1 max-h-32 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100">
+          </DrawerSection>
+
+          {task.childTasks && task.childTasks.length > 0 && (
+            <DrawerSection title="Subtasks">
+              <div className="flex flex-col gap-1.5">
+                {task.childTasks.map((child) => {
+                  const col = COLUMNS.find((c) => c.status === (child.status || "to_do"));
+                  return (
+                    <button
+                      key={child.id}
+                      onClick={() => onOpenChild(child.id)}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 text-left border border-slate-200 rounded hover:bg-slate-50"
+                    >
+                      <span className="text-[13px] text-slate-700 truncate">{child.title}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] text-slate-400">
+                          {typeof child.progress === "number" ? `${child.progress}%` : ""}
+                        </span>
+                        <span className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
+                          {col?.title || child.status}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </DrawerSection>
+          )}
+
+          <DrawerSection title="Assigned To">
+            {canManage && assignees.length > 0 ? (
+              <div className="max-h-32 overflow-y-auto border border-slate-200 rounded divide-y divide-slate-100">
                 {assignees.map((a) => (
                   <label
                     key={a.id}
@@ -565,27 +581,43 @@ const EditTaskModal: React.FC<{
                   </label>
                 ))}
               </div>
-            </div>
+            ) : task.assignedUsers && task.assignedUsers.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {task.assignedUsers.map((u) => (
+                  <div key={u.id} className="flex items-center gap-2 text-[13px] text-slate-700">
+                    <UserIcon size={13} className="text-slate-400" />
+                    {u.fullName}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[13px] text-slate-400">Unassigned</p>
+            )}
+          </DrawerSection>
+
+          {canManage && (
+            <DrawerSection title="Actions">
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                >
+                  {saving && <Loader2 size={12} className="animate-spin" />}
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => onDelete(task)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-600 border border-red-200 rounded hover:bg-red-50"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              </div>
+            </DrawerSection>
           )}
-        </div>
-        <div className="flex gap-2 p-4 pt-0">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
-          >
-            {submitting && <Loader2 size={13} className="animate-spin" />}
-            Save Changes
-          </button>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </Drawer>
   );
 };
 
@@ -616,33 +648,34 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
   const [addTaskStatus, setAddTaskStatus] = useState<TaskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [openMenuTaskId, setOpenMenuTaskId] = useState<number | null>(null);
-  const [editTarget, setEditTarget] = useState<ProjectTask | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectTask | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const taskMenuRef = useRef<HTMLDivElement>(null);
+  const [detailTask, setDetailTask] = useState<ProjectTask | null>(null);
+
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<"all" | number>("all");
 
   const updateTaskStatusMutation = useUpdateTaskStatus();
   const createProjectTaskMutation = useCreateProjectTask();
   const updateTaskMutation = useUpdateTask();
+  const updateTaskProgressMutation = useUpdateTaskProgress();
   const deleteTaskMutation = useDeleteTask();
 
   useEffect(() => {
     setTasks(flattenProjectTasks(project));
   }, [project]);
 
-  useEffect(() => {
-    if (openMenuTaskId === null) return;
-    const handler = (e: MouseEvent) => {
-      if (taskMenuRef.current && !taskMenuRef.current.contains(e.target as Node)) {
-        setOpenMenuTaskId(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openMenuTaskId]);
-
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
+  // A minimum drag distance before dnd-kit starts tracking a drag — without
+  // this, the tiniest pointer jitter inside a plain click (mousedown/mouseup
+  // at effectively the same spot) gets treated as a drag, and dnd-kit
+  // suppresses the resulting click event to stop drag-drop from also
+  // registering as a click. That swallowed onOpenDetail entirely, so a card
+  // click did nothing. 8px is comfortably above normal click jitter but well
+  // under an intentional drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = Number(String(event.active.id).replace("task-", ""));
@@ -688,31 +721,30 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
     onTaskUpdate?.();
   };
 
-  const handleToggleTaskMenu = (taskId: number) => {
-    setOpenMenuTaskId((prev) => (prev === taskId ? null : taskId));
-  };
-
-  const handleOpenEditTask = (task: ProjectTask) => {
-    setOpenMenuTaskId(null);
-    setEditTarget(task);
-  };
-
   const handleOpenDeleteTask = (task: ProjectTask) => {
-    setOpenMenuTaskId(null);
     setDeleteTarget(task);
   };
 
-  const handleSaveEdit = async (payload: {
-    title: string;
-    description: string;
-    dueDate: string;
-    priority: string;
-    status: TaskStatus;
-    assignedUserIds: number[];
-  }) => {
-    if (!editTarget) return;
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (priorityFilter !== "all" && (t.priority || "medium") !== priorityFilter) return false;
+      if (assigneeFilter !== "all" && !(t.assignedUsers || []).some((u) => u.id === assigneeFilter)) {
+        return false;
+      }
+      return true;
+    });
+  }, [tasks, priorityFilter, assigneeFilter]);
+
+  // Latest data for whichever task the drawer is showing — kept live so a
+  // drag-driven status change updates the open drawer instead of it going
+  // stale, the same way deleteTarget would if reopened.
+  const openDetailTask = detailTask
+    ? tasks.find((t) => t.id === detailTask.id) ?? detailTask
+    : null;
+
+  const handleSaveDetail = async (id: number, payload: TaskEditPayload) => {
     const updated = await updateTaskMutation.mutateAsync({
-      id: editTarget.id,
+      id,
       payload: {
         title: payload.title,
         description: payload.description,
@@ -722,8 +754,15 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
         userIds: payload.assignedUserIds,
       },
     });
-    setTasks((prev) => prev.map((t) => (t.id === editTarget.id ? (updated as any) : t)));
-    setEditTarget(null);
+    setTasks((prev) => prev.map((t) => (t.id === id ? (updated as any) : t)));
+    setDetailTask(updated as any);
+    onTaskUpdate?.();
+  };
+
+  const handleSaveProgress = async (id: number, progress: number) => {
+    const updated = await updateTaskProgressMutation.mutateAsync({ id, progress });
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, progress: (updated as any).progress } : t)));
+    setDetailTask((prev) => (prev && prev.id === id ? { ...prev, progress: (updated as any).progress } : prev));
     onTaskUpdate?.();
   };
 
@@ -744,9 +783,40 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-900">Task Board</h3>
-        <span className="text-slate-500 text-sm">{tasks.length} tasks</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-slate-600 rounded-md hover:bg-slate-100">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value as typeof priorityFilter)}
+              className="bg-transparent focus:outline-none"
+            >
+              <option value="all">All Priorities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-slate-600 rounded-md hover:bg-slate-100">
+            <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+            <select
+              value={assigneeFilter}
+              onChange={(e) =>
+                setAssigneeFilter(e.target.value === "all" ? "all" : Number(e.target.value))
+              }
+              className="bg-transparent focus:outline-none"
+            >
+              <option value="all">All Assignees</option>
+              {assignableMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <span className="text-slate-500 text-sm shrink-0">{filteredTasks.length} tasks</span>
       </div>
 
       {error && (
@@ -771,15 +841,10 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
               status={col.status}
               title={col.title}
               accent={col.accent}
-              tasks={tasks.filter((t) => (t.status || "pending") === col.status)}
+              tasks={filteredTasks.filter((t) => (t.status || "to_do") === col.status)}
               canAddTask={isAdmin && col.status !== "completed"}
               onAddTask={() => setAddTaskStatus(col.status)}
-              canManageTasks={isAdmin}
-              openMenuTaskId={openMenuTaskId}
-              menuRef={taskMenuRef}
-              onToggleMenu={handleToggleTaskMenu}
-              onEditTask={handleOpenEditTask}
-              onDeleteTask={handleOpenDeleteTask}
+              onOpenDetail={(task) => setDetailTask(task)}
             />
           ))}
         </div>
@@ -802,15 +867,6 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
         />
       )}
 
-      {editTarget && (
-        <EditTaskModal
-          task={editTarget}
-          assignees={assignableMembers}
-          onClose={() => setEditTarget(null)}
-          onSave={handleSaveEdit}
-        />
-      )}
-
       <ConfirmationModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -818,6 +874,23 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
         isLoading={deleting}
         title="Delete Task"
         message={`Delete "${deleteTarget?.title}"? This cannot be undone.`}
+      />
+
+      <TaskDetailDrawer
+        task={openDetailTask}
+        canManage={isAdmin}
+        assignees={assignableMembers}
+        onClose={() => setDetailTask(null)}
+        onSave={handleSaveDetail}
+        onProgressSave={handleSaveProgress}
+        onDelete={(task) => {
+          setDetailTask(null);
+          handleOpenDeleteTask(task);
+        }}
+        onOpenChild={(id) => {
+          const child = tasks.find((t) => t.id === id);
+          if (child) setDetailTask(child);
+        }}
       />
     </div>
   );

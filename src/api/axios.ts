@@ -18,10 +18,26 @@ if (typeof window !== "undefined") {
   }
 }
 
+// Exposed so non-axios consumers (the notification socket connection) can
+// point at the same backend host without re-deriving/re-normalizing it.
+export const apiBaseUrl = API_BASE;
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
     "Content-Type": "application/json",
+    // Auth is cookie-based and the cookie is SameSite=None in production
+    // (required since the frontend and API are cross-site), which defeats
+    // SameSite's normal CSRF protection. JSON requests are already safe —
+    // "application/json" isn't a CORS-"simple" content type, so the browser
+    // preflights them and the backend's origin whitelist blocks anything
+    // not from this app. File uploads (multipart/form-data) ARE a simple
+    // request though, so without this header they'd skip preflight
+    // entirely and a malicious page could submit one using a logged-in
+    // victim's cookies. Adding any non-simple header forces the same
+    // preflight+origin-check for those too — see requireCsrfHeader on the
+    // backend, which rejects any upload route request missing it.
+    "X-Requested-With": "XMLHttpRequest",
   },
   withCredentials: true,
 });

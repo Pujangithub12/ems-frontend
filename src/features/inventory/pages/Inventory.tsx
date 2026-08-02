@@ -755,7 +755,7 @@ const InventoryPage: React.FC = () => {
                         return (
                           <tr key={item.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                             {isAdmin && (
-                              <td className="px-3 py-2">
+                              <td className="px-3 py-3">
                                 <input
                                   type="checkbox"
                                   checked={rowSelection.selected.has(item.id)}
@@ -764,7 +764,7 @@ const InventoryPage: React.FC = () => {
                                 />
                               </td>
                             )}
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-3">
                               <button
                                 onClick={() => setDrawerItemId(item.id)}
                                 className="font-medium text-left text-slate-800 hover:text-blue-900 hover:underline"
@@ -773,24 +773,24 @@ const InventoryPage: React.FC = () => {
                               </button>
                               <div className="text-slate-400 text-[11px]">{item.projectName || "--"}</div>
                             </td>
-                            <td className="px-3 py-2 text-slate-500">{item.sku || "--"}</td>
-                            <td className="px-3 py-2"><CategoryPill category={item.category} /></td>
-                            <td className="px-3 py-2 text-slate-600">{item.warehouse?.name || "--"}</td>
-                            <td className="px-3 py-2 font-semibold" style={{ color: QUANTITY_COLOR[item.status] }}>
+                            <td className="px-3 py-3 text-slate-500">{item.sku || "--"}</td>
+                            <td className="px-3 py-3"><CategoryPill category={item.category} /></td>
+                            <td className="px-3 py-3 text-slate-600">{item.warehouse?.name || "--"}</td>
+                            <td className="px-3 py-3 font-semibold" style={{ color: QUANTITY_COLOR[item.status] }}>
                               {item.quantity}{item.unit ? ` ${item.unit}` : ""}
                             </td>
-                            <td className="px-3 py-2 text-slate-600">{available}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.reservedQuantity || 0}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.incomingQuantity || 0}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatCost(item.averageCost)}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatCost(value)}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.vendor?.name || item.supplier || "--"}</td>
-                            <td className="px-3 py-2 text-slate-600">
+                            <td className="px-3 py-3 text-slate-600">{available}</td>
+                            <td className="px-3 py-3 text-slate-600">{item.reservedQuantity || 0}</td>
+                            <td className="px-3 py-3 text-slate-600">{item.incomingQuantity || 0}</td>
+                            <td className="px-3 py-3 text-slate-600">{formatCost(item.averageCost)}</td>
+                            <td className="px-3 py-3 text-slate-600">{formatCost(value)}</td>
+                            <td className="px-3 py-3 text-slate-600">{item.vendor?.name || item.supplier || "--"}</td>
+                            <td className="px-3 py-3 text-slate-600">
                               {item.lastRestockedDate
                                 ? new Date(item.lastRestockedDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
                                 : "--"}
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-3">
                               {isAdmin ? (
                                 <select
                                   value={item.status}
@@ -807,7 +807,7 @@ const InventoryPage: React.FC = () => {
                                 <StatusPill status={item.status} />
                               )}
                             </td>
-                            <td className="relative px-3 py-2 text-right">
+                            <td className="relative px-3 py-3 text-right">
                               <button
                                 onClick={() => setMenuOpenId(menuOpenId === item.id ? null : item.id)}
                                 className="flex items-center justify-center w-7 h-7 ml-auto rounded text-slate-500 hover:bg-slate-100"

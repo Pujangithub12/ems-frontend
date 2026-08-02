@@ -2,6 +2,7 @@ import api from "../../../api/axios";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType, CostSheet } from "../../../types";
 
 export interface PurchaseOrderInput {
+  poNumber?: string;
   deliveryAddress?: string;
   paymentTerms?: string;
   deliveryDate?: string | null;

@@ -35,7 +35,7 @@ interface ProjectOverviewTabProps {
 const DONUT_BUCKETS: { key: string; label: string; color: string; statuses: string[] }[] = [
   { key: "completed", label: "Completed", color: "#10b981", statuses: ["completed"] },
   { key: "in_progress", label: "In Progress", color: "#3b82f6", statuses: ["in_progress"] },
-  { key: "to_do", label: "To Do", color: "#94a3b8", statuses: ["pending"] },
+  { key: "to_do", label: "To Do", color: "#94a3b8", statuses: ["to_do"] },
   { key: "blocked", label: "Blocked", color: "#f43f5e", statuses: ["on_hold"] },
 ];
 
@@ -180,7 +180,7 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
   const projectManager = project.assignees?.[0];
 
   const donutCounts = DONUT_BUCKETS.reduce<Record<string, number>>((acc, bucket) => {
-    acc[bucket.key] = allTasks.filter((t) => bucket.statuses.includes(t.status || "pending")).length;
+    acc[bucket.key] = allTasks.filter((t) => bucket.statuses.includes(t.status || "to_do")).length;
     return acc;
   }, {});
 

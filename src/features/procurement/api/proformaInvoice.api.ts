@@ -19,6 +19,12 @@ export interface ProformaInvoiceInput {
   items?: ProformaInvoiceItemInput[];
 }
 
+/** GET every proforma invoice across every purchase order in the organization, for the sidebar Proforma Invoices page. */
+export async function fetchAllProformaInvoices(): Promise<ProformaInvoice[]> {
+  const res = await api.get<{ proformaInvoices: ProformaInvoice[] }>("/api/workspace/proforma-invoices");
+  return res.data.proformaInvoices ?? [];
+}
+
 /** POST create a proforma invoice for a purchase order. */
 export async function createProformaInvoice(
   purchaseOrderId: number,

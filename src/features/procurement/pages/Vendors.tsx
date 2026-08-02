@@ -105,9 +105,11 @@ const VendorsPage: React.FC = () => {
       ? vendors.filter(
           (v) =>
             v.name.toLowerCase().includes(q) ||
+            (v.contactPerson || "").toLowerCase().includes(q) ||
             (v.code || "").toLowerCase().includes(q) ||
             (v.location || "").toLowerCase().includes(q) ||
-            (v.contact || "").toLowerCase().includes(q),
+            (v.contact || "").toLowerCase().includes(q) ||
+            (v.email || "").toLowerCase().includes(q),
         )
       : vendors;
     return [...rows].sort((a, b) => a.name.localeCompare(b.name));
@@ -160,7 +162,7 @@ const VendorsPage: React.FC = () => {
     e.preventDefault();
     const trimmedName = form.name.trim();
     if (!trimmedName) {
-      setFormError("Vendor name is required.");
+      setFormError("Company name is required.");
       return;
     }
     setSubmitting(true);
@@ -239,7 +241,7 @@ const VendorsPage: React.FC = () => {
           {/* KPI strip */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <KpiCard label="Total Vendors" value={String(kpis.total)} icon={<Building2 className="w-4 h-4 text-blue-700" />} iconBg="bg-blue-50" />
-            <KpiCard label="With Contact Number" value={String(kpis.withContact)} icon={<Phone className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" />
+            <KpiCard label="With Phone Number" value={String(kpis.withContact)} icon={<Phone className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" />
             <KpiCard label="Contracts Expiring (30d)" value={String(kpis.expiringSoon)} icon={<CalendarClock className="w-4 h-4 text-red-700" />} iconBg="bg-red-50" />
           </div>
 
@@ -250,7 +252,7 @@ const VendorsPage: React.FC = () => {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search vendors, code, location, contact..."
+                placeholder="Search vendors, code, location, phone, email..."
                 className="pl-8 pr-3 py-2 w-64 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
               />
             </div>
@@ -303,10 +305,11 @@ const VendorsPage: React.FC = () => {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                      <th className="px-3 py-2 font-medium text-left">Vendor</th>
+                      <th className="px-3 py-2 font-medium text-left">Company Name</th>
                       <th className="px-3 py-2 font-medium text-left">Code</th>
                       <th className="px-3 py-2 font-medium text-left">Location</th>
-                      <th className="px-3 py-2 font-medium text-left">Contact</th>
+                      <th className="px-3 py-2 font-medium text-left">Phone</th>
+                      <th className="px-3 py-2 font-medium text-left">Email</th>
                       <th className="px-3 py-2 font-medium text-left">Contract Expiry</th>
                       <th className="px-3 py-2 font-medium text-left">Added</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
@@ -320,7 +323,10 @@ const VendorsPage: React.FC = () => {
                             <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-blue-900 rounded-full bg-blue-50">
                               {v.name.charAt(0).toUpperCase()}
                             </div>
-                            <span className="font-medium text-slate-800">{v.name}</span>
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-800">{v.name}</div>
+                              {v.contactPerson && <div className="text-slate-400 text-[11px]">{v.contactPerson}</div>}
+                            </div>
                           </div>
                         </td>
                         <td className="px-3 py-2 text-slate-500">
@@ -353,6 +359,7 @@ const VendorsPage: React.FC = () => {
                             "--"
                           )}
                         </td>
+                        <td className="px-3 py-2 text-slate-600">{v.email || "--"}</td>
                         <td className="px-3 py-2 text-slate-600">{formatDate(v.contractExpiryDate)}</td>
                         <td className="px-3 py-2 text-slate-500">{formatDate(v.createdAt)}</td>
                         {isAdmin && (
@@ -401,44 +408,35 @@ const VendorsPage: React.FC = () => {
               {formError && (
                 <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>
               )}
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Vendor name</label>
-                <input
-                  autoFocus
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Himalayan Solar Supplies"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                />
-              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Code</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Name</label>
                   <input
-                    value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    placeholder="Optional"
+                    autoFocus
+                    value={form.contactPerson}
+                    onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                    placeholder="e.g. Anshuman Pani"
                     className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Contact number</label>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Company name</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Himalayan Solar Supplies"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Phone</label>
                   <input
                     type="tel"
                     value={form.contact}
                     onChange={(e) => setForm({ ...form, contact: e.target.value })}
                     placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Contact person</label>
-                  <input
-                    value={form.contactPerson}
-                    onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-                    placeholder="e.g. Anshuman Pani"
                     className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
                   />
                 </div>
@@ -453,17 +451,28 @@ const VendorsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Location</label>
-                <input
-                  value={form.location}
-                  onChange={(e) => setForm({ ...form, location: e.target.value })}
-                  placeholder="Optional"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Location</label>
+                  <input
+                    value={form.location}
+                    onChange={(e) => setForm({ ...form, location: e.target.value })}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[11px] font-medium text-slate-900">Code</label>
+                  <input
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  />
+                </div>
               </div>
               <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Full address</label>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Address</label>
                 <textarea
                   value={form.address}
                   onChange={(e) => setForm({ ...form, address: e.target.value })}

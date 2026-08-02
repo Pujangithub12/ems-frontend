@@ -12,6 +12,7 @@ import Inventory from "./features/inventory/pages/Inventory";
 import PurchaseRequests from "./features/procurement/pages/PurchaseRequests";
 import PurchaseOrders from "./features/procurement/pages/PurchaseOrders";
 import PurchaseOrderDetail from "./features/procurement/pages/PurchaseOrderDetail";
+import ProformaInvoices from "./features/procurement/pages/ProformaInvoices";
 import Vendors from "./features/procurement/pages/Vendors";
 import Users from "./features/users/pages/Users";
 import ProjectPage from "./features/projects/pages/Projects";
@@ -23,6 +24,7 @@ import Settings from "./features/settings/pages/Settings";
 import Profile from "./features/users/pages/Profile";
 import DashboardLayout from "./layout/DashboardLayout";
 import { AuthProvider, useAuth } from "./context/AuthProvider";
+import { NotificationSocketProvider } from "./context/NotificationSocketProvider";
 import TasksPage from "./features/tasks/pages/Tasks";
 import AccessForbiddenModal from "./components/AccessForbiddenModal";
 import { setAccessForbiddenHandler } from "./api/axios";
@@ -89,6 +91,7 @@ const RootPage: React.FC = () => {
 function App() {
   return (
     <AuthProvider>
+      <NotificationSocketProvider>
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <GlobalAccessForbiddenModal />
         <Routes>
@@ -185,6 +188,16 @@ function App() {
             }
           />
           <Route
+            path="/:organizationId/proforma-invoices"
+            element={
+              <RequireAdmin>
+                <DashboardLayout>
+                  <ProformaInvoices />
+                </DashboardLayout>
+              </RequireAdmin>
+            }
+          />
+          <Route
             path="/:organizationId/vendors"
             element={
               <RequireAdmin>
@@ -254,6 +267,7 @@ function App() {
           <Route path="*" element={<RootRedirect />} />
         </Routes>
       </div>
+      </NotificationSocketProvider>
     </AuthProvider>
   );
 }
