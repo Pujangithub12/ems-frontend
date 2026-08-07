@@ -56,3 +56,11 @@ export function organizationDownloadUrl(fileId: number): string {
   const base = (api.defaults.baseURL ?? "").replace(/\/$/, "");
   return `${base}/api/projects/files/${fileId}/download`;
 }
+
+/** URL for viewing a file inline in the browser (not downloading). */
+export function organizationViewUrl(fileId: number): string {
+  const base = (api.defaults.baseURL ?? "").replace(/\/$/, "");
+  return `${base}/api/projects/files/${fileId}/view`;
+}
+
+export { isViewableFileType } from "./documents.api";

@@ -5,9 +5,9 @@ import { CatalogItem } from "../../../types";
 import { useOrganizationItemCatalogQuery, useCreateCatalogItemMutation } from "../hooks/useInventory";
 
 interface ItemNameFieldProps {
-  /** The linked catalog item's id, or null if this row isn't linked to the catalog (e.g. a legacy row, or nothing picked yet). */
+
   itemId: number | null;
-  /** Fires when the user picks an existing catalog entry or adds a new one. */
+
   onSelect: (item: CatalogItem) => void;
   /** The row's current free-text name, shown as a placeholder option when itemId is null but a legacy name exists (e.g. editing a pre-catalog row). */
   currentName?: string;
@@ -16,16 +16,7 @@ interface ItemNameFieldProps {
   className?: string;
 }
 
-/**
- * Item Name field backed by the shared organization item catalog (name + code),
- * so item naming stays consistent between the Inventory and Procurement
- * "Add item" forms — the value is a reference to a CatalogItem row, not
- * freehand text. The "Add new item" link opens a floating popover, rendered
- * via a portal into document.body and positioned `fixed` off the trigger
- * button's own rect — needed because this field is normally used inside a
- * modal with `overflow-hidden`, which would otherwise clip an
- * absolutely-positioned popover that overflows the modal's bounds.
- */
+
 const ItemNameField: React.FC<ItemNameFieldProps> = ({
   itemId,
   onSelect,

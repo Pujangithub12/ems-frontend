@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 
 /**
  * Generic right-side slide-over panel. Visual/z-index/overlay convention
@@ -20,7 +20,11 @@ const Drawer: React.FC<{
   subtitle?: string;
   children: React.ReactNode;
   width?: number;
-}> = ({ open, onClose, title, subtitle, children, width = 440 }) => {
+  /** When set, renders a back button at the top-left of the header instead
+   * of just the title — used when this drawer was opened by drilling into
+   * another item (e.g. a linked task) so the user can step back up. */
+  onBack?: () => void;
+}> = ({ open, onClose, title, subtitle, children, width = 440, onBack }) => {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
 
@@ -55,9 +59,20 @@ const Drawer: React.FC<{
         }}
       >
         <div className="flex items-start justify-between p-5 border-b border-slate-200">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-semibold text-slate-900 truncate">{title}</h2>
-            {subtitle && <p className="text-[12px] text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+          <div className="flex items-start min-w-0 gap-2">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="flex-shrink-0 p-1.5 -ml-1.5 rounded text-slate-500 hover:bg-slate-100"
+                title="Back"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-slate-900 truncate">{title}</h2>
+              {subtitle && <p className="text-[12px] text-slate-500 mt-0.5 truncate">{subtitle}</p>}
+            </div>
           </div>
           <button
             onClick={onClose}

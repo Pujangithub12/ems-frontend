@@ -11,15 +11,7 @@ interface WarehouseFieldProps {
   onSelect: (warehouseId: number | null) => void;
 }
 
-/**
- * Warehouse field for the Add/Edit Inventory Item form — select-only (never
- * free text), backed by the organization's existing warehouses. The "Add
- * warehouse" link opens a floating popover (mirrors ItemNameField), rendered
- * via a portal into document.body and positioned `fixed` off the trigger
- * button's own rect — needed because this field is normally used inside a
- * modal with `overflow-hidden`, which would otherwise clip an
- * absolutely-positioned popover that overflows the modal's bounds.
- */
+
 const WarehouseField: React.FC<WarehouseFieldProps> = ({ warehouseId, onSelect }) => {
   const warehousesQuery = useOrganizationWarehousesQuery();
   const warehouses = warehousesQuery.data ?? [];

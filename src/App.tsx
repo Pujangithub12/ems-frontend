@@ -1,33 +1,75 @@
-import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import React, { lazy, Suspense, useEffect, useState } from "react";
+import { Routes, Route, Navigate, Outlet, useParams } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./features/auth/pages/Login";
-import CreateAccount from "./features/auth/pages/CreateAccount";
-import ForgotPassword from "./features/auth/pages/ForgotPassword";
-import AcceptInvite from "./features/auth/pages/AcceptInvite";
-import Dashboard from "./features/dashboard/pages/Dashboard";
-import Announcements from "./features/announcements/pages/Announcements";
-import Documents from "./features/documents/pages/Documents";
-import Inventory from "./features/inventory/pages/Inventory";
-import PurchaseRequests from "./features/procurement/pages/PurchaseRequests";
-import PurchaseOrders from "./features/procurement/pages/PurchaseOrders";
-import PurchaseOrderDetail from "./features/procurement/pages/PurchaseOrderDetail";
-import ProformaInvoices from "./features/procurement/pages/ProformaInvoices";
-import Vendors from "./features/procurement/pages/Vendors";
-import Users from "./features/users/pages/Users";
-import ProjectPage from "./features/projects/pages/Projects";
-import ProjectDetails from "./features/projects/pages/ProjectDetails";
-import CalendarPage from "./features/calendar/pages/Calendar";
-import Approvals from "./features/approvals/pages/Approvals";
-import Reports from "./features/reports/pages/Reports";
-import Settings from "./features/settings/pages/Settings";
-import Profile from "./features/users/pages/Profile";
 import DashboardLayout from "./layout/DashboardLayout";
 import { AuthProvider, useAuth } from "./context/AuthProvider";
 import { NotificationSocketProvider } from "./context/NotificationSocketProvider";
-import TasksPage from "./features/tasks/pages/Tasks";
 import AccessForbiddenModal from "./components/AccessForbiddenModal";
 import { setAccessForbiddenHandler } from "./api/axios";
+
+// Everything below is route-only — lazy-loaded so a first visit (almost
+// always Login, then one dashboard page) doesn't have to download every
+// other page's code up front. Home/Login/DashboardLayout stay eager above
+// since they're on the critical path for every session.
+const CreateAccount = lazy(() => import("./features/auth/pages/CreateAccount"));
+const ForgotPassword = lazy(() => import("./features/auth/pages/ForgotPassword"));
+const AcceptInvite = lazy(() => import("./features/auth/pages/AcceptInvite"));
+const Dashboard = lazy(() => import("./features/dashboard/pages/Dashboard"));
+const Announcements = lazy(() => import("./features/announcements/pages/Announcements"));
+const Documents = lazy(() => import("./features/documents/pages/Documents"));
+const Inventory = lazy(() => import("./features/inventory/pages/Inventory"));
+const PurchaseRequests = lazy(() => import("./features/procurement/pages/PurchaseRequests"));
+const PurchaseOrders = lazy(() => import("./features/procurement/pages/PurchaseOrders"));
+const PurchaseOrderDetail = lazy(() => import("./features/procurement/pages/PurchaseOrderDetail"));
+const ProformaInvoices = lazy(() => import("./features/procurement/pages/ProformaInvoices"));
+const Vendors = lazy(() => import("./features/procurement/pages/Vendors"));
+const Users = lazy(() => import("./features/users/pages/Users"));
+const ProjectPage = lazy(() => import("./features/projects/pages/Projects"));
+const ProjectDetails = lazy(() => import("./features/projects/pages/ProjectDetails"));
+const CalendarPage = lazy(() => import("./features/calendar/pages/Calendar"));
+const Approvals = lazy(() => import("./features/approvals/pages/Approvals"));
+const Reports = lazy(() => import("./features/reports/pages/Reports"));
+const Settings = lazy(() => import("./features/settings/pages/Settings"));
+const Profile = lazy(() => import("./features/users/pages/Profile"));
+const TasksPage = lazy(() => import("./features/tasks/pages/Tasks"));
+const PlantReport = lazy(() => import("./features/plantReport/pages/PlantReport"));
+
+/** Minimal, layout-agnostic loading state for a lazy route chunk still
+ * downloading — intentionally plain since it can appear both inside
+ * DashboardLayout and standalone (e.g. AcceptInvite, CreateAccount). */
+const RouteFallback: React.FC = () => (
+  <div className="flex items-center justify-center w-full h-screen">
+    <div className="w-6 h-6 border-2 rounded-full border-slate-200 border-t-blue-900 animate-spin" />
+  </div>
+);
+
+/** Same spinner, but sized to sit inside the content area instead of the
+ * full viewport — used by the persistent dashboard layout route below so a
+ * still-loading page chunk doesn't blank out the sidebar/header with it. */
+const ContentFallback: React.FC = () => (
+  <div className="flex items-center justify-center w-full h-full py-24">
+    <div className="w-6 h-6 border-2 rounded-full border-slate-200 border-t-blue-900 animate-spin" />
+  </div>
+);
+
+/**
+ * Pathless "layout route" — mounted once and kept alive across every
+ * /:organizationId/* navigation via <Outlet/>, instead of each route
+ * wrapping its own fresh <DashboardLayout> instance. That old per-route
+ * wrapping remounted the entire sidebar/header on every navigation (losing
+ * open menus, and — once page chunks were lazy-loaded — flashing the whole
+ * screen to a loading spinner instead of just the content area). The inner
+ * Suspense here is scoped to just the routed page, so only the content area
+ * shows a brief spinner while its chunk loads.
+ */
+const DashboardLayoutRoute: React.FC = () => (
+  <DashboardLayout>
+    <Suspense fallback={<ContentFallback />}>
+      <Outlet />
+    </Suspense>
+  </DashboardLayout>
+);
 
 /** Mounted once near the app root — registers with the axios response
  * interceptor so a WORKSPACE_ACCESS_FORBIDDEN error from anywhere in the app
@@ -94,6 +136,7 @@ function App() {
       <NotificationSocketProvider>
       <div className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
         <GlobalAccessForbiddenModal />
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<RootPage />} />
           <Route path="/login" element={<Login />} />
@@ -103,169 +146,60 @@ function App() {
           <Route path="/login/user" element={<Navigate replace to="/login" />} />
           <Route path="/login/admin" element={<Navigate replace to="/login" />} />
 
-          <Route
-            path="/:organizationId/dashboard"
-            element={
-              <DashboardLayout>
-                <Dashboard />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/tasks"
-            element={
-              <DashboardLayout>
-                <TasksPage />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/project"
-            element={
-              <DashboardLayout>
-                <ProjectPage />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/project/:id/details"
-            element={
-              <DashboardLayout>
-                <ProjectDetails />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/announcements"
-            element={
-              <DashboardLayout>
-                <Announcements />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/documents"
-            element={
-              <DashboardLayout>
-                <Documents />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/inventory"
-            element={
-              <DashboardLayout>
-                <Inventory />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/purchase-requests"
-            element={
-              <DashboardLayout>
-                <PurchaseRequests />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/purchase-orders"
-            element={
-              <RequireAdmin>
-                <DashboardLayout>
+          <Route element={<DashboardLayoutRoute />}>
+            <Route path="/:organizationId/dashboard" element={<Dashboard />} />
+            <Route path="/:organizationId/tasks" element={<TasksPage />} />
+            <Route path="/:organizationId/project" element={<ProjectPage />} />
+            <Route path="/:organizationId/project/:id/details" element={<ProjectDetails />} />
+            <Route path="/:organizationId/announcements" element={<Announcements />} />
+            <Route path="/:organizationId/documents" element={<Documents />} />
+            <Route path="/:organizationId/inventory" element={<Inventory />} />
+            <Route path="/:organizationId/purchase-requests" element={<PurchaseRequests />} />
+            <Route
+              path="/:organizationId/purchase-orders"
+              element={
+                <RequireAdmin>
                   <PurchaseOrders />
-                </DashboardLayout>
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/:organizationId/purchase-orders/:id"
-            element={
-              <RequireAdmin>
-                <DashboardLayout>
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/:organizationId/purchase-orders/:id"
+              element={
+                <RequireAdmin>
                   <PurchaseOrderDetail />
-                </DashboardLayout>
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/:organizationId/proforma-invoices"
-            element={
-              <RequireAdmin>
-                <DashboardLayout>
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/:organizationId/proforma-invoices"
+              element={
+                <RequireAdmin>
                   <ProformaInvoices />
-                </DashboardLayout>
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/:organizationId/vendors"
-            element={
-              <RequireAdmin>
-                <DashboardLayout>
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/:organizationId/vendors"
+              element={
+                <RequireAdmin>
                   <Vendors />
-                </DashboardLayout>
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/:organizationId/task"
-            element={
-              <DashboardLayout>
-                <TasksPage />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/users"
-            element={
-              <DashboardLayout>
-                <Users />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/calendar"
-            element={
-              <DashboardLayout>
-                <CalendarPage />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/leaverequests"
-            element={
-              <DashboardLayout>
-                <Approvals />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/reports"
-            element={
-              <DashboardLayout>
-                <Reports />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/settings"
-            element={
-              <DashboardLayout>
-                <Settings />
-              </DashboardLayout>
-            }
-          />
-          <Route
-            path="/:organizationId/profile"
-            element={
-              <DashboardLayout>
-                <Profile />
-              </DashboardLayout>
-            }
-          />
+                </RequireAdmin>
+              }
+            />
+            <Route path="/:organizationId/task" element={<TasksPage />} />
+            <Route path="/:organizationId/plant-report" element={<PlantReport />} />
+            <Route path="/:organizationId/users" element={<Users />} />
+            <Route path="/:organizationId/calendar" element={<CalendarPage />} />
+            <Route path="/:organizationId/leaverequests" element={<Approvals />} />
+            <Route path="/:organizationId/reports" element={<Reports />} />
+            <Route path="/:organizationId/settings" element={<Settings />} />
+            <Route path="/:organizationId/profile" element={<Profile />} />
+          </Route>
 
           <Route path="*" element={<RootRedirect />} />
         </Routes>
+        </Suspense>
       </div>
       </NotificationSocketProvider>
     </AuthProvider>

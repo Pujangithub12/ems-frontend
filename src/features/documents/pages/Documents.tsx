@@ -18,10 +18,11 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
+  Eye,
 } from "lucide-react";
 import { ProjectFile } from "../../../types";
 import { formatFileSize } from "../api/documents.api";
-import { organizationDownloadUrl } from "../api/organizationDocuments.api";
+import { organizationDownloadUrl, isViewableFileType } from "../api/organizationDocuments.api";
 import {
   useOrganizationFilesQuery,
   useUploadOrganizationFileMutation,
@@ -32,6 +33,7 @@ import {
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import ManageAccessModal from "../components/ManageAccessModal";
+import DocumentViewer from "../components/DocumentViewer";
 import { useAuth } from "../../../context/AuthProvider";
 
 const ALL_DOCUMENTS = "all" as const;
@@ -269,6 +271,7 @@ const Documents: React.FC = () => {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [viewedFile, setViewedFile] = useState<ProjectFile | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -561,7 +564,7 @@ const Documents: React.FC = () => {
 
           <div className="flex gap-4">
             {/* Sidebar */}
-            <div className="w-56 border rounded shrink-0 border-slate-200">
+            <div className="w-56 bg-white border rounded shrink-0 border-slate-200">
               <div className="px-3 py-2 text-[11px] font-semibold tracking-wide uppercase text-slate-400 border-b border-slate-200">
                 Folders
               </div>
@@ -707,6 +710,15 @@ const Documents: React.FC = () => {
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-end gap-1">
+                              {!row.isFolder && isViewableFileType(row.type) && (
+                                <button
+                                  onClick={() => setViewedFile(row)}
+                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
+                                  title="View"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                              )}
                               {!row.isFolder && (
                                 <a
                                   href={organizationDownloadUrl(row.id)}
@@ -875,6 +887,8 @@ const Documents: React.FC = () => {
       />
 
       <ManageAccessModal file={accessTarget} onClose={() => setAccessTarget(null)} />
+
+      <DocumentViewer file={viewedFile} onClose={() => setViewedFile(null)} />
     </div>
   );
 };

@@ -370,10 +370,7 @@ const ReportsPage: React.FC = () => {
     <div className="w-full p-6 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] text-slate-400 mb-1">Dashboard / Reports</div>
-          <h1 className="text-[20px] font-bold text-slate-900">Reports &amp; Analytics</h1>
-        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <select
@@ -689,13 +686,13 @@ const ReportsPage: React.FC = () => {
                             <td className="px-3 py-2 text-slate-600">{d.suggestedAction}</td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center w-7 h-7 rounded text-slate-500 hover:bg-slate-100" title="View">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="View">
                                   <Eye size={13} />
                                 </button>
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center w-7 h-7 rounded text-slate-500 hover:bg-slate-100" title="Transfer">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="Transfer">
                                   <ArrowRightLeft size={13} />
                                 </button>
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center w-7 h-7 rounded text-slate-500 hover:bg-slate-100" title="Adjust">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="Adjust">
                                   <PackagePlus size={13} />
                                 </button>
                               </div>
@@ -721,7 +718,7 @@ const ReportsPage: React.FC = () => {
                   <div className="space-y-2">
                     {(exportedActivityQuery.data ?? []).slice(0, 6).map((a) => (
                       <div key={a.id} className="flex items-center justify-between text-[12px]">
-                        <span className="text-slate-600 capitalize">{a.reportType.replace("_", " ")}</span>
+                        <span className="capitalize text-slate-600">{a.reportType.replace("_", " ")}</span>
                         <span className="text-slate-400">{new Date(a.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                       </div>
                     ))}
@@ -738,7 +735,7 @@ const ReportsPage: React.FC = () => {
                   <div className="space-y-2">
                     {(viewedActivityQuery.data ?? []).slice(0, 6).map((a) => (
                       <div key={a.id} className="flex items-center justify-between text-[12px]">
-                        <span className="text-slate-600 capitalize">{a.reportType.replace("_", " ")}</span>
+                        <span className="capitalize text-slate-600">{a.reportType.replace("_", " ")}</span>
                         <span className="text-slate-400">{new Date(a.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                       </div>
                     ))}
@@ -820,7 +817,7 @@ const ReportsPage: React.FC = () => {
                     <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Delayed Purchase Orders</div>
                     {summary.alerts.delayedPOs.slice(0, 5).map((p) => (
                       <div key={p.id} className="flex items-center justify-between text-[11.5px] py-0.5">
-                        <span className="text-slate-600 truncate">{p.itemName}</span>
+                        <span className="truncate text-slate-600">{p.itemName}</span>
                         <span className="text-red-600">{new Date(p.neededByDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                       </div>
                     ))}
@@ -831,7 +828,7 @@ const ReportsPage: React.FC = () => {
                     <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Vendor Delays</div>
                     {summary.alerts.vendorDelays.slice(0, 5).map((v, i) => (
                       <div key={i} className="flex items-center justify-between text-[11.5px] py-0.5">
-                        <span className="text-slate-600 truncate">{v.vendorName}</span>
+                        <span className="truncate text-slate-600">{v.vendorName}</span>
                         <span className="text-red-600 truncate">{v.itemName}</span>
                       </div>
                     ))}
@@ -842,7 +839,7 @@ const ReportsPage: React.FC = () => {
                     <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Contracts Expiring Soon</div>
                     {summary.alerts.contractsExpiring.slice(0, 5).map((c) => (
                       <div key={c.id} className="flex items-center justify-between text-[11.5px] py-0.5">
-                        <span className="text-slate-600 truncate">{c.name}</span>
+                        <span className="truncate text-slate-600">{c.name}</span>
                         <span className="text-amber-700">{new Date(c.contractExpiryDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                       </div>
                     ))}

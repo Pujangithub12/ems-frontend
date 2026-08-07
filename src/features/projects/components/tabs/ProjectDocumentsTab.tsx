@@ -17,9 +17,10 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
+  Eye,
 } from "lucide-react";
 import { ProjectFile } from "../../../../types";
-import { downloadUrl, formatFileSize } from "../../../documents/api/documents.api";
+import { downloadUrl, formatFileSize, isViewableFileType } from "../../../documents/api/documents.api";
 import {
   useProjectFilesQuery,
   useUploadFileMutation,
@@ -30,6 +31,7 @@ import {
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import ManageAccessModal from "../../../documents/components/ManageAccessModal";
+import DocumentViewer from "../../../documents/components/DocumentViewer";
 import { useAuth } from "../../../../context/AuthProvider";
 
 interface ProjectDocumentsTabProps {
@@ -251,6 +253,7 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [viewedFile, setViewedFile] = useState<ProjectFile | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
@@ -666,6 +669,15 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-1">
+                          {!row.isFolder && isViewableFileType(row.type) && (
+                            <button
+                              onClick={() => setViewedFile(row)}
+                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                              title="View"
+                            >
+                              <Eye size={14} />
+                            </button>
+                          )}
                           {!row.isFolder && (
                             <a
                               href={downloadUrl(row.id)}
@@ -832,6 +844,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
       />
 
       <ManageAccessModal file={accessTarget} onClose={() => setAccessTarget(null)} />
+
+      <DocumentViewer file={viewedFile} onClose={() => setViewedFile(null)} />
     </div>
   );
 };

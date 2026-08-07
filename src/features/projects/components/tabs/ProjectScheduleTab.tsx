@@ -15,8 +15,11 @@ import {
   SquareCheckBig,
   Trash2,
   X,
+  UnfoldVertical,
+  FoldVertical,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { gantt } from "dhtmlx-gantt";
 
 import { ScheduleRow, emptyScheduleRow } from "../../schema/schedule.types";
 import { GanttLink, GanttTask, ScheduleStatus, STATUS_META } from "../../schema/schedule.types";
@@ -678,6 +681,21 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // Every row with children starts open (see buildGanttData's `open:
+  // hasChildren`), so "all expanded" is the true default — this just tracks
+  // which state the toggle button should switch to next, it isn't itself
+  // the source of truth for any individual row's open/closed state.
+  const [allExpanded, setAllExpanded] = useState(true);
+  const handleToggleExpandAll = useCallback(() => {
+    const next = !allExpanded;
+    gantt.eachTask((task: { id: string | number }) => {
+      if (next) gantt.open(task.id);
+      else gantt.close(task.id);
+    });
+    gantt.render();
+    setAllExpanded(next);
+  }, [allExpanded]);
+
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -840,10 +858,18 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
       // The id (e.g. "1", "1.1") is shown inline as a prefix inside this same
       // column instead of a separate "Id" column — dhtmlx renders the tree
       // indent/expand-arrow first, then this template as the cell's content,
-      // so the id+name pair always lands right after those. The per-row
-      // "..." row-options trigger lives in the trailing "columnsMenuBtn"
-      // column instead (see below), matching the reference layout's own
-      // trailing actions column.
+      // so the id+name pair always lands right after those. An always-visible
+      // "+" (adds a new sibling task directly below this row — see
+      // handleAddTaskBelow, wired up in GanttChartView's onTaskClick via the
+      // "gantt-row-add-btn" class) is pinned to the actual right edge of this
+      // column's grid cell via `position: absolute` (see the CSS in
+      // GanttChartView) — a flex/width:100% wrapper doesn't work here since
+      // dhtmlx's own .gantt_tree_content wrapper around this render() output
+      // is shrink-to-fit (width: auto), not full-width, so anything
+      // "right-aligned" inside it would just hug the end of the text instead
+      // of the column's actual edge. The per-row "..." row-options trigger
+      // stays in the trailing "columnsMenuBtn" column (see below), matching
+      // the reference layout's own trailing actions column.
       {
         id: "text",
         header: "Task Name",
@@ -852,7 +878,11 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         align: "left",
         render: (t) => {
           const isSubtask = t.wbs.includes(".");
-          return `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${escapeHtml(t.text)}</span>`;
+          const label = `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${escapeHtml(t.text)}</span>`;
+          const addBtn = editMode
+            ? `<button type="button" class="gantt-row-add-btn" data-row-add-id="${t.id}" title="Add task below">+</button>`
+            : "";
+          return `${label}${addBtn}`;
         },
       },
       // Shown by default, same as before, but now toggleable via the "+"
@@ -921,28 +951,25 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
       ...(viewTab === "list" || visibleFields.has("start")
         ? [{ id: "startLabel", header: "Start", width: 84, align: "center" as const }]
         : []),
-      // Trailing column (Gantt view only) — dual-purpose, matching the
-      // reference layout's own trailing column: the header embeds a plain
-      // "+" button (raw HTML; dhtmlx renders column labels unescaped) that
-      // opens the show/hide-fields popover (see handleGridHeaderClick), and
-      // each row's body cell (edit mode only) embeds a hover-revealed "+"
-      // (adds a new sibling task directly below this row — see
-      // handleAddTaskBelow, wired up in GanttChartView's onTaskClick via the
-      // "gantt-row-add-btn" class) and a "..." that opens the row-options
-      // menu (Add subtask / Duplicate / Delete task) — wired up via the
-      // "gantt-row-menu-btn" class + openRowMenu, same as before, just
-      // relocated here from the Id column.
+      // Trailing column (Gantt view only) — the header embeds a plain "+"
+      // button (raw HTML; dhtmlx renders column labels unescaped) that opens
+      // the show/hide-fields popover (see handleGridHeaderClick), and each
+      // row's body cell (edit mode only) embeds a "..." that opens the
+      // row-options menu (Add subtask / Duplicate / Delete task) — wired up
+      // via the "gantt-row-menu-btn" class + openRowMenu. The "add task
+      // below" trigger lives in the Task Name column instead (see above),
+      // not here.
       ...(viewTab === "gantt"
         ? [
             {
               id: "columnsMenuBtn",
               header: '<button type="button" class="gantt-columns-menu-btn" title="Show/hide columns">+</button>',
-              width: 74,
+              width: 40,
               fixedWidth: true,
               align: "center" as const,
               render: (t: GanttTask) =>
                 editMode
-                  ? `<span class="gantt-row-actions"><button type="button" class="gantt-row-add-btn" data-row-add-id="${t.id}" title="Add task below">+</button><button type="button" class="gantt-row-menu-btn" data-row-menu-id="${t.id}" title="Task options">&#8230;</button></span>`
+                  ? `<button type="button" class="gantt-row-menu-btn" data-row-menu-id="${t.id}" title="Task options">&#8230;</button>`
                   : "",
             },
           ]
@@ -1537,6 +1564,19 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
                 }`}
               >
                 <SquareCheckBig className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleExpandAll}
+                title={allExpanded ? "Collapse all" : "Expand all"}
+                className="flex items-center justify-center w-7 h-7 mr-1 rounded-md text-slate-500 hover:bg-slate-100 transition-colors"
+              >
+                {allExpanded ? (
+                  <FoldVertical className="w-3.5 h-3.5" />
+                ) : (
+                  <UnfoldVertical className="w-3.5 h-3.5" />
+                )}
               </button>
 
               <div className="flex items-center gap-0.5 p-0.5 mr-1 bg-slate-100 rounded-md">

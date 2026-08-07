@@ -22,14 +22,13 @@ import {
   Trash2,
   Flag,
   Filter,
+  Check,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, ProjectTask } from "../../../../types";
 import { flattenProjectTasks } from "../../../tasks/utils/taskUtils";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import Drawer, { DrawerSection } from "../../../../components/Drawer";
-import { useHierarchy } from "../../../hierarchy/hooks/useHierarchy";
-import { getDescendantUserIds } from "../../../../lib/hierarchyAuthority";
 import {
   useUpdateTaskStatus,
   useCreateProjectTask,
@@ -37,6 +36,13 @@ import {
   useUpdateTaskProgress,
   useDeleteTask,
 } from "../../../tasks/hooks/useTasks";
+import {
+  useSubtasksFetch,
+  useCreateSubtask,
+  useUpdateSubtask,
+  useDeleteSubtask,
+} from "../../../tasks/hooks/useSubtasks";
+import type { SubTask } from "../../../tasks/api/subtasks.api";
 import { getErrorMessage } from "../../../../lib/errors";
 
 interface ProjectTasksTabProps {
@@ -175,27 +181,28 @@ const TaskColumn: React.FC<{
         </div>
       </div>
       <div
-        ref={setNodeRef}
-        className={`flex-1 flex flex-col gap-2 p-2 rounded-md border-t-2 bg-slate-50/60 min-h-[300px] transition-colors ${accent} ${
+        className={`flex flex-col rounded-md border-t-2 bg-slate-50/60 min-h-[300px] max-h-[70vh] transition-colors ${accent} ${
           isOver ? "bg-blue-50/60 ring-1 ring-blue-200" : ""
         }`}
       >
-        {tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            onOpenDetail={() => onOpenDetail(task)}
-          />
-        ))}
-        {tasks.length === 0 && (
-          <div className="flex-1 flex items-center justify-center py-6 text-[11px] text-slate-400">
-            No tasks
-          </div>
-        )}
+        <div ref={setNodeRef} className="flex-1 flex flex-col gap-2 p-2 overflow-y-auto">
+          {tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onOpenDetail={() => onOpenDetail(task)}
+            />
+          ))}
+          {tasks.length === 0 && (
+            <div className="flex-1 flex items-center justify-center py-6 text-[11px] text-slate-400">
+              No tasks
+            </div>
+          )}
+        </div>
         {canAddTask && (
           <button
             onClick={onAddTask}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] text-slate-500 hover:text-blue-900 hover:bg-white rounded transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1.5 mx-2 mb-2 text-[12px] text-slate-500 hover:text-blue-900 hover:bg-white rounded transition-colors flex-shrink-0"
           >
             <Plus size={13} /> Add Task
           </button>
@@ -365,11 +372,9 @@ const TaskDetailDrawer: React.FC<{
   onSave: (id: number, payload: TaskEditPayload) => Promise<void>;
   onProgressSave: (id: number, progress: number) => Promise<void>;
   onDelete: (task: ProjectTask) => void;
-  /** Jumps the drawer to one of this task's Gantt-nested children (see
-   * task.childTasks) so they're reachable from here too, not just the
-   * Schedule tab. */
   onOpenChild: (id: number) => void;
-}> = ({ task, canManage, assignees, onClose, onSave, onProgressSave, onDelete, onOpenChild }) => {
+  onBack?: () => void;
+}> = ({ task, canManage, assignees, onClose, onSave, onProgressSave, onDelete, onOpenChild, onBack }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -402,6 +407,79 @@ const TaskDetailDrawer: React.FC<{
     );
   };
 
+  const [subTasks, setSubTasks] = useState<SubTask[]>([]);
+  const [loadingSubTasks, setLoadingSubTasks] = useState(false);
+  const [newSubTaskTitle, setNewSubTaskTitle] = useState("");
+  const [addingSubTask, setAddingSubTask] = useState(false);
+  const [togglingSubTaskId, setTogglingSubTaskId] = useState<number | null>(null);
+  const [deletingSubTaskId, setDeletingSubTaskId] = useState<number | null>(null);
+
+  const subtasksFetch = useSubtasksFetch();
+  const createSubtaskMutation = useCreateSubtask();
+  const updateSubtaskMutation = useUpdateSubtask();
+  const deleteSubtaskMutation = useDeleteSubtask();
+
+  useEffect(() => {
+    if (!task) {
+      setSubTasks([]);
+      return;
+    }
+    setLoadingSubTasks(true);
+    subtasksFetch
+      .mutateAsync(task.id)
+      .then((data) => setSubTasks(data))
+      .catch(() => setSubTasks([]))
+      .finally(() => setLoadingSubTasks(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
+
+  const handleAddSubTask = async () => {
+    if (!task || !newSubTaskTitle.trim()) return;
+    setAddingSubTask(true);
+    try {
+      await createSubtaskMutation.mutateAsync({ taskId: task.id, title: newSubTaskTitle.trim() });
+      const data = await subtasksFetch.mutateAsync(task.id);
+      setSubTasks(data);
+      setNewSubTaskTitle("");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to add sub-task."));
+    } finally {
+      setAddingSubTask(false);
+    }
+  };
+
+  const handleToggleSubTask = async (subTask: SubTask) => {
+    if (!task) return;
+    setTogglingSubTaskId(subTask.id);
+    try {
+      const nextStatus = subTask.status === "completed" ? "to_do" : "completed";
+      await updateSubtaskMutation.mutateAsync({
+        taskId: task.id,
+        subTaskId: subTask.id,
+        status: nextStatus,
+      });
+      const data = await subtasksFetch.mutateAsync(task.id);
+      setSubTasks(data);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to update sub-task."));
+    } finally {
+      setTogglingSubTaskId(null);
+    }
+  };
+
+  const handleDeleteSubTask = async (subTaskId: number) => {
+    if (!task) return;
+    setDeletingSubTaskId(subTaskId);
+    try {
+      await deleteSubtaskMutation.mutateAsync({ taskId: task.id, subTaskId });
+      setSubTasks((prev) => prev.filter((st) => st.id !== subTaskId));
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to delete sub-task."));
+    } finally {
+      setDeletingSubTaskId(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!task) return;
     if (!title.trim() || !description.trim() || !dueDate) {
@@ -431,6 +509,7 @@ const TaskDetailDrawer: React.FC<{
       onClose={onClose}
       title={task ? task.title : ""}
       subtitle={task ? `TSK-${String(task.id).padStart(4, "0")}` : undefined}
+      onBack={onBack}
     >
       {task && (
         <>
@@ -537,24 +616,112 @@ const TaskDetailDrawer: React.FC<{
             />
           </DrawerSection>
 
+          <DrawerSection title="Sub-Tasks">
+            <div className="flex gap-2 mb-3">
+              <input
+                value={newSubTaskTitle}
+                onChange={(e) => setNewSubTaskTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddSubTask();
+                  }
+                }}
+                disabled={!canManage || addingSubTask}
+                placeholder="Add a sub-task"
+                className="flex-1 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+              />
+              {canManage && (
+                <button
+                  onClick={handleAddSubTask}
+                  disabled={addingSubTask || !newSubTaskTitle.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                >
+                  {addingSubTask ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Plus size={12} />
+                  )}
+                  Add
+                </button>
+              )}
+            </div>
+
+            {loadingSubTasks ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 size={16} className="text-slate-400 animate-spin" />
+              </div>
+            ) : subTasks.length === 0 ? (
+              <p className="text-[13px] text-slate-400">No sub-tasks yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {subTasks.map((st) => {
+                  const completed = st.status === "completed";
+                  return (
+                    <div
+                      key={st.id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 group"
+                    >
+                      <button
+                        onClick={() => handleToggleSubTask(st)}
+                        disabled={togglingSubTaskId === st.id}
+                        className={`w-[16px] h-[16px] rounded-[4px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          completed
+                            ? "bg-emerald-600 border-emerald-600"
+                            : "border-slate-300 hover:border-blue-900"
+                        }`}
+                      >
+                        {togglingSubTaskId === st.id ? (
+                          <Loader2 size={10} className="text-white animate-spin" />
+                        ) : (
+                          completed && <Check size={10} className="text-white" strokeWidth={3} />
+                        )}
+                      </button>
+                      <span
+                        className={`flex-1 text-[13px] truncate ${
+                          completed ? "line-through text-slate-400" : "text-slate-700"
+                        }`}
+                      >
+                        {st.title}
+                      </span>
+                      {canManage && (
+                        <button
+                          onClick={() => handleDeleteSubTask(st.id)}
+                          disabled={deletingSubTaskId === st.id}
+                          className="flex-shrink-0 p-1 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          {deletingSubTaskId === st.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </DrawerSection>
+
           {task.childTasks && task.childTasks.length > 0 && (
-            <DrawerSection title="Subtasks">
-              <div className="flex flex-col gap-1.5">
+            <DrawerSection title="Linked Tasks">
+              <div className="space-y-1.5">
                 {task.childTasks.map((child) => {
-                  const col = COLUMNS.find((c) => c.status === (child.status || "to_do"));
+                  const childCol = COLUMNS.find((c) => c.status === (child.status || "to_do"));
                   return (
                     <button
                       key={child.id}
                       onClick={() => onOpenChild(child.id)}
-                      className="flex items-center justify-between gap-2 px-3 py-1.5 text-left border border-slate-200 rounded hover:bg-slate-50"
+                      className="flex items-center justify-between w-full gap-2 px-3 py-1.5 text-left border rounded border-slate-200 hover:bg-slate-50"
                     >
                       <span className="text-[13px] text-slate-700 truncate">{child.title}</span>
-                      <span className="flex items-center gap-2 shrink-0">
+                      <span className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-[11px] text-slate-400">
                           {typeof child.progress === "number" ? `${child.progress}%` : ""}
                         </span>
-                        <span className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
-                          {col?.title || child.status}
+                        <span className="text-[11px] font-medium text-slate-500">
+                          {childCol?.title || "To Do"}
                         </span>
                       </span>
                     </button>
@@ -624,24 +791,14 @@ const TaskDetailDrawer: React.FC<{
 const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-  const hierarchyQuery = useHierarchy();
 
-  // Who the current user is allowed to assign a project task to: themselves,
-  // plus anyone below them in the hierarchy tree — mirrors the backend's
-  // assignment check. Super admin (the account's root) can assign to any
-  // project member.
+  // Any project member can be assigned a project task by anyone else in the
+  // organization — assignment is no longer scoped by the hierarchy tree.
   const assignableMembers = useMemo(() => {
-    const members = [...(project.assignees || [])].sort((a, b) =>
+    return [...(project.assignees || [])].sort((a, b) =>
       a.fullName.localeCompare(b.fullName),
     );
-    if (!user) return members;
-    if (user.role === "super_admin") return members;
-    const currentUserId = Number(user.id);
-    const descendantIds = new Set(
-      getDescendantUserIds(hierarchyQuery.data || [], currentUserId),
-    );
-    return members.filter((m) => m.id === currentUserId || descendantIds.has(m.id));
-  }, [project.assignees, user, hierarchyQuery.data]);
+  }, [project.assignees]);
 
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [activeTask, setActiveTask] = useState<ProjectTask | null>(null);
@@ -651,6 +808,7 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
   const [deleteTarget, setDeleteTarget] = useState<ProjectTask | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailTask, setDetailTask] = useState<ProjectTask | null>(null);
+  const [detailTaskStack, setDetailTaskStack] = useState<ProjectTask[]>([]);
 
   const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<"all" | number>("all");
@@ -844,7 +1002,10 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
               tasks={filteredTasks.filter((t) => (t.status || "to_do") === col.status)}
               canAddTask={isAdmin && col.status !== "completed"}
               onAddTask={() => setAddTaskStatus(col.status)}
-              onOpenDetail={(task) => setDetailTask(task)}
+              onOpenDetail={(task) => {
+                setDetailTaskStack([]);
+                setDetailTask(task);
+              }}
             />
           ))}
         </div>
@@ -880,17 +1041,33 @@ const ProjectTasksTab: React.FC<ProjectTasksTabProps> = ({ project, onTaskUpdate
         task={openDetailTask}
         canManage={isAdmin}
         assignees={assignableMembers}
-        onClose={() => setDetailTask(null)}
+        onClose={() => {
+          setDetailTask(null);
+          setDetailTaskStack([]);
+        }}
         onSave={handleSaveDetail}
         onProgressSave={handleSaveProgress}
         onDelete={(task) => {
           setDetailTask(null);
+          setDetailTaskStack([]);
           handleOpenDeleteTask(task);
         }}
         onOpenChild={(id) => {
           const child = tasks.find((t) => t.id === id);
-          if (child) setDetailTask(child);
+          if (child && detailTask) {
+            setDetailTaskStack((prev) => [...prev, detailTask]);
+            setDetailTask(child);
+          }
         }}
+        onBack={
+          detailTaskStack.length > 0
+            ? () => {
+                const prevTask = detailTaskStack[detailTaskStack.length - 1];
+                setDetailTaskStack((prev) => prev.slice(0, -1));
+                setDetailTask(prevTask);
+              }
+            : undefined
+        }
       />
     </div>
   );
