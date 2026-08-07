@@ -5,21 +5,12 @@ import { getErrorMessage } from "../../../lib/errors";
 import { useOrganizationVendorsQuery, useCreateVendorMutation } from "../hooks/useInventory";
 
 interface VendorFieldProps {
-  /** The selected vendor's id, or null for "No vendor". */
   vendorId: number | null;
   /** Fires with the picked vendor's id (or null for "No vendor"), including right after adding a new one. */
   onSelect: (vendorId: number | null) => void;
 }
 
-/**
- * Vendor field for the Add/Edit Inventory Item form — select-only (never
- * free text), backed by the organization's existing vendors. The "Add vendor"
- * link opens a floating popover (mirrors ItemNameField/WarehouseField),
- * rendered via a portal into document.body and positioned `fixed` off the
- * trigger button's own rect — needed because this field is normally used
- * inside a modal with `overflow-hidden`, which would otherwise clip an
- * absolutely-positioned popover that overflows the modal's bounds.
- */
+
 const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect }) => {
   const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];

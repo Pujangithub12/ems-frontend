@@ -86,6 +86,28 @@ export function downloadUrl(fileId: number): string {
   return `${base}/api/projects/files/${fileId}/download`;
 }
 
+/** URL for viewing a file inline in the browser (not downloading). */
+export function viewUrl(fileId: number): string {
+  const base = (api.defaults.baseURL ?? "").replace(/\/$/, "");
+  return `${base}/api/projects/files/${fileId}/view`;
+}
+
+/**
+ * Check if a file type can be previewed in-browser via react-doc-viewer.
+ * Only PDF/image/text/csv render client-side (pdf.js / native <img> / plain
+ * text) and work with our permission-gated blob-fetch approach. Office
+ * formats (doc/docx/xls/xlsx/ppt/pptx) are deliberately excluded: the
+ * package's only renderer for them embeds Microsoft's Office Online viewer,
+ * which requires the file to sit at a public, unauthenticated URL — that's
+ * incompatible with our read-access-gated file storage (and with localhost
+ * in dev), so they'd silently fail to render if listed as viewable.
+ */
+export function isViewableFileType(type?: string | null): boolean {
+  if (!type) return false;
+  const viewable = ["pdf", "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "txt", "csv"];
+  return viewable.includes(type.toLowerCase());
+}
+
 /** Human-readable file size, e.g. "2.4 MB". */
 export function formatFileSize(bytes?: number | null): string {
   if (bytes === null || bytes === undefined) return "--";

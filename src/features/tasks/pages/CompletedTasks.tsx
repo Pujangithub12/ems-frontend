@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTasks, useUpdateTaskStatus } from "../hooks/useTasks";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { getErrorMessage } from "../../../lib/errors";
@@ -17,78 +17,12 @@ import {
   AlertCircle,
   Calendar,
   FolderKanban,
-  Folder,
   TrendingUp,
-  FileText,
   ListChecks,
-  PauseCircle,
   CheckCircle2,
-  Clock,
   User as UserRoundIcon,
-  Flag,
 } from "lucide-react";
-
-const formatDate = (dateString: string) =>
-  new Date(dateString).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-
-const formatLongDate = (dateString: string) =>
-  new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-const getStatusMeta = (status: string) => {
-  const v = status.toLowerCase().replace(/\s+/g, "_");
-  if (v === "completed")
-    return { label: "Completed", bg: "#DCFCE7", fg: "#15803D", Icon: CheckCircle2 };
-  if (v === "in_progress")
-    return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
-  if (v === "on_hold")
-    return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
-};
-
-const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className = "",
-}) => (
-  <div
-    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
-    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-  >
-    {children}
-  </div>
-);
-
-const StatusPill: React.FC<{ type: "priority"; value: string }> = ({ value }) => {
-  let bg = "#EEF1F5",
-    fg = "#475569";
-  const v = value.toLowerCase();
-  if (v === "high") {
-    bg = "#FEE2E2";
-    fg = "#B91C1C";
-  } else if (v === "medium") {
-    bg = "#FEF3C7";
-    fg = "#B45309";
-  } else if (v === "low") {
-    bg = "#DCFCE7";
-    fg = "#15803D";
-  }
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
-      style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
-    >
-      <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
-      {value}
-    </span>
-  );
-};
+import { formatDate, formatLongDate, getStatusMeta, Eyebrow, StatusPill } from "../utils/taskDisplay";
 
 const CompletedTasks: React.FC = () => {
   const {
@@ -137,17 +71,24 @@ const CompletedTasks: React.FC = () => {
     }
   };
 
-  const completedTasks = tasks.filter((t) => t.status === "completed");
+  const completedTasks = useMemo(
+    () => tasks.filter((t) => t.status === "completed"),
+    [tasks],
+  );
 
-  const filteredTasks = completedTasks.filter((task) => {
-    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesProject = filterProjectName
-      ? (task.project?.name || task.projectName || "")
-          .toLowerCase()
-          .includes(filterProjectName.toLowerCase())
-      : true;
-    return matchesSearch && matchesProject;
-  });
+  const filteredTasks = useMemo(
+    () =>
+      completedTasks.filter((task) => {
+        const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesProject = filterProjectName
+          ? (task.project?.name || task.projectName || "")
+              .toLowerCase()
+              .includes(filterProjectName.toLowerCase())
+          : true;
+        return matchesSearch && matchesProject;
+      }),
+    [completedTasks, searchTerm, filterProjectName],
+  );
 
   type ProjectGroup = {
     key: string;
@@ -156,7 +97,7 @@ const CompletedTasks: React.FC = () => {
     tasks: Task[];
   };
 
-  const projectGroups: ProjectGroup[] = (() => {
+  const projectGroups: ProjectGroup[] = useMemo(() => {
     const map = new Map<string, ProjectGroup>();
     filteredTasks.forEach((task) => {
       const projectId = task.project?.id ?? null;
@@ -174,7 +115,7 @@ const CompletedTasks: React.FC = () => {
       g.tasks.sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
     });
     return groups;
-  })();
+  }, [filteredTasks]);
 
   const toggleGroup = (key: string) => {
     setCollapsedProjects((prev) => {
@@ -411,19 +352,6 @@ const CompletedTasks: React.FC = () => {
                 <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
                   <div className="min-w-0">
                     <Eyebrow>Task Details</Eyebrow>
-                    <h3 className="font-semibold text-[16px] text-slate-900 truncate mt-0.5">
-                      {t.title}
-                    </h3>
-                    <p className="flex items-center gap-1.5 text-[12px] text-slate-500 mt-1 truncate">
-                      <span className="font-medium text-blue-900">
-                        {t.project?.name || t.projectName || "No Project"}
-                      </span>
-                      <span>·</span>
-                      <span className="flex items-center gap-1 text-slate-500">
-                        <Calendar className="w-3 h-3" />
-                        Due {formatLongDate(t.dueDate)}
-                      </span>
-                    </p>
                   </div>
                   <div className="flex flex-col items-end flex-shrink-0 gap-1.5">
                     <div className="flex items-center gap-2.5">
@@ -461,89 +389,115 @@ const CompletedTasks: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 p-6 space-y-3 overflow-y-auto">
-                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                  <div>
+                    <div className="mb-2">
+                      <Eyebrow>Task Name</Eyebrow>
+                    </div>
+                    <h3 className="font-semibold text-[16px] text-slate-900 pl-1.5">{t.title}</h3>
+                  </div>
+                  <div>
+                    <div className="mb-2">
+                      <Eyebrow>Project</Eyebrow>
+                    </div>
+                    <p className="flex items-center gap-1.5 text-[12px] text-slate-500 truncate pl-1.5">
+                      <span className="font-medium text-blue-900">
+                        {t.project?.name || t.projectName || "No Project"}
+                      </span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <Calendar className="w-3 h-3" />
+                        Due {formatLongDate(t.dueDate)}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <div className="mb-2">
                       <Eyebrow>Description</Eyebrow>
                     </div>
-                    <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                      {t.description || "No description provided."}
-                    </p>
+                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50 ml-1.5">
+                      <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
+                        {t.description || "No description provided."}
+                      </p>
+                    </div>
                   </div>
 
                   {t.subTasks && t.subTasks.length > 0 && (
-                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                    <div>
                       <div className="flex items-center gap-2 mb-2">
                         <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Sub-Tasks</Eyebrow>
                       </div>
-                      <div className="space-y-1.5">
-                        {t.subTasks.map((st) => (
-                          <div
-                            key={st.id}
-                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50"
-                          >
-                            <CheckCircle2
-                              className={`w-3.5 h-3.5 flex-shrink-0 ${
-                                st.status === "completed" ? "text-emerald-600" : "text-slate-300"
-                              }`}
-                            />
-                            <span
-                              className={`text-[12px] text-slate-700 truncate ${
-                                st.status === "completed" ? "line-through text-slate-400" : ""
-                              }`}
+                      <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                        <div className="space-y-1.5">
+                          {t.subTasks.map((st) => (
+                            <div
+                              key={st.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50"
                             >
-                              {st.title}
-                            </span>
-                          </div>
-                        ))}
+                              <CheckCircle2
+                                className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                  st.status === "completed" ? "text-emerald-600" : "text-slate-300"
+                                }`}
+                              />
+                              <span
+                                className={`text-[12px] text-slate-700 truncate ${
+                                  st.status === "completed" ? "line-through text-slate-400" : ""
+                                }`}
+                              >
+                                {st.title}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                  <div>
                     <div className="flex items-center gap-2 mb-2">
                       <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                       <Eyebrow>Assigned To</Eyebrow>
                     </div>
-                    <div className="space-y-2">
-                      {t.assignedUsers.length === 0 ? (
-                        <p className="text-slate-400 text-[12px]">Unassigned</p>
-                      ) : (
-                        <>
-                          {t.assignedUsers.slice(0, 2).map((u) => (
-                            <div
-                              key={u.id}
-                              className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
-                            >
-                              <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                                {u.fullName.charAt(0)}
+                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                      <div className="space-y-2">
+                        {t.assignedUsers.length === 0 ? (
+                          <p className="text-slate-400 text-[12px]">Unassigned</p>
+                        ) : (
+                          <>
+                            {t.assignedUsers.slice(0, 2).map((u) => (
+                              <div
+                                key={u.id}
+                                className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                              >
+                                <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
+                                  {u.fullName.charAt(0)}
+                                </div>
+                                <span className="text-[13px] font-medium text-slate-800 truncate">
+                                  {u.fullName}
+                                </span>
                               </div>
-                              <span className="text-[13px] font-medium text-slate-800 truncate">
-                                {u.fullName}
-                              </span>
-                            </div>
-                          ))}
-                          {t.assignedUsers.length > 2 && (
-                            <button
-                              type="button"
-                              onClick={() => setShowAllMembers(true)}
-                              className="text-[12px] font-medium text-blue-900 hover:underline"
-                            >
-                              View all ({t.assignedUsers.length})
-                            </button>
-                          )}
-                        </>
+                            ))}
+                            {t.assignedUsers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setShowAllMembers(true)}
+                                className="text-[12px] font-medium text-blue-900 hover:underline"
+                              >
+                                View all ({t.assignedUsers.length})
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {t.createdBy && (
+                        <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
+                          Assigned by{" "}
+                          <span className="font-medium text-slate-600">
+                            {t.createdBy.fullName}
+                          </span>
+                        </p>
                       )}
                     </div>
-                    {t.createdBy && (
-                      <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
-                        Assigned by{" "}
-                        <span className="font-medium text-slate-600">
-                          {t.createdBy.fullName}
-                        </span>
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>

@@ -27,6 +27,7 @@ import {
   Building2,
   FileText,
   BellOff,
+  Factory,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -308,6 +309,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       icon: BarChart3,
       id: "reports",
     },
+    {
+      path: `${prefix}/plant-report`,
+      label: "Plant Report",
+      icon: Factory,
+      id: "plant-report",
+    },
   ];
 
   const system = [
@@ -345,6 +352,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     project: "Track and manage all your projects",
     documents: "Browse and manage organization files",
     inventory: "Stock items across all your projects",
+    "plant-report": "Daily boiler/plant operations log and monthly summary",
     procurement: "Purchase requests across all your projects",
     "purchase-orders": "Purchase orders across all your projects",
     vendors: "Suppliers and vendors across all your projects",

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
@@ -40,16 +40,27 @@ import {
   TrendingUp,
   FileText,
   ListChecks,
-  PauseCircle,
   User as UserRoundIcon,
   UserPlus,
   MessageSquare,
-  Flag,
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import {
+  formatDate,
+  formatLongDate,
+  getStatusMeta,
+  isOverdue,
+  daysRemainingLabel,
+  Eyebrow,
+  SectionLabel,
+  StatusPill,
+} from "../utils/taskDisplay";
+import type { AssignedUser, Task } from "../api/tasks.api";
 
-type AssignedUser = { id: number; fullName: string; email: string };
-type User = { id: number; fullName: string; email: string };
+/** Same shape as AssignedUser — kept as a separate alias since it's used for
+ * "any org member" call sites (not just task assignees), matching the
+ * pre-existing name used throughout this file. */
+type User = AssignedUser;
 type Project = {
   id: number;
   name: string;
@@ -61,150 +72,6 @@ type Project = {
   createdAt: string;
   progress?: number;
   tasksCount?: number;
-};
-
-type Task = {
-  id: number;
-  title: string;
-  description?: string;
-  priority: string;
-  status: string;
-  progress: number;
-  dueDate: string;
-  assignedUsers: AssignedUser[];
-  files?: string[];
-  createdAt: string;
-  subTasks: { id: number; title: string; status: string; children?: any[] }[];
-  projectName?: string;
-  project?: { id: number; name: string; status?: string };
-  createdBy?: { id: number; fullName: string };
-};
-
-const formatLongDate = (dateString: string) =>
-  new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-const getStatusMeta = (status: string) => {
-  const v = status.toLowerCase().replace(/\s+/g, "_");
-  if (v === "completed")
-    return { label: "Completed", bg: "#DCFCE7", fg: "#15803D", Icon: CheckCircle2 };
-  if (v === "in_progress")
-    return { label: "In Progress", bg: "#DBEAFE", fg: "#1E3A8A", Icon: Clock };
-  if (v === "on_hold")
-    return { label: "On Hold", bg: "#FEE2E2", fg: "#B91C1C", Icon: PauseCircle };
-  return { label: "To Do", bg: "#FEF3C7", fg: "#B45309", Icon: Clock };
-};
-
-const formatDate = (dateString: string) =>
-  new Date(dateString).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-
-const isOverdue = (dueDate: string, status: string) =>
-  status !== "completed" &&
-  new Date(dueDate).getTime() < new Date(new Date().toDateString()).getTime();
-
-/** "3 days left" / "Due today" / "Overdue by 2 days" — mirrors dueDateInfo() in ProjectSharedComponents.tsx for consistent wording app-wide. */
-const daysRemainingLabel = (dueDate: string, status: string): string | null => {
-  if (!dueDate || status === "completed") return null;
-  const diffMs = new Date(dueDate).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
-  const days = Math.round(diffMs / 86400000);
-  if (days < 0) return `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`;
-  if (days === 0) return "Due today";
-  return `${days} day${days === 1 ? "" : "s"} left`;
-};
-
-
-// --- Design System Components ---
-const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className = "",
-}) => (
-  <div
-    className={`text-[10px] tracking-[0.1em] uppercase text-slate-400 ${className}`}
-    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-  >
-    {children}
-  </div>
-);
-
-/** Same look as Eyebrow, but a darker slate-600 for section headings that need more visual weight (Task Details/Update/Activity popups). */
-const SectionLabel: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className = "",
-}) => (
-  <p
-    className={`text-[10px] font-semibold tracking-[0.1em] uppercase text-slate-600 ${className}`}
-    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-  >
-    {children}
-  </p>
-);
-
-const StatusPill: React.FC<{ type: "priority" | "status"; value: string }> = ({
-  type,
-  value,
-}) => {
-  let bg = "#EEF1F5",
-    fg = "#475569",
-    label = value;
-  const v = value.toLowerCase().replace(/\s+/g, "");
-  if (type === "priority") {
-    if (v === "high") {
-      bg = "#FEE2E2";
-      fg = "#B91C1C";
-    } else if (v === "medium") {
-      bg = "#FEF3C7";
-      fg = "#B45309";
-    } else if (v === "low") {
-      bg = "#DCFCE7";
-      fg = "#15803D";
-    }
-  } else {
-    if (v === "completed") {
-      bg = "#DCFCE7";
-      fg = "#15803D";
-    } else if (v === "inprogress" || v === "in_progress") {
-      bg = "#DBEAFE";
-      fg = "#1E3A8A";
-    } else if (v === "to_do") {
-      bg = "#FEF3C7";
-      fg = "#B45309";
-    } else if (v === "onhold" || v === "on_hold") {
-      bg = "#FEE2E2";
-      fg = "#B91C1C";
-      label = "On Hold";
-    }
-  }
-  if (type === "priority") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-[10px] tracking-[0.05em] uppercase font-semibold"
-        style={{ fontFamily: "'JetBrains Mono', monospace", color: fg }}
-      >
-        <Flag className="w-3 h-3" fill={fg} strokeWidth={1.5} />
-        {label}
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
-      style={{
-        fontFamily: "'JetBrains Mono', monospace",
-        background: bg,
-        color: fg,
-      }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: fg }} />
-      {label}
-    </span>
-  );
 };
 
 const MyTasks: React.FC = () => {
@@ -259,6 +126,22 @@ const MyTasks: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
+
+  const [editingTitleTaskId, setEditingTitleTaskId] = useState<number | null>(null);
+  const [editTitleValue, setEditTitleValue] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+
+  const [editingDescriptionTaskId, setEditingDescriptionTaskId] = useState<number | null>(null);
+  const [editDescriptionValue, setEditDescriptionValue] = useState("");
+  const [savingDescription, setSavingDescription] = useState(false);
+
+  const [editingDueDateTaskId, setEditingDueDateTaskId] = useState<number | null>(null);
+  const [editDueDateValue, setEditDueDateValue] = useState("");
+  const [savingDueDate, setSavingDueDate] = useState(false);
+
+  const [editingPriorityTaskId, setEditingPriorityTaskId] = useState<number | null>(null);
+  const [editPriorityValue, setEditPriorityValue] = useState("high");
+  const [savingPriority, setSavingPriority] = useState(false);
 
   const [showAddMemberPopover, setShowAddMemberPopover] = useState(false);
   const [memberSearchTerm, setMemberSearchTerm] = useState("");
@@ -710,6 +593,85 @@ const MyTasks: React.FC = () => {
     }
   };
 
+  const handleSaveTitle = async (taskId: number) => {
+    const trimmed = editTitleValue.trim();
+    if (!trimmed) return;
+    setSavingTitle(true);
+    try {
+      const formData = new FormData();
+      formData.append("title", trimmed);
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+      setEditingTitleTaskId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to update task name"));
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
+  const handleSaveDescription = async (taskId: number) => {
+    setSavingDescription(true);
+    try {
+      const formData = new FormData();
+      formData.append("description", editDescriptionValue);
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+      setEditingDescriptionTaskId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to update description"));
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleSaveDueDate = async (taskId: number) => {
+    if (!editDueDateValue) return;
+    setSavingDueDate(true);
+    try {
+      const formData = new FormData();
+      formData.append("dueDate", editDueDateValue);
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+      setEditingDueDateTaskId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to update due date"));
+    } finally {
+      setSavingDueDate(false);
+    }
+  };
+
+  const handleSavePriority = async (taskId: number) => {
+    setSavingPriority(true);
+    try {
+      const formData = new FormData();
+      formData.append("priority", editPriorityValue);
+      const updated: Task = (await updateTaskMutation.mutateAsync({
+        id: taskId,
+        payload: formData,
+      })) as unknown as Task;
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setSelectedTask(updated);
+      setEditingPriorityTaskId(null);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Unable to update priority"));
+    } finally {
+      setSavingPriority(false);
+    }
+  };
+
   const handleDeleteClick = (taskId: number) => {
     setTaskToDelete(taskId);
     setShowDeleteModal(true);
@@ -1052,28 +1014,34 @@ const MyTasks: React.FC = () => {
     );
   };
 
-  const filteredTasks = tasks.filter((task) => {
-    const isAssigned = user
-      ? task.assignedUsers.some((u) => u.id === Number(user.id))
-      : false;
-    if (!isAssigned) return false;
-    const matchesSearch = task.title
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesProject = filterProjectName
-      ? (task.project?.name || task.projectName || "")
+  const filteredTasks = useMemo(
+    () =>
+      tasks.filter((task) => {
+        const isAssigned = user
+          ? task.assignedUsers.some((u) => u.id === Number(user.id))
+          : false;
+        if (!isAssigned) return false;
+        // Completed tasks move to the Completed tab instead of staying listed here.
+        if (task.status === "completed") return false;
+        const matchesSearch = task.title
           .toLowerCase()
-          .includes(filterProjectName.toLowerCase())
-      : true;
-    const matchesPriority = filterPriority
-      ? task.priority.toLowerCase() === filterPriority.toLowerCase()
-      : true;
-    const matchesStatus = filterStatus
-      ? task.status.toLowerCase().replace(/\s+/g, "") ===
-        filterStatus.toLowerCase().replace(/\s+/g, "")
-      : true;
-    return matchesSearch && matchesProject && matchesPriority && matchesStatus;
-  });
+          .includes(searchTerm.toLowerCase());
+        const matchesProject = filterProjectName
+          ? (task.project?.name || task.projectName || "")
+              .toLowerCase()
+              .includes(filterProjectName.toLowerCase())
+          : true;
+        const matchesPriority = filterPriority
+          ? task.priority.toLowerCase() === filterPriority.toLowerCase()
+          : true;
+        const matchesStatus = filterStatus
+          ? task.status.toLowerCase().replace(/\s+/g, "") ===
+            filterStatus.toLowerCase().replace(/\s+/g, "")
+          : true;
+        return matchesSearch && matchesProject && matchesPriority && matchesStatus;
+      }),
+    [tasks, user, searchTerm, filterProjectName, filterPriority, filterStatus],
+  );
 
   type ProjectGroup = {
     key: string;
@@ -1082,7 +1050,7 @@ const MyTasks: React.FC = () => {
     tasks: Task[];
   };
 
-  const projectGroups: ProjectGroup[] = (() => {
+  const projectGroups: ProjectGroup[] = useMemo(() => {
     const map = new Map<string, ProjectGroup>();
     filteredTasks.forEach((task) => {
       const projectId = task.project?.id ?? null;
@@ -1104,7 +1072,7 @@ const MyTasks: React.FC = () => {
       );
     });
     return groups;
-  })();
+  }, [filteredTasks]);
 
   const toggleGroup = (key: string) => {
     setCollapsedProjects((prev) => {
@@ -1209,7 +1177,6 @@ const MyTasks: React.FC = () => {
             <option value="to_do">To Do</option>
             <option value="inprogress">In Progress</option>
             <option value="on_hold">On Hold</option>
-            <option value="completed">Completed</option>
           </select>
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
         </div>
@@ -1486,30 +1453,7 @@ const MyTasks: React.FC = () => {
           return (
             <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
               <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
-                <div className="flex items-start justify-between flex-shrink-0 px-7 pt-6 pb-5">
-                  <div className="min-w-0">
-                    <h3 className="text-[18px] font-semibold text-slate-900 truncate">
-                      {t.title}
-                    </h3>
-                    <p className="flex items-center gap-1.5 text-[13px] text-slate-500 mt-1.5 truncate">
-                      <span className="font-medium text-blue-900">
-                        {t.project?.name || t.projectName || "No Project"}
-                      </span>
-                      <span>·</span>
-                      <span className="flex items-center gap-1 text-slate-500">
-                        <Calendar className="w-3 h-3" />
-                        Due {formatLongDate(t.dueDate)}
-                      </span>
-                      {daysRemainingLabel(t.dueDate, t.status) && (
-                        <>
-                          <span>·</span>
-                          <span className="font-medium text-red-600">
-                            {daysRemainingLabel(t.dueDate, t.status)}
-                          </span>
-                        </>
-                      )}
-                    </p>
-                  </div>
+                <div className="flex items-start justify-end flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="flex flex-col items-end flex-shrink-0 gap-2">
                     <div className="flex items-center gap-2.5">
                       <span
@@ -1545,13 +1489,256 @@ const MyTasks: React.FC = () => {
                 <div className="border-t border-slate-100" />
                 <div className="flex-1 px-7 py-6 space-y-6 overflow-y-auto">
                   <div>
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
+                    <div className="mb-2.5">
+                      <SectionLabel>Task Name</SectionLabel>
+                    </div>
+                    {editingTitleTaskId === t.id ? (
+                      <div className="flex items-center gap-2 pl-1.5">
+                        <input
+                          value={editTitleValue}
+                          onChange={(e) => setEditTitleValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleSaveTitle(t.id);
+                            } else if (e.key === "Escape") {
+                              setEditingTitleTaskId(null);
+                            }
+                          }}
+                          autoFocus
+                          className="flex-1 min-w-0 px-2 py-1 text-[18px] font-semibold text-slate-900 border border-blue-300 rounded outline-none focus:border-blue-900"
+                        />
+                        <button
+                          onClick={() => handleSaveTitle(t.id)}
+                          disabled={savingTitle}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                          title="Save"
+                        >
+                          {savingTitle ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setEditingTitleTaskId(null)}
+                          disabled={savingTitle}
+                          className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 pl-1.5">
+                        <h3 className="text-[18px] font-semibold text-slate-900 truncate">
+                          {t.title}
+                        </h3>
+                        {t.createdBy?.id === user?.id && (
+                          <button
+                            onClick={() => {
+                              setEditingTitleTaskId(t.id);
+                              setEditTitleValue(t.title);
+                            }}
+                            className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors flex-shrink-0"
+                            title="Edit task name"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="mb-2.5">
+                      <SectionLabel>Project</SectionLabel>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[13px] text-slate-500 pl-1.5">
+                      <span className="font-medium text-blue-900 truncate">
+                        {t.project?.name || t.projectName || "No Project"}
+                      </span>
+                      <span>·</span>
+                      {editingDueDateTaskId === t.id ? (
+                        <>
+                          <input
+                            type="date"
+                            value={editDueDateValue}
+                            onChange={(e) => setEditDueDateValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleSaveDueDate(t.id);
+                              } else if (e.key === "Escape") {
+                                setEditingDueDateTaskId(null);
+                              }
+                            }}
+                            autoFocus
+                            className="px-2 py-0.5 text-[12px] border border-blue-300 rounded outline-none focus:border-blue-900"
+                          />
+                          <button
+                            onClick={() => handleSaveDueDate(t.id)}
+                            disabled={savingDueDate}
+                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                            title="Save"
+                          >
+                            {savingDueDate ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setEditingDueDateTaskId(null)}
+                            disabled={savingDueDate}
+                            className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex items-center gap-1 text-slate-500 flex-shrink-0">
+                            <Calendar className="w-3 h-3" />
+                            Due {formatLongDate(t.dueDate)}
+                          </span>
+                          {daysRemainingLabel(t.dueDate, t.status) && (
+                            <>
+                              <span>·</span>
+                              <span className="font-medium text-red-600 flex-shrink-0">
+                                {daysRemainingLabel(t.dueDate, t.status)}
+                              </span>
+                            </>
+                          )}
+                          {t.createdBy?.id === user?.id && (
+                            <button
+                              onClick={() => {
+                                setEditingDueDateTaskId(t.id);
+                                setEditDueDateValue(t.dueDate.slice(0, 10));
+                              }}
+                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors flex-shrink-0"
+                              title="Edit due date"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2.5">
+                      <SectionLabel>Priority</SectionLabel>
+                    </div>
+                    <div className="flex items-center gap-2 pl-1.5">
+                      {editingPriorityTaskId === t.id ? (
+                        <>
+                          <select
+                            value={editPriorityValue}
+                            onChange={(e) => setEditPriorityValue(e.target.value)}
+                            autoFocus
+                            className="px-2 py-1 text-[12px] font-medium bg-white border border-blue-300 rounded outline-none focus:border-blue-900"
+                          >
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                          </select>
+                          <button
+                            onClick={() => handleSavePriority(t.id)}
+                            disabled={savingPriority}
+                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                            title="Save"
+                          >
+                            {savingPriority ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setEditingPriorityTaskId(null)}
+                            disabled={savingPriority}
+                            className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <StatusPill type="priority" value={t.priority} />
+                          {t.createdBy?.id === user?.id && (
+                            <button
+                              onClick={() => {
+                                setEditingPriorityTaskId(t.id);
+                                setEditPriorityValue(t.priority);
+                              }}
+                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                              title="Edit priority"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2.5">
                       <SectionLabel>Description</SectionLabel>
                     </div>
-                    <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                      {t.description || "No description provided."}
-                    </p>
+                    {editingDescriptionTaskId === t.id ? (
+                      <div className="p-3 space-y-2 rounded border border-blue-300 bg-slate-50/50 ml-1.5">
+                        <textarea
+                          value={editDescriptionValue}
+                          onChange={(e) => setEditDescriptionValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditingDescriptionTaskId(null);
+                          }}
+                          autoFocus
+                          rows={4}
+                          className="w-full text-slate-700 text-[13px] leading-relaxed bg-white border border-slate-200 rounded p-2 outline-none focus:border-blue-900 resize-none"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setEditingDescriptionTaskId(null)}
+                            disabled={savingDescription}
+                            className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-100 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleSaveDescription(t.id)}
+                            disabled={savingDescription}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors disabled:opacity-70"
+                          >
+                            {savingDescription && <Loader2 className="w-3 h-3 animate-spin" />}
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => {
+                          if (t.createdBy?.id !== user?.id) return;
+                          setEditingDescriptionTaskId(t.id);
+                          setEditDescriptionValue(t.description || "");
+                        }}
+                        className={`p-3 rounded border border-slate-200 bg-slate-50/50 ml-1.5 ${
+                          t.createdBy?.id === user?.id
+                            ? "cursor-pointer hover:border-blue-300 transition-colors"
+                            : ""
+                        }`}
+                        title={t.createdBy?.id === user?.id ? "Click to edit" : undefined}
+                      >
+                        <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
+                          {t.description || "No description provided."}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-6 border-t border-slate-100">

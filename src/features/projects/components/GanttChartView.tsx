@@ -423,20 +423,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.drag_resize = false;
     gantt.config.drag_progress = false;
     gantt.config.select_task = false;
-    // Lets a row be dragged up/down among its siblings in the grid (the "Task
-    // Name" column) to reorder it — separate from drag_move, which is the
-    // (disabled) timeline-bar drag. order_branch_free additionally lets a
-    // drag drop a task onto a different summary task, re-parenting it (e.g.
-    // moving a subtask from under Task 1 to under Task 2).
-    // Must be truthy here, at gantt.init() time — unlike drag_links/
-    // drag_resize (checked live on every interaction), gantt only wires up
-    // its row drag-n-drop module once, during init, if order_branch was
-    // already truthy at that moment. Toggling it afterward (see the
-    // `editable` effect below) still works for enabling/disabling actual
-    // drags — via readonly, which the drag module *does* check live — but
-    // toggling it from false on mount (editMode starts false) to true later
-    // would never wire the module up at all, which is why dragging silently
-    // did nothing before this fix.
+    
     gantt.config.order_branch = true;
     gantt.config.order_branch_free = true;
     gantt.config.show_progress = true;
@@ -444,22 +431,11 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     gantt.config.bar_height = 22;
     gantt.config.scale_height = SCALE_HEIGHT;
     gantt.config.min_column_width = 34;
-    // Deliberately no autosize: the container below gets an explicit,
-    // content-aware height (see chartHeight) capped at MAX_CHART_HEIGHT, so
-    // dhtmlx scrolls its rows internally past that point — which is what
-    // keeps the grid/date-scale header rows fixed in place while scrolling
-    // (autosize's "fit everything, let an outer element scroll" mode
-    // defeats that, since the header rows scroll away with everything else
-    // once an ancestor other than dhtmlx's own scroller does the scrolling).
+    
 
     gantt.templates.task_class = (_start: Date, _end: Date, task: unknown) => {
       const t = task as GanttTask;
-      // draggingTaskId (declared further down, in this same effect) is read
-      // here rather than mutating a DOM node directly — dhtmlx re-renders
-      // bars mid-drag on its own (to reflow rows as the grid preview
-      // reorders), which would silently wipe out a one-off classList.add.
-      // A template re-derives the class on every one of those re-renders
-      // instead, so the "lifted" look survives them.
+      
       const draggingClass = draggingTaskId === String(t.id) ? " gantt-dragging-bar" : "";
       return `gantt-status-${t.status}${draggingClass}`;
     };
@@ -575,27 +551,29 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       }),
     );
 
-    // While a row is being dragged, gray-tint whichever row is currently
-    // under the pointer, so it's clear where the dragged task will land if
-    // dropped there — dhtmlx's own drag ghost (.gantt_drag_marker) has
-    // pointer-events:none, so a plain mousemove + gantt.locate(e) resolves
-    // straight through it to the real row underneath.
+   
+    eventIds.push(
+      gantt.attachEvent(
+        "onTaskDrag",
+        (
+          _id: string | number,
+          mode: string,
+          task: { start_date?: Date; duration?: number; end_date?: Date },
+        ) => {
+          if (mode === "resize" && task.start_date && (task.duration ?? 0) < 1) {
+            task.duration = 1;
+            task.end_date = gantt.calculateEndDate(task.start_date, task.duration);
+          }
+          return true;
+        },
+      ),
+    );
+
+    
     let draggingTaskId: string | null = null;
-    // The dragged row's parent *before* the drag started — captured so
-    // onRowDragEnd can enforce "a task stays a task, a subtask stays a
-    // subtask" (see below), since dhtmlx's own order_branch_free drag
-    // freely allows either to become the other otherwise.
+    
     let draggingOriginalParentId: string | null = null;
-    // The task id of whatever row the pointer was over most recently during
-    // the drag — used as the authoritative re-parent target in
-    // onRowDragEnd (see below). dhtmlx's own built-in nest-vs-reorder
-    // detection only recognizes "nest as child" in a thin slice near the
-    // bottom of a row (confirmed by direct testing: hovering the top ~50%
-    // of a target row shows no nesting indicator at all), which made
-    // dropping a subtask onto a new task feel like it "did nothing" most of
-    // the time. Tracking the full row the pointer is over — the same
-    // element already used for the drop-target highlight — makes the whole
-    // row a valid drop target instead of a sliver of it.
+    
     let lastHoveredTaskId: string | null = null;
     let dragHighlightEl: HTMLElement | null = null;
     const clearDragHighlight = () => {
@@ -635,12 +613,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       }),
     );
 
-    // Row reordering/re-parenting (drag the task name up/down, or onto a
-    // different summary task, in the grid) — read the full task order (and,
-    // since order_branch_free allows re-parenting, each task's current
-    // parent) back out of gantt once the drag settles, rather than trying to
-    // compute it from the drag target, since gantt has already applied the
-    // move internally by this point. gantt's root sentinel is parent id "0".
+    
     eventIds.push(
       gantt.attachEvent("onRowDragEnd", () => {
         document.removeEventListener("mousemove", handleDragMouseMove);
@@ -652,13 +625,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           order.push({ id: String(task.id), parentId: parentStr === "0" ? null : parentStr });
         });
 
-        // Enforce "a task stays a task, a subtask stays a subtask": a row
-        // that was top-level before the drag must stay top-level no matter
-        // where it's dropped (only its position changes); a row that was
-        // already a subtask may be re-parented to a *different top-level
-        // task* by dropping it there, but can't be promoted to top-level or
-        // nested under another subtask (no 3-level nesting) — either of
-        // those falls back to its original parent instead.
+      
         if (draggingTaskId) {
           const entry = order.find((o) => o.id === draggingTaskId);
           if (entry) {
@@ -666,11 +633,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
               entry.parentId = null;
             } else {
               const parentById = new Map(order.map((o) => [o.id, o.parentId]));
-              // Prefer whatever row the pointer was actually hovering over
-              // at drop time — dhtmlx's own nest-vs-reorder detection
-              // (reflected in entry.parentId here) only recognizes a "nest"
-              // drop in a thin slice near the bottom of the target row, so
-              // relying on it alone made most drops silently fail.
+              
               const hoveredIsTopLevelTask =
                 lastHoveredTaskId != null &&
                 lastHoveredTaskId !== draggingTaskId &&
@@ -1070,19 +1033,33 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           font-weight: 400;
         }
 
-        .gantt-row-actions {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 2px;
+        /* dhtmlx's own .gantt_tree_content wrapper (around the Task Name
+           column's render() output) is shrink-to-fit, so a flex/width:100%
+           child inside it can't reach the column's actual right edge — it
+           only ever hugs the end of the task text. position:relative here
+           gives .gantt-row-add-btn (position:absolute, see below) a fixed
+           frame — the grid cell itself, which does have the column's real
+           width — to pin itself against instead. No offset values are set
+           on .gantt_cell, so this has zero effect on any other column's
+           layout. */
+        .gantt_cell {
+          position: relative;
         }
+        /* Always reserves the add-button's width at the end of the Task
+           Name column's text, regardless of hover state, so a long task
+           name's ellipsis truncation point never lands underneath it. */
+        .gantt_grid_data .gantt_tree_content {
+          padding-right: 22px;
+        }
+
         .gantt-row-menu-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 20px;
+          width: 100%;
           height: 20px;
           padding: 0;
+          box-sizing: border-box;
           line-height: 1;
           font-size: 15px;
           font-weight: 700;
@@ -1102,34 +1079,29 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-row-menu-btn:focus-visible {
           outline: none;
         }
-        /* Mirrors gantt-row-menu-btn's look, but only reveals itself on row
-           hover (or its own focus, for keyboard users) — the "..." menu stays
-           always-visible since it's a secondary action, while this "+" is
-           meant to stay out of the way until the row is actually being
-           looked at. */
+        /* Mirrors gantt-row-menu-btn's look — always visible, same as the
+           "..." menu, rather than only revealing itself on row hover. */
         .gantt-row-add-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 20px;
-          height: 20px;
+          width: 22px;
+          height: 22px;
           padding: 0;
           line-height: 1;
-          font-size: 15px;
-          font-weight: 700;
+          font-size: 19px;
+          font-weight: 300;
           border-radius: 4px;
           border: none;
           outline: none;
-          background: transparent;
+          background: #fff;
           color: #64748b;
           cursor: pointer;
-          opacity: 0;
-          transition: opacity 0.1s ease-out;
-        }
-        .gantt_row:hover .gantt-row-add-btn,
-        .gantt-row-add-btn:focus,
-        .gantt-row-add-btn:focus-visible {
-          opacity: 1;
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 1;
         }
         .gantt-row-add-btn:hover {
           background: #eff6ff;
@@ -1150,6 +1122,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt-status-select {
           appearance: none;
           -webkit-appearance: none;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
           background: transparent;
           padding: 2px 20px 2px 4px;
           border: none;
@@ -1168,7 +1143,8 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           color: #475569;
         }
         .gantt-progress-input {
-          width: 56px;
+          width: 100%;
+          box-sizing: border-box;
           padding: 2px 6px;
           font-size: 11px;
           font-weight: 600;

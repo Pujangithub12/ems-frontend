@@ -30,11 +30,14 @@ const TasksPage: React.FC = () => {
 
   const totalTasks = summaryTasks.length;
   const doneCount = summaryTasks.filter((t) => t.status === "completed").length;
-  const myTasksCount = summaryTasks.filter((t) =>
-    t.assignedUsers?.some((u) => String(u.id) === user?.id),
+  const myTasksCount = summaryTasks.filter(
+    (t) =>
+      t.status !== "completed" &&
+      t.assignedUsers?.some((u) => String(u.id) === user?.id),
   ).length;
+  const assignedTabCount = summaryTasks.filter((t) => t.status !== "completed").length;
   const tabCounts: Record<TabKey, number> = {
-    assigned: totalTasks,
+    assigned: assignedTabCount,
     my: myTasksCount,
     completed: doneCount,
   };
