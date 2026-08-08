@@ -672,7 +672,7 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                       </td>
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          {!row.isFolder && (
+                          {!row.isFolder && (isAdmin || row.myAccessLevel === "write") && (
                             <a
                               href={downloadUrl(row.id)}
                               className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
@@ -840,7 +840,11 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
 
       <ManageAccessModal file={accessTarget} onClose={() => setAccessTarget(null)} />
 
-      <DocumentViewer file={viewedFile} onClose={() => setViewedFile(null)} />
+      <DocumentViewer
+        file={viewedFile}
+        canDownload={isAdmin || viewedFile?.myAccessLevel === "write"}
+        onClose={() => setViewedFile(null)}
+      />
     </div>
   );
 };

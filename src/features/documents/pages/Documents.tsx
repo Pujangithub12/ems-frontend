@@ -713,7 +713,7 @@ const Documents: React.FC = () => {
                           </td>
                           <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              {!row.isFolder && (
+                              {!row.isFolder && (isAdmin || row.myAccessLevel === "write") && (
                                 <a
                                   href={organizationDownloadUrl(row.id)}
                                   className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
@@ -883,7 +883,11 @@ const Documents: React.FC = () => {
 
       <ManageAccessModal file={accessTarget} onClose={() => setAccessTarget(null)} />
 
-      <DocumentViewer file={viewedFile} onClose={() => setViewedFile(null)} />
+      <DocumentViewer
+        file={viewedFile}
+        canDownload={isAdmin || viewedFile?.myAccessLevel === "write"}
+        onClose={() => setViewedFile(null)}
+      />
     </div>
   );
 };

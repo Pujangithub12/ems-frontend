@@ -63,4 +63,9 @@ export function organizationViewUrl(fileId: number): string {
   return `${base}/api/projects/files/${fileId}/view`;
 }
 
-export { isViewableFileType } from "./documents.api";
+export {
+  isViewableFileType,
+  isClientRenderableFileType,
+  isOfficeFileType,
+  getFileViewToken,
+} from "./documents.api";
