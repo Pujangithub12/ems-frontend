@@ -93,19 +93,33 @@ export function viewUrl(fileId: number): string {
 }
 
 /**
- * Check if a file type can be previewed in-browser via react-doc-viewer.
- * Only PDF/image/text/csv render client-side (pdf.js / native <img> / plain
- * text) and work with our permission-gated blob-fetch approach. Office
- * formats (doc/docx/xls/xlsx/ppt/pptx) are deliberately excluded: the
- * package's only renderer for them embeds Microsoft's Office Online viewer,
- * which requires the file to sit at a public, unauthenticated URL — that's
- * incompatible with our read-access-gated file storage (and with localhost
- * in dev), so they'd silently fail to render if listed as viewable.
+ * Requests a short-lived (5 min), single-file-scoped signed URL that Microsoft's
+ * Office Online viewer can fetch directly (it has no way to send our auth
+ * cookie). The read-access check happens server-side before this URL is ever
+ * issued — see ProjectFileController.getFileViewToken.
  */
-export function isViewableFileType(type?: string | null): boolean {
+export async function getFileViewToken(fileId: number): Promise<string> {
+  const res = await api.get<{ url: string }>(`/api/projects/files/${fileId}/view-token`);
+  return res.data.url;
+}
+
+/** File types react-doc-viewer renders fully client-side (pdf.js / native <img> / plain text) — fetched as an authenticated blob, no signed URL needed. */
+export function isClientRenderableFileType(type?: string | null): boolean {
   if (!type) return false;
   const viewable = ["pdf", "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "txt", "csv"];
   return viewable.includes(type.toLowerCase());
+}
+
+/** Office formats previewed via Microsoft's Office Online viewer over a signed URL (see getFileViewToken) — this doesn't work against a non-public host like localhost. */
+export function isOfficeFileType(type?: string | null): boolean {
+  if (!type) return false;
+  const office = ["doc", "docx", "xls", "xlsx", "ppt", "pptx"];
+  return office.includes(type.toLowerCase());
+}
+
+/** Check if a file type can be previewed in-browser at all (either path above). */
+export function isViewableFileType(type?: string | null): boolean {
+  return isClientRenderableFileType(type) || isOfficeFileType(type);
 }
 
 /** Human-readable file size, e.g. "2.4 MB". */
