@@ -17,7 +17,6 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
-  Eye,
 } from "lucide-react";
 import { ProjectFile } from "../../../../types";
 import { downloadUrl, formatFileSize, isViewableFileType } from "../../../documents/api/documents.api";
@@ -618,17 +617,21 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                   </tr>
                 </thead>
                 <tbody>
-                  {searchedRows.map((row) => (
+                  {searchedRows.map((row) => {
+                    const rowViewable = !row.isFolder && isViewableFileType(row.type);
+                    return (
                     <tr
                       key={row.id}
-                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                      onClick={() => {
+                        if (row.isFolder) setSelectedFolderId(row.id);
+                        else if (rowViewable) setViewedFile(row);
+                      }}
+                      className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
+                        row.isFolder || rowViewable ? "cursor-pointer" : ""
+                      }`}
                     >
                       <td className="px-3 py-2">
-                        <button
-                          onClick={() => row.isFolder && setSelectedFolderId(row.id)}
-                          disabled={!row.isFolder}
-                          className="flex items-center gap-2 text-left disabled:cursor-default"
-                        >
+                        <div className="flex items-center gap-2 text-left">
                           {row.isFolder ? (
                             <Folder size={15} className="shrink-0 text-blue-900" />
                           ) : (
@@ -647,7 +650,7 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                           >
                             {row.name}
                           </span>
-                        </button>
+                        </div>
                       </td>
                       {selectedFolderId === ALL_DOCUMENTS && (
                         <td className="px-3 py-2 text-slate-500">{folderNameOf(row)}</td>
@@ -667,17 +670,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                       <td className="px-3 py-2 text-slate-500">
                         {row.isFolder ? "--" : row.version}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          {!row.isFolder && isViewableFileType(row.type) && (
-                            <button
-                              onClick={() => setViewedFile(row)}
-                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
-                              title="View"
-                            >
-                              <Eye size={14} />
-                            </button>
-                          )}
                           {!row.isFolder && (
                             <a
                               href={downloadUrl(row.id)}
@@ -708,7 +702,8 @@ const ProjectDocumentsTab: React.FC<ProjectDocumentsTabProps> = ({ projectId }) 
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
