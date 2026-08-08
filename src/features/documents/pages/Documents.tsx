@@ -18,7 +18,6 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
-  Eye,
 } from "lucide-react";
 import { ProjectFile } from "../../../types";
 import { formatFileSize } from "../api/documents.api";
@@ -659,17 +658,21 @@ const Documents: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {searchedRows.map((row) => (
+                      {searchedRows.map((row) => {
+                        const rowViewable = !row.isFolder && isViewableFileType(row.type);
+                        return (
                         <tr
                           key={row.id}
-                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                          onClick={() => {
+                            if (row.isFolder) setSelectedFolderId(row.id);
+                            else if (rowViewable) setViewedFile(row);
+                          }}
+                          className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
+                            row.isFolder || rowViewable ? "cursor-pointer" : ""
+                          }`}
                         >
                           <td className="px-3 py-2">
-                            <button
-                              onClick={() => row.isFolder && setSelectedFolderId(row.id)}
-                              disabled={!row.isFolder}
-                              className="flex items-center gap-2 text-left disabled:cursor-default"
-                            >
+                            <div className="flex items-center gap-2 text-left">
                               {row.isFolder ? (
                                 <Folder size={15} className="text-blue-900 shrink-0" />
                               ) : (
@@ -688,7 +691,7 @@ const Documents: React.FC = () => {
                               >
                                 {row.name}
                               </span>
-                            </button>
+                            </div>
                           </td>
                           {selectedFolderId === ALL_DOCUMENTS && (
                             <td className="px-3 py-2 text-slate-500">{folderNameOf(row)}</td>
@@ -708,17 +711,8 @@ const Documents: React.FC = () => {
                           <td className="px-3 py-2 text-slate-500">
                             {row.isFolder ? "--" : row.version}
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              {!row.isFolder && isViewableFileType(row.type) && (
-                                <button
-                                  onClick={() => setViewedFile(row)}
-                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
-                                  title="View"
-                                >
-                                  <Eye size={14} />
-                                </button>
-                              )}
                               {!row.isFolder && (
                                 <a
                                   href={organizationDownloadUrl(row.id)}
@@ -749,7 +743,8 @@ const Documents: React.FC = () => {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
