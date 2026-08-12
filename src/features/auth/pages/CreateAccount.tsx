@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../../../context/AuthProvider";
-import { getPasswordStrengthError } from "../utils/passwordPolicy";
+import {
+  createAccountDetailsSchema,
+  CreateAccountDetailsValues,
+  otpSchema,
+  OtpFormValues,
+} from "../schemas/authSchemas";
 import {
   Eye,
   EyeOff,
@@ -58,12 +65,10 @@ const useAnimatedCounter = (target: number) => {
 
 const CreateAccount: React.FC = () => {
   const [step, setStep] = useState<"details" | "otp">("details");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  // Captured on successful details submission — needed in the OTP step to
+  // display the target email and to re-call registerStart on resend.
+  const [submittedDetails, setSubmittedDetails] = useState<CreateAccountDetailsValues | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
@@ -75,21 +80,22 @@ const CreateAccount: React.FC = () => {
   const mw = useAnimatedCounter(87.4);
   const sparkRef = useRef<SVGPathElement>(null);
 
-  const submitDetails = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const detailsForm = useForm<CreateAccountDetailsValues>({
+    resolver: zodResolver(createAccountDetailsSchema),
+    defaultValues: { fullName: "", email: "", password: "", confirmPassword: "" },
+  });
+
+  const otpForm = useForm<OtpFormValues>({
+    resolver: zodResolver(otpSchema),
+    defaultValues: { otp: "" },
+  });
+
+  const submitDetails = async (data: CreateAccountDetailsValues) => {
     setError(null);
-    const passwordError = getPasswordStrengthError(password);
-    if (passwordError) {
-      setError(passwordError);
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
     setLoading(true);
     try {
-      await auth.registerStart({ fullName, email, password });
+      await auth.registerStart(data);
+      setSubmittedDetails(data);
       setStep("otp");
     } catch (err: any) {
       setError(
@@ -100,12 +106,12 @@ const CreateAccount: React.FC = () => {
     }
   };
 
-  const submitOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitOtp = async ({ otp }: OtpFormValues) => {
+    if (!submittedDetails) return;
     setError(null);
     setLoading(true);
     try {
-      const organization = await auth.registerVerify({ email, otp });
+      const organization = await auth.registerVerify({ email: submittedDetails.email, otp });
       nav(`/${organization.id}/dashboard`);
     } catch (err: any) {
       setError(
@@ -117,11 +123,12 @@ const CreateAccount: React.FC = () => {
   };
 
   const resendOtp = async () => {
+    if (!submittedDetails) return;
     setError(null);
     setResent(false);
     setResending(true);
     try {
-      await auth.registerStart({ fullName, email, password });
+      await auth.registerStart(submittedDetails);
       setResent(true);
     } catch (err: any) {
       setError(
@@ -189,7 +196,7 @@ const CreateAccount: React.FC = () => {
           </div>
         </div>
 
-        <div className="relative z-10 flex-1 flex flex-col justify-center py-6 min-h-0">
+        <div className="relative z-10 flex flex-col justify-center flex-1 min-h-0 py-6">
           <div
             className="flex items-center gap-2.5 text-[10px] uppercase tracking-[0.2em] mb-4"
             style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#6E7FA3" }}
@@ -219,7 +226,7 @@ const CreateAccount: React.FC = () => {
           </p>
 
           <div
-            className="mt-5 rounded-xl p-4 pt-3 pb-3"
+            className="p-4 pt-3 pb-3 mt-5 rounded-xl"
             style={{
               background: "rgba(5,10,20,0.5)",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -348,8 +355,8 @@ const CreateAccount: React.FC = () => {
       </aside>
 
       {/* RIGHT: Create account panel */}
-      <main className="flex-1 flex flex-col relative px-6 py-4 sm:px-10 overflow-hidden">
-        <div className="flex justify-end items-center gap-4">
+      <main className="relative flex flex-col flex-1 px-6 py-4 overflow-hidden sm:px-10">
+        <div className="flex items-center justify-end gap-4">
           <a
             href="#"
             onClick={(e) => e.preventDefault()}
@@ -359,9 +366,9 @@ const CreateAccount: React.FC = () => {
           </a>
         </div>
 
-        <div className="flex-1 flex items-center justify-center py-2 min-h-0">
+        <div className="flex items-center justify-center flex-1 min-h-0 py-2">
           <div
-            className="w-full bg-white rounded-2xl p-6 pb-5"
+            className="w-full p-6 pb-5 bg-white rounded-2xl"
             style={{
               maxWidth: 416,
               border: "1px solid #DDE2EB",
@@ -401,7 +408,7 @@ const CreateAccount: React.FC = () => {
                   You'll be the owner of a brand-new organization.
                 </p>
 
-                <form onSubmit={submitDetails} className="space-y-3">
+                <form onSubmit={detailsForm.handleSubmit(submitDetails)} noValidate className="space-y-3">
                   {error && (
                     <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex items-start gap-2 text-[#B91C1C] text-[13px]">
                       <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -414,24 +421,29 @@ const CreateAccount: React.FC = () => {
                       Full name
                     </label>
                     <input
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      required
+                      {...detailsForm.register("fullName")}
                       type="text"
                       autoComplete="name"
                       placeholder="e.g. Sita Rai"
                       className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                      style={{ border: "1px solid #C6CCD8" }}
+                      style={{ border: `1px solid ${detailsForm.formState.errors.fullName ? "#DC2626" : "#C6CCD8"}` }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#1E3A8A";
                         e.currentTarget.style.boxShadow =
                           "0 0 0 3px rgba(30,58,138,0.12)";
                       }}
                       onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.borderColor = detailsForm.formState.errors.fullName
+                          ? "#DC2626"
+                          : "#C6CCD8";
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     />
+                    {detailsForm.formState.errors.fullName && (
+                      <p className="mt-1 text-[12px] text-[#DC2626]">
+                        {detailsForm.formState.errors.fullName.message}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -439,23 +451,28 @@ const CreateAccount: React.FC = () => {
                       Work email
                     </label>
                     <input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
+                      {...detailsForm.register("email")}
                       type="email"
                       autoComplete="email"
                       className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                      style={{ border: "1px solid #C6CCD8" }}
+                      style={{ border: `1px solid ${detailsForm.formState.errors.email ? "#DC2626" : "#C6CCD8"}` }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#1E3A8A";
                         e.currentTarget.style.boxShadow =
                           "0 0 0 3px rgba(30,58,138,0.12)";
                       }}
                       onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.borderColor = detailsForm.formState.errors.email
+                          ? "#DC2626"
+                          : "#C6CCD8";
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     />
+                    {detailsForm.formState.errors.email && (
+                      <p className="mt-1 text-[12px] text-[#DC2626]">
+                        {detailsForm.formState.errors.email.message}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -464,20 +481,20 @@ const CreateAccount: React.FC = () => {
                     </label>
                     <div className="relative">
                       <input
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
+                        {...detailsForm.register("password")}
                         type={showPassword ? "text" : "password"}
                         autoComplete="new-password"
                         className="w-full h-10 pl-3.5 pr-11 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                        style={{ border: "1px solid #C6CCD8" }}
+                        style={{ border: `1px solid ${detailsForm.formState.errors.password ? "#DC2626" : "#C6CCD8"}` }}
                         onFocus={(e) => {
                           e.currentTarget.style.borderColor = "#1E3A8A";
                           e.currentTarget.style.boxShadow =
                             "0 0 0 3px rgba(30,58,138,0.12)";
                         }}
                         onBlur={(e) => {
-                          e.currentTarget.style.borderColor = "#C6CCD8";
+                          e.currentTarget.style.borderColor = detailsForm.formState.errors.password
+                            ? "#DC2626"
+                            : "#C6CCD8";
                           e.currentTarget.style.boxShadow = "none";
                         }}
                       />
@@ -493,6 +510,11 @@ const CreateAccount: React.FC = () => {
                         )}
                       </button>
                     </div>
+                    {detailsForm.formState.errors.password && (
+                      <p className="mt-1 text-[12px] text-[#DC2626]">
+                        {detailsForm.formState.errors.password.message}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -500,23 +522,30 @@ const CreateAccount: React.FC = () => {
                       Confirm password
                     </label>
                     <input
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
+                      {...detailsForm.register("confirmPassword")}
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
                       className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                      style={{ border: "1px solid #C6CCD8" }}
+                      style={{
+                        border: `1px solid ${detailsForm.formState.errors.confirmPassword ? "#DC2626" : "#C6CCD8"}`,
+                      }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#1E3A8A";
                         e.currentTarget.style.boxShadow =
                           "0 0 0 3px rgba(30,58,138,0.12)";
                       }}
                       onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.borderColor = detailsForm.formState.errors.confirmPassword
+                          ? "#DC2626"
+                          : "#C6CCD8";
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     />
+                    {detailsForm.formState.errors.confirmPassword && (
+                      <p className="mt-1 text-[12px] text-[#DC2626]">
+                        {detailsForm.formState.errors.confirmPassword.message}
+                      </p>
+                    )}
                   </div>
 
                   <button
@@ -560,11 +589,12 @@ const CreateAccount: React.FC = () => {
                   Check your email
                 </h2>
                 <p className="text-[#7A8499] text-[13.5px] mt-1 mb-4 leading-relaxed">
-                  We sent a 6-digit code to <b className="text-[#454F63]">{email}</b>.
-                  Enter it below to finish creating your account.
+                  We sent a 6-digit code to{" "}
+                  <b className="text-[#454F63]">{submittedDetails?.email}</b>. Enter it below to
+                  finish creating your account.
                 </p>
 
-                <form onSubmit={submitOtp} className="space-y-3">
+                <form onSubmit={otpForm.handleSubmit(submitOtp)} noValidate className="space-y-3">
                   {error && (
                     <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex items-start gap-2 text-[#B91C1C] text-[13px]">
                       <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -583,11 +613,11 @@ const CreateAccount: React.FC = () => {
                       Verification code
                     </label>
                     <input
-                      value={otp}
-                      onChange={(e) =>
-                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
-                      required
+                      {...otpForm.register("otp", {
+                        onChange: (e) => {
+                          e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        },
+                      })}
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
@@ -595,21 +625,28 @@ const CreateAccount: React.FC = () => {
                       placeholder="123456"
                       autoFocus
                       className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[18px] tracking-[0.3em] text-center text-[#10141F] outline-none transition-all"
-                      style={{ border: "1px solid #C6CCD8" }}
+                      style={{ border: `1px solid ${otpForm.formState.errors.otp ? "#DC2626" : "#C6CCD8"}` }}
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#1E3A8A";
                         e.currentTarget.style.boxShadow =
                           "0 0 0 3px rgba(30,58,138,0.12)";
                       }}
                       onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "#C6CCD8";
+                        e.currentTarget.style.borderColor = otpForm.formState.errors.otp
+                          ? "#DC2626"
+                          : "#C6CCD8";
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     />
+                    {otpForm.formState.errors.otp && (
+                      <p className="mt-1 text-[12px] text-[#DC2626]">
+                        {otpForm.formState.errors.otp.message}
+                      </p>
+                    )}
                   </div>
 
                   <button
-                    disabled={loading || otp.length !== 6}
+                    disabled={loading || otpForm.watch("otp").length !== 6}
                     className="w-full h-10 flex items-center justify-center gap-2 text-[14px] font-semibold text-white bg-[#1E3A8A] rounded-[10px] hover:bg-[#19306F] active:translate-y-px disabled:opacity-70 disabled:cursor-not-allowed transition-all"
                     style={{ boxShadow: "0 1px 2px rgba(16,20,31,0.2)" }}
                   >
@@ -639,7 +676,7 @@ const CreateAccount: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setStep("details");
-                      setOtp("");
+                      otpForm.reset({ otp: "" });
                       setError(null);
                       setResent(false);
                     }}

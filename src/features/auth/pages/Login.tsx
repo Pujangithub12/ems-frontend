@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../../../context/AuthProvider";
+import { loginSchema, LoginFormValues } from "../schemas/authSchemas";
 import { Eye, EyeOff, Loader2, ShieldCheck, ArrowRight } from "lucide-react";
 
 const useNptClock = () => {
@@ -49,8 +52,6 @@ const useAnimatedCounter = (target: number) => {
 };
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -61,12 +62,20 @@ const Login: React.FC = () => {
   const mw = useAnimatedCounter(87.4);
   const sparkRef = useRef<SVGPathElement>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
     setError(null);
     setLoading(true);
     try {
-      await auth.login({ email, password });
+      await auth.login(data);
       nav("/");
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || "Login failed");
@@ -344,7 +353,7 @@ const Login: React.FC = () => {
               Enter your credentials to access your dashboard.
             </p>
 
-            <form onSubmit={submit} className="space-y-3">
+            <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-3">
               {error && (
                 <div className="p-3 bg-[#FEE2E2] border border-[#FECACA] rounded-md flex items-start gap-2 text-[#B91C1C] text-[13px]">
                   <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -357,23 +366,24 @@ const Login: React.FC = () => {
                   Work email
                 </label>
                 <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  {...register("email")}
                   type="email"
                   autoComplete="email"
                   className="w-full h-10 px-3.5 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                  style={{ border: "1px solid #C6CCD8" }}
+                  style={{ border: `1px solid ${errors.email ? "#DC2626" : "#C6CCD8"}` }}
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = "#1E3A8A";
                     e.currentTarget.style.boxShadow =
                       "0 0 0 3px rgba(30,58,138,0.12)";
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#C6CCD8";
+                    e.currentTarget.style.borderColor = errors.email ? "#DC2626" : "#C6CCD8";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 />
+                {errors.email && (
+                  <p className="mt-1 text-[12px] text-[#DC2626]">{errors.email.message}</p>
+                )}
               </div>
 
               <div>
@@ -390,20 +400,18 @@ const Login: React.FC = () => {
                 </div>
                 <div className="relative">
                   <input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
+                    {...register("password")}
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     className="w-full h-10 pl-3.5 pr-11 bg-white rounded-[10px] text-[14px] text-[#10141F] outline-none transition-all"
-                    style={{ border: "1px solid #C6CCD8" }}
+                    style={{ border: `1px solid ${errors.password ? "#DC2626" : "#C6CCD8"}` }}
                     onFocus={(e) => {
                       e.currentTarget.style.borderColor = "#1E3A8A";
                       e.currentTarget.style.boxShadow =
                         "0 0 0 3px rgba(30,58,138,0.12)";
                     }}
                     onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "#C6CCD8";
+                      e.currentTarget.style.borderColor = errors.password ? "#DC2626" : "#C6CCD8";
                       e.currentTarget.style.boxShadow = "none";
                     }}
                   />
@@ -419,6 +427,9 @@ const Login: React.FC = () => {
                     )}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="mt-1 text-[12px] text-[#DC2626]">{errors.password.message}</p>
+                )}
               </div>
 
               <button

@@ -269,7 +269,7 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-white via-blue-50/30 to-blue-100/40">
       {/* Header */}
-      <header className="flex items-center justify-between px-8 py-6 mx-auto max-w-7xl">
+      <header className="flex items-center justify-between px-6 py-6 mx-auto max-w-[1600px] sm:px-8 lg:px-12 xl:px-16">
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center bg-blue-900 rounded-lg w-9 h-9">
             <Users className="w-5 h-5 text-white" />
@@ -293,12 +293,12 @@ const Home: React.FC = () => {
       </header>
 
       {/* Hero */}
-      <section className="grid items-center grid-cols-1 gap-16 px-8 pb-24 mx-auto max-w-7xl lg:grid-cols-2 pt-14">
+      <section className="grid items-center grid-cols-1 gap-16 px-6 pb-24 mx-auto max-w-[1600px] sm:px-8 lg:px-12 xl:px-16 lg:grid-cols-2 pt-14">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-900" /> Modern HR platform
           </span>
-          <h1 className="text-5xl font-extrabold leading-[1.1] text-slate-900 mb-6">
+          <h1 className="text-5xl xl:text-6xl font-extrabold leading-[1.1] text-slate-900 mb-6">
             Manage your <span className="text-blue-700">workforce</span> with confidence
           </h1>
           <p className="mb-8 text-lg leading-relaxed text-slate-500">
@@ -324,7 +324,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Highlights */}
-      <section className="px-8 pb-24 mx-auto max-w-7xl">
+      <section className="px-6 pb-24 mx-auto max-w-[1600px] sm:px-8 lg:px-12 xl:px-16">
         <div className="grid grid-cols-1 bg-blue-900 border border-blue-900 divide-y divide-white/15 rounded-2xl sm:grid-cols-2 sm:divide-y-0 sm:divide-x md:grid-cols-4">
           {highlights.map((h) => (
             <div key={h.title} className="flex items-start gap-3 p-6">
@@ -341,7 +341,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Features */}
-      <section id="features" className="px-8 pb-24 mx-auto max-w-7xl">
+      <section id="features" className="px-6 pb-24 mx-auto max-w-[1600px] sm:px-8 lg:px-12 xl:px-16">
         <div className="max-w-2xl mx-auto text-center mb-14">
           <h2 className="text-3xl font-extrabold text-slate-900">Everything you need</h2>
           <p className="mt-3 text-slate-500">
@@ -365,7 +365,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* CTA */}
-      <section className="px-8 pb-20 mx-auto max-w-7xl">
+      <section className="px-6 pb-20 mx-auto max-w-[1600px] sm:px-8 lg:px-12 xl:px-16">
         <div className="px-8 py-16 text-center rounded-3xl bg-gradient-to-r from-blue-100 to-blue-200/60">
           <h2 className="text-3xl font-extrabold text-slate-900">Ready to transform your HR?</h2>
           <p className="max-w-xl mx-auto mt-3 text-slate-600">
@@ -390,7 +390,7 @@ const Home: React.FC = () => {
 
       {/* Footer */}
       <footer id="contact" className="border-t border-slate-200">
-        <div className="flex flex-col items-center justify-between gap-4 px-8 py-8 mx-auto text-sm max-w-7xl sm:flex-row text-slate-500">
+        <div className="flex flex-col items-center justify-between gap-4 px-6 py-8 mx-auto text-sm max-w-[1600px] sm:px-8 lg:px-12 xl:px-16 sm:flex-row text-slate-500">
           <p>© {new Date().getFullYear()} WorkForce. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <a href="#" className="hover:text-slate-900">Privacy</a>
