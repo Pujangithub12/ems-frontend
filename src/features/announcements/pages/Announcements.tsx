@@ -145,14 +145,14 @@ const Announcements: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden bg-white border rounded-md border-slate-200">
+    <div className="flex flex-col w-full min-h-full overflow-hidden bg-white">
       {/* Top Bar */}
-      <div className="flex items-center flex-shrink-0 px-6 py-3 bg-white border-b border-slate-200">
+      <div className="flex items-center flex-shrink-0 px-6 py-3 bg-slate-50/60 border-b border-slate-200">
         <Eyebrow>{announcements.length} announcements</Eyebrow>
         {user?.role === "admin" && (
           <button
             onClick={() => setShowForm(true)}
-            className="ml-auto bg-slate-900 text-white rounded flex items-center gap-1.5 hover:bg-slate-800 transition-colors"
+            className="ml-auto bg-slate-900 text-white rounded-lg flex items-center gap-1.5 hover:bg-slate-800 transition-colors shadow-sm"
             style={{ padding: "6px 12px", fontSize: 13 }}
           >
             <Plus className="w-3.5 h-3.5" /> New announcement
@@ -162,10 +162,10 @@ const Announcements: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && user?.role === "admin" && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
           <form
             onSubmit={handleCreateAnnouncement}
-            className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col"
+            className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
           >
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
               <div>
@@ -197,14 +197,14 @@ const Announcements: React.FC = () => {
                   required
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                   placeholder="e.g., Office Holiday Update"
                 />
               </div>
 
               <div>
                 <Eyebrow className="mb-1.5">Recipient Type</Eyebrow>
-                <div className="flex items-center bg-[#EEF1F5] rounded p-0.5 border border-slate-200">
+                <div className="flex items-center bg-[#EEF1F5] rounded-lg p-0.5 border border-slate-200">
                   <button
                     type="button"
                     onClick={() => setTargetType("specific")}
@@ -234,12 +234,12 @@ const Announcements: React.FC = () => {
                 <div>
                   <Eyebrow className="mb-1.5">Select Recipients</Eyebrow>
                   {usersLoading ? (
-                    <div className="flex items-center justify-center py-6 border rounded bg-slate-50 border-slate-200">
+                    <div className="flex items-center justify-center py-6 border rounded-lg bg-slate-50 border-slate-200">
                       <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />
                     </div>
                   ) : (
                     // Changed max-h-48 to max-h-40 to make the box slightly smaller
-                    <div className="overflow-y-auto bg-white border divide-y rounded max-h-40 border-slate-200 divide-slate-100">
+                    <div className="overflow-y-auto bg-white border divide-y rounded-lg max-h-40 border-slate-200 divide-slate-100">
                       {users.map((u) => (
                         <label
                           key={u.id}
@@ -306,7 +306,7 @@ const Announcements: React.FC = () => {
                   rows={4}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                   placeholder="Write your message here..."
                 />
               </div>
@@ -316,14 +316,14 @@ const Announcements: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-white transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-70 transition-colors"
               >
                 {submitting ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -350,7 +350,7 @@ const Announcements: React.FC = () => {
 
       {/* Announcements Feed */}
       <div className="flex-1 overflow-y-auto bg-[#F6F7F9]">
-        <div className="max-w-3xl px-6 py-8 mx-auto space-y-4 lg:px-8">
+        <div className="max-w-3xl px-6 py-8 mx-auto space-y-3 lg:px-8">
           {deleteError && (
             <ErrorBanner message={deleteError} onDismiss={() => setDeleteError(null)} />
           )}
@@ -359,8 +359,8 @@ const Announcements: React.FC = () => {
           ) : announcementsError ? (
             <ErrorBanner message={announcementsError} />
           ) : announcements.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-              <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+            <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-xl shadow-md border-slate-200">
+              <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
                 <Megaphone className="w-6 h-6 text-slate-400" />
               </div>
               <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -375,16 +375,13 @@ const Announcements: React.FC = () => {
             announcements.map((announcement) => (
               <article
                 key={announcement.id}
-                className="p-5 bg-white border rounded-md border-slate-200"
+                className="p-3.5 bg-white border rounded-xl shadow-md border-slate-200"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <Avatar name="EMS System" size={36} />
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Avatar name="EMS System" size={28} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-[13px] text-slate-900">
+                    <div className="font-medium text-[12.5px] text-slate-900">
                       System Broadcast
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      {formatDate(announcement.createdAt)}
                     </div>
                   </div>
                   <span
@@ -398,17 +395,17 @@ const Announcements: React.FC = () => {
                   </span>
                 </div>
 
-                <h3 className="font-semibold mb-2 text-[16px] tracking-tight text-slate-900">
+                <h3 className="font-semibold mb-1 text-[14.5px] tracking-tight text-slate-900">
                   {announcement.subject}
                 </h3>
-                <p className="text-slate-600 leading-relaxed mb-4 text-[13px] whitespace-pre-wrap">
+                <p className="text-slate-600 leading-snug mb-2 text-[12.5px] whitespace-pre-wrap">
                   {announcement.message}
                 </p>
 
                 {announcement.targetType === "specific" &&
                   announcement.targetEmails &&
                   announcement.targetEmails.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-4">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
                       {announcement.targetEmails.map((email, idx) => (
                         <span
                           key={idx}
@@ -421,7 +418,7 @@ const Announcements: React.FC = () => {
                     </div>
                   )}
 
-                <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                   <span
                     className="text-[11px] text-slate-400"
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}

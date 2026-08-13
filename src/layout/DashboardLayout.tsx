@@ -43,6 +43,7 @@ import { useHierarchy } from "../features/hierarchy/hooks/useHierarchy";
 import { useTasks } from "../features/tasks/hooks/useTasks";
 import { useAnnouncements } from "../features/announcements/hooks/useAnnouncements";
 import { canApprove as hierarchyCanApprove } from "../lib/hierarchyAuthority";
+import { useSidebarBadgeSeen } from "../hooks/useSidebarBadgeSeen";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -210,6 +211,26 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     return allAnnouncements.filter((a) => new Date(a.createdAt).getTime() >= cutoff).length;
   }, [allAnnouncements]);
 
+  // Clears the sidebar red dot once the caller has actually viewed the
+  // Announcements/Approvals page — it reappears if the live count grows
+  // again after that visit (e.g. a new pending request comes in).
+  const isOnAnnouncementsPage = location.pathname === `/${paramOrganizationId}/announcements`;
+  const isOnApprovalsPage = location.pathname === `/${paramOrganizationId}/approvals`;
+  const visibleAnnouncementsBadgeCount = useSidebarBadgeSeen(
+    "announcements",
+    paramOrganizationId,
+    currentUserId,
+    isOnAnnouncementsPage,
+    announcementsBadgeCount,
+  );
+  const visibleApprovalsBadgeCount = useSidebarBadgeSeen(
+    "approvals",
+    paramOrganizationId,
+    currentUserId,
+    isOnApprovalsPage,
+    approvalsBadgeCount,
+  );
+
   if (loading || !isValidParamId) {
     return (
       <div className="fixed inset-0 flex items-center justify-center flex-col gap-4 bg-[#F6F7F9]">
@@ -290,15 +311,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       label: "Announcements",
       icon: Megaphone,
       id: "announcements",
-      badgeCount: announcementsBadgeCount,
+      badgeCount: visibleAnnouncementsBadgeCount,
     },
     { path: `${prefix}/calendar`, label: "Calendar", icon: Calendar, id: "calendar" },
     {
-      path: `${prefix}/leaverequests`,
+      path: `${prefix}/approvals`,
       label: "Approvals",
       icon: ClipboardCheck,
-      id: "leaverequests",
-      badgeCount: approvalsBadgeCount,
+      id: "approvals",
+      badgeCount: visibleApprovalsBadgeCount,
     },
   ];
 
@@ -360,7 +381,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
-    leaverequests: "Review and approve requests",
+    approvals: "Review and approve requests",
     reports: "Inventory & procurement analytics",
     users: "Manage people and permissions",
     settings: "Organization configuration and preferences",
@@ -374,11 +395,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   return (
     <div className="flex min-h-screen bg-[#F6F7F9]">
       {/* Desktop Sidebar */}
-      <aside className="sticky top-0 flex-col flex-shrink-0 hidden w-56 h-screen border-r lg:flex bg-slate-900 border-slate-800">
+      <aside className="sticky top-0 flex-col flex-shrink-0 hidden w-56 h-screen border-r shadow-2xl lg:flex bg-slate-900 border-slate-800 z-20">
         {/* Brand / Current Organization */}
-        <div className="p-3">
+        <div className="p-3 border-b border-slate-800">
           <div className="flex items-center w-full gap-2.5 px-2.5 py-2.5">
-            <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
+            <div className="w-[26px] h-[26px] bg-blue-900 rounded-lg shadow-sm ring-1 ring-white/10 flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
               {organization?.name.charAt(0).toUpperCase() || "EM"}
             </div>
             <div className="flex-1 min-w-0">
@@ -396,56 +417,60 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 overflow-y-auto">
-          <Eyebrow>Operations</Eyebrow>
+        <nav className="flex-1 px-3 pt-3 overflow-y-auto">
+          <Eyebrow className="pl-2.5">Operations</Eyebrow>
           <div className="h-1.5" />
-          {navItems.map((it) => {
-            if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
-            if (it.id === "procurement") {
-              if (!isAdmin) {
+          <div className="flex flex-col gap-0.5">
+            {navItems.map((it) => {
+              if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
+              if (it.id === "procurement") {
+                if (!isAdmin) {
+                  return (
+                    <SidebarLink
+                      key={it.id}
+                      to={it.path}
+                      icon={it.icon}
+                      label={it.label}
+                      badgeCount={it.badgeCount}
+                    />
+                  );
+                }
+                const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
+                const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+                const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                 return (
-                  <SidebarLink
-                    key={it.id}
-                    to={it.path}
-                    icon={it.icon}
-                    label={it.label}
-                    badgeCount={it.badgeCount}
+                  <SidebarDropdown
+                    key="purchase"
+                    icon={ShoppingCart}
+                    label="Procurement"
+                    items={[
+                      { to: it.path, label: "Purchase Requests" },
+                      { to: purchaseOrders.path, label: "Purchase Orders" },
+                      { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
+                      { to: vendorsItem.path, label: "Vendors" },
+                    ]}
                   />
                 );
               }
-              const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
-              const vendorsItem = navItems.find((n) => n.id === "vendors")!;
-              const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
               return (
-                <SidebarDropdown
-                  key="purchase"
-                  icon={ShoppingCart}
-                  label="Procurement"
-                  items={[
-                    { to: it.path, label: "Purchase Requests" },
-                    { to: purchaseOrders.path, label: "Purchase Orders" },
-                    { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
-                    { to: vendorsItem.path, label: "Vendors" },
-                  ]}
+                <SidebarLink
+                  key={it.id}
+                  to={it.path}
+                  icon={it.icon}
+                  label={it.label}
+                  badgeCount={it.badgeCount}
                 />
               );
-            }
-            return (
-              <SidebarLink
-                key={it.id}
-                to={it.path}
-                icon={it.icon}
-                label={it.label}
-                badgeCount={it.badgeCount}
-              />
-            );
-          })}
+            })}
+          </div>
           <div className="h-3" />
-          <Eyebrow>Reports</Eyebrow>
+          <Eyebrow className="pl-2.5">Reports</Eyebrow>
           <div className="h-1.5" />
-          {reports.map((it) => (
-            <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
-          ))}
+          <div className="flex flex-col gap-0.5 pb-3">
+            {reports.map((it) => (
+              <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} />
+            ))}
+          </div>
         </nav>
       </aside>
 
@@ -456,10 +481,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             onClick={() => setIsMobileMenuOpen(false)}
             className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
           />
-          <aside className="fixed inset-y-0 left-0 z-50 flex flex-col border-r shadow-xl w-60 bg-slate-900 border-slate-800 lg:hidden">
+          <aside className="fixed inset-y-0 left-0 z-50 flex flex-col border-r shadow-2xl w-60 bg-slate-900 border-slate-800 lg:hidden">
             <div className="flex items-center justify-between p-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-[26px] h-[26px] bg-blue-900 rounded flex items-center justify-center text-white font-bold text-[10px]">
+                <div className="w-[26px] h-[26px] bg-blue-900 rounded-lg shadow-sm ring-1 ring-white/10 flex items-center justify-center text-white font-bold text-[10px]">
                   EM
                 </div>
                 <span className="font-bold text-[14px] text-white">
@@ -468,70 +493,74 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               </div>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-800 rounded"
+                className="p-1.5 text-slate-400 hover:bg-white/5 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <nav className="flex-1 px-3 py-3 overflow-y-auto">
-              <Eyebrow>Operations</Eyebrow>
+              <Eyebrow className="pl-2.5">Operations</Eyebrow>
               <div className="h-1.5" />
-              {navItems.map((it) => {
-                if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
-                if (it.id === "procurement") {
-                  if (!isAdmin) {
+              <div className="flex flex-col gap-0.5">
+                {navItems.map((it) => {
+                  if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
+                  if (it.id === "procurement") {
+                    if (!isAdmin) {
+                      return (
+                        <SidebarLink
+                          key={it.id}
+                          to={it.path}
+                          icon={it.icon}
+                          label={it.label}
+                          badgeCount={it.badgeCount}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        />
+                      );
+                    }
+                    const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
+                    const vendorsItem = navItems.find((n) => n.id === "vendors")!;
+                    const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                     return (
-                      <SidebarLink
-                        key={it.id}
-                        to={it.path}
-                        icon={it.icon}
-                        label={it.label}
-                        badgeCount={it.badgeCount}
-                        onClick={() => setIsMobileMenuOpen(false)}
+                      <SidebarDropdown
+                        key="purchase"
+                        icon={ShoppingCart}
+                        label="Procurement"
+                        items={[
+                          { to: it.path, label: "Purchase Requests" },
+                          { to: purchaseOrders.path, label: "Purchase Orders" },
+                          { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
+                          { to: vendorsItem.path, label: "Vendors" },
+                        ]}
+                        onNavigate={() => setIsMobileMenuOpen(false)}
                       />
                     );
                   }
-                  const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
-                  const vendorsItem = navItems.find((n) => n.id === "vendors")!;
-                  const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                   return (
-                    <SidebarDropdown
-                      key="purchase"
-                      icon={ShoppingCart}
-                      label="Procurement"
-                      items={[
-                        { to: it.path, label: "Purchase Requests" },
-                        { to: purchaseOrders.path, label: "Purchase Orders" },
-                        { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
-                        { to: vendorsItem.path, label: "Vendors" },
-                      ]}
-                      onNavigate={() => setIsMobileMenuOpen(false)}
+                    <SidebarLink
+                      key={it.id}
+                      to={it.path}
+                      icon={it.icon}
+                      label={it.label}
+                      badgeCount={it.badgeCount}
+                      onClick={() => setIsMobileMenuOpen(false)}
                     />
                   );
-                }
-                return (
+                })}
+              </div>
+              <div className="h-3" />
+              <Eyebrow className="pl-2.5">Reports</Eyebrow>
+              <div className="h-1.5" />
+              <div className="flex flex-col gap-0.5">
+                {reports.map((it) => (
                   <SidebarLink
                     key={it.id}
                     to={it.path}
                     icon={it.icon}
                     label={it.label}
-                    badgeCount={it.badgeCount}
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                );
-              })}
-              <div className="h-3" />
-              <Eyebrow>Reports</Eyebrow>
-              <div className="h-1.5" />
-              {reports.map((it) => (
-                <SidebarLink
-                  key={it.id}
-                  to={it.path}
-                  icon={it.icon}
-                  label={it.label}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                />
-              ))}
+                ))}
+              </div>
             </nav>
           </aside>
         </>
@@ -540,10 +569,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       {/* Main content */}
       <main className="flex flex-col flex-1 min-w-0">
         {/* Top bar */}
-        <div className="flex items-center flex-shrink-0 h-16 gap-4 px-6 bg-white border-b border-slate-200">
+        <div className="flex items-center flex-shrink-0 h-16 gap-4 px-6 bg-white border-b border-slate-200 shadow-sm z-30">
           <button
             onClick={() => setIsMobileMenuOpen(true)}
-            className="lg:hidden p-1.5 rounded text-slate-600 hover:bg-slate-100"
+            className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -584,14 +613,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => setUserMenuOpen((o) => !o)}
-              className="flex items-center gap-2 rounded p-1.5 pr-2 hover:bg-slate-100"
+              className="flex items-center gap-2 rounded-lg p-1.5 pr-2 hover:bg-slate-100"
             >
               <Avatar name={user?.fullName || "Guest"} size={28} dark />
-              <ChevronDown className="w-3 h-3 text-slate-400" />
+              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
             </button>
             {userMenuOpen && (
-              <div className="absolute right-0 top-[calc(100% + 6px)] bg-white rounded border border-slate-200 w-64 z-50 shadow-lg">
-                <div className="px-4 py-3 flex items-center gap-2.5 border-b border-slate-200">
+              <div className="absolute right-0 top-[calc(100%+8px)] bg-white rounded-xl border border-slate-200/70 w-64 z-50 shadow-2xl overflow-hidden">
+                <div className="px-4 py-3 flex items-center gap-2.5 border-b border-slate-200 bg-slate-50/60">
                   <Avatar name={user?.fullName || "Guest"} size={36} dark />
                   <div className="min-w-0">
                     <div className="font-semibold truncate text-[13px] text-slate-900">
@@ -608,13 +637,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     </div>
                   </div>
                 </div>
-                <div className="py-1">
+                <div className="py-1.5">
                   <button
                     onClick={() => {
                       setUserMenuOpen(false);
                       navigate(`${prefix}/profile`);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <UserRoundIcon className="w-3.5 h-3.5 opacity-70" />
                     My Profile
@@ -624,7 +653,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       setUserMenuOpen(false);
                       navigate(`${prefix}/users`);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <UsersIcon className="w-3.5 h-3.5 opacity-70" />
                     People
@@ -634,7 +663,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       setUserMenuOpen(false);
                       navigate(`${prefix}/settings`);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <Settings className="w-3.5 h-3.5 opacity-70" />
                     Settings
@@ -645,7 +674,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                         setUserMenuOpen(false);
                         navigate(`${prefix}/users`, { state: { openInvite: true } });
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                      className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                     >
                       <UserPlus className="w-3.5 h-3.5 opacity-70" />
                       Invite Members
@@ -653,7 +682,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                   )}
                   <button
                     onClick={() => setNotificationSettingsOpen((o) => !o)}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <BellOff className="w-3.5 h-3.5 opacity-70" />
                     Notification Settings
@@ -671,23 +700,25 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       setUserMenuOpen(false);
                       setShowSwitchOrganizationModal(true);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     <RefreshCcw className="w-3.5 h-3.5 opacity-70" />
                     Switch organization
                   </button>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] text-red-700 hover:bg-red-50"
-                  >
-                    <LogOut className="w-3.5 h-3.5 opacity-70" />
-                    Sign out
-                  </button>
+                  <div className="mt-1 pt-1 border-t border-slate-100">
+                    <button
+                      onClick={handleLogout}
+                      className="w-[calc(100%-12px)] mx-1.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-red-700 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5 opacity-70" />
+                      Sign out
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
             {notificationSettingsOpen && (
-              <div className="absolute right-[272px] top-[calc(100% + 6px)] z-50">
+              <div className="absolute right-[272px] top-[calc(100%+8px)] z-50">
                 <NotificationSettingsPanel onClose={() => setNotificationSettingsOpen(false)} />
               </div>
             )}

@@ -17,8 +17,6 @@ import {
   Repeat,
   TrendingUp,
   TrendingDown,
-  PanelRightClose,
-  PanelRightOpen,
   Eye,
   ArrowRightLeft,
   PackagePlus,
@@ -64,12 +62,12 @@ const DEAD_STOCK_STYLES: Record<string, { bg: string; fg: string }> = {
 };
 
 const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({ className = "", children }) => (
-  <div className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>{children}</div>
+  <div className={`bg-white rounded-xl border border-slate-200 shadow-md ${className}`}>{children}</div>
 );
 
 const CardHeader: React.FC<{ icon: React.ElementType; title: string; subtitle?: string }> = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-200">
-    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-slate-100">
+  <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-200 bg-slate-50/60 rounded-t-xl">
+    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-slate-100 ring-1 ring-black/5">
       <Icon className="w-4 h-4 text-slate-600" />
     </div>
     <div className="min-w-0">
@@ -92,10 +90,10 @@ const KpiCard: React.FC<{
   trendPct: number;
   sparkline: { value: number }[];
 }> = ({ label, value, icon: Icon, trendPct, sparkline }) => (
-  <div className="p-4 bg-white border rounded-lg border-slate-200">
+  <div className="p-4 bg-white border rounded-xl shadow-md border-slate-200">
     <div className="flex items-start justify-between mb-2">
       <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 bg-blue-50">
+      <div className="flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 bg-blue-50 ring-1 ring-black/5">
         <Icon className="w-4 h-4 text-blue-700" />
       </div>
     </div>
@@ -139,7 +137,6 @@ const ReportsPage: React.FC = () => {
   const [warehouseId, setWarehouseId] = useState<number | "">("");
   const [vendorId, setVendorId] = useState<number | "">("");
   const [category, setCategory] = useState<string>("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [drawerKey, setDrawerKey] = useState<string | null>(null);
   const [deadStockSearch, setDeadStockSearch] = useState("");
   const [inventoryDrawerItemId, setInventoryDrawerItemId] = useState<number | null>(null);
@@ -348,7 +345,7 @@ const ReportsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-24">
+      <div className="flex flex-col items-center justify-center gap-3 py-24 bg-white">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
         <p className="text-[12px] text-slate-400">Loading reports…</p>
       </div>
@@ -357,8 +354,10 @@ const ReportsPage: React.FC = () => {
 
   if (error || !summary) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center">
-        <AlertCircle className="w-6 h-6 text-red-600" />
+      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center bg-white">
+        <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
+          <AlertCircle className="w-6 h-6 text-red-600" />
+        </div>
         <p className="text-[13px] text-slate-600">{error || "No data available."}</p>
       </div>
     );
@@ -367,7 +366,7 @@ const ReportsPage: React.FC = () => {
   const k = summary.kpis;
 
   return (
-    <div className="w-full p-6 space-y-4">
+    <div className="w-full min-h-full p-6 bg-white lg:px-8 lg:py-8 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
 
@@ -376,7 +375,7 @@ const ReportsPage: React.FC = () => {
             <select
               value={range}
               onChange={(e) => setRange(e.target.value as ReportFilters["range"])}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900"
+              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400"
             >
               <option value="30d">Last 30 days</option>
               <option value="month">This month</option>
@@ -390,7 +389,7 @@ const ReportsPage: React.FC = () => {
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : "")}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 max-w-[140px]"
+              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400 max-w-[140px]"
             >
               <option value="">All Projects</option>
               {projects.map((p) => (
@@ -403,7 +402,7 @@ const ReportsPage: React.FC = () => {
             <select
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value ? Number(e.target.value) : "")}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 max-w-[140px]"
+              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400 max-w-[140px]"
             >
               <option value="">All Warehouses</option>
               {warehouses.map((w) => (
@@ -416,7 +415,7 @@ const ReportsPage: React.FC = () => {
             <select
               value={vendorId}
               onChange={(e) => setVendorId(e.target.value ? Number(e.target.value) : "")}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 max-w-[140px]"
+              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400 max-w-[140px]"
             >
               <option value="">All Vendors</option>
               {vendors.map((v) => (
@@ -429,7 +428,7 @@ const ReportsPage: React.FC = () => {
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900"
+              className="pl-3 pr-8 py-2 text-[12px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400"
             >
               <option value="">All Categories</option>
               <option value="hardware">Hardware</option>
@@ -453,13 +452,6 @@ const ReportsPage: React.FC = () => {
           >
             <Printer size={13} /> Export PDF
           </button>
-          <button
-            onClick={() => setSidebarOpen((s) => !s)}
-            className="flex items-center justify-center w-8 h-8 border rounded-lg text-slate-500 border-slate-200 hover:bg-slate-50"
-            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-          >
-            {sidebarOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-          </button>
         </div>
       </div>
 
@@ -475,7 +467,7 @@ const ReportsPage: React.FC = () => {
         <KpiCard label="Inventory Turnover" value={k.inventoryTurnover.value.toFixed(2)} icon={Repeat} trendPct={k.inventoryTurnover.trendPct} sparkline={k.inventoryTurnover.sparkline} />
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 ${sidebarOpen ? "xl:grid-cols-[minmax(0,1fr)_280px]" : ""}`}>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex flex-col min-w-0 gap-4">
           {/* Row 1 */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -638,7 +630,7 @@ const ReportsPage: React.FC = () => {
                 value={deadStockSearch}
                 onChange={(e) => setDeadStockSearch(e.target.value)}
                 placeholder="Search items, SKU..."
-                className="mb-3 w-64 px-3 py-2 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                className="mb-3 w-64 px-3 py-2 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
               />
               <div className="overflow-x-auto border rounded-lg border-slate-200">
                 <table className="w-full text-[12px]">
@@ -686,13 +678,13 @@ const ReportsPage: React.FC = () => {
                             <td className="px-3 py-2 text-slate-600">{d.suggestedAction}</td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="View">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded-lg w-7 h-7 text-slate-500 hover:bg-slate-100" title="View">
                                   <Eye size={13} />
                                 </button>
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="Transfer">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded-lg w-7 h-7 text-slate-500 hover:bg-slate-100" title="Transfer">
                                   <ArrowRightLeft size={13} />
                                 </button>
-                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded w-7 h-7 text-slate-500 hover:bg-slate-100" title="Adjust">
+                                <button onClick={() => setInventoryDrawerItemId(d.id)} className="flex items-center justify-center rounded-lg w-7 h-7 text-slate-500 hover:bg-slate-100" title="Adjust">
                                   <PackagePlus size={13} />
                                 </button>
                               </div>
@@ -807,8 +799,7 @@ const ReportsPage: React.FC = () => {
         </div>
 
         {/* Right sidebar */}
-        {sidebarOpen && (
-          <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
             <Card>
               <CardHeader icon={AlertTriangle} title="Recent Alerts" />
               <div className="p-4 space-y-3 max-h-[420px] overflow-y-auto">
@@ -881,8 +872,7 @@ const ReportsPage: React.FC = () => {
                 </p>
               </div>
             </Card>
-          </div>
-        )}
+        </div>
       </div>
 
       {drawerKey && drawerConfigs[drawerKey] && (

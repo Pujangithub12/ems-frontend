@@ -7,7 +7,12 @@ import {
   createPlantReport,
   updatePlantReport,
   deletePlantReport,
+  getPlantReportFields,
+  createPlantReportField,
+  updatePlantReportField,
+  deletePlantReportField,
   SavePlantReportPayload,
+  SavePlantReportFieldPayload,
 } from "../api/plantReport.api";
 
 export function usePlantReportsForMonth(year: number, month: number, projectId?: number | null) {
@@ -57,6 +62,50 @@ export function useDeletePlantReport() {
   return useMutation({
     mutationFn: (id: number) => deletePlantReport(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
+    },
+  });
+}
+
+export function usePlantReportFields() {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.plantReportFields(wsId),
+    queryFn: () => getPlantReportFields(),
+    enabled: Number.isFinite(wsId),
+  });
+}
+
+export function useCreatePlantReportField() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SavePlantReportFieldPayload) => createPlantReportField(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
+    },
+  });
+}
+
+export function useUpdatePlantReportField() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: SavePlantReportFieldPayload }) =>
+      updatePlantReportField(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
+    },
+  });
+}
+
+export function useDeletePlantReportField() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deletePlantReportField(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
     },
   });

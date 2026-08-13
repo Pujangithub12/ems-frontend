@@ -3,6 +3,17 @@ import api from "../../../api/axios";
 export type PlantReportStaffMember = { id: number; fullName: string };
 export type PlantReportProject = { id: number; name: string };
 
+export type PlantReportFieldDataType = "text" | "number" | "date" | "boolean";
+
+export type PlantReportCustomField = {
+  id: number;
+  name: string;
+  dataType: PlantReportFieldDataType;
+  sortOrder: number;
+};
+
+export type PlantReportCustomValue = string | number | boolean | null;
+
 export type PlantDailyReport = {
   id: number;
   date: string;
@@ -24,6 +35,7 @@ export type PlantDailyReport = {
   burnerStatus: "running" | "stopped" | "maintenance" | null;
   burnerHours: number | null;
   shutdownReason: string | null;
+  customValues: Record<string, PlantReportCustomValue>;
   staff: PlantReportStaffMember[];
   staffCount: number;
   createdBy: PlantReportStaffMember | null;
@@ -71,6 +83,8 @@ export type SavePlantReportPayload = {
   burnerHours?: number | null;
   shutdownReason?: string | null;
   staffUserIds?: number[];
+  /** Keyed by custom field id (as a string). */
+  customValues?: Record<string, PlantReportCustomValue>;
 };
 
 /** GET /api/plant-reports?year=&month=&projectId= — omit projectId for a
@@ -115,4 +129,37 @@ export async function updatePlantReport(
 /** DELETE /api/plant-reports/:id */
 export async function deletePlantReport(id: number): Promise<void> {
   await api.delete(`/api/plant-reports/${id}`);
+}
+
+export type SavePlantReportFieldPayload = {
+  name: string;
+  dataType: PlantReportFieldDataType;
+};
+
+/** GET /api/plant-report-fields — every custom field this organization has defined. */
+export async function getPlantReportFields(): Promise<PlantReportCustomField[]> {
+  const res = await api.get("/api/plant-report-fields");
+  return res.data.fields;
+}
+
+/** POST /api/plant-report-fields */
+export async function createPlantReportField(
+  payload: SavePlantReportFieldPayload,
+): Promise<PlantReportCustomField> {
+  const res = await api.post("/api/plant-report-fields", payload);
+  return res.data.field;
+}
+
+/** PUT /api/plant-report-fields/:id */
+export async function updatePlantReportField(
+  id: number,
+  payload: SavePlantReportFieldPayload,
+): Promise<PlantReportCustomField> {
+  const res = await api.put(`/api/plant-report-fields/${id}`, payload);
+  return res.data.field;
+}
+
+/** DELETE /api/plant-report-fields/:id */
+export async function deletePlantReportField(id: number): Promise<void> {
+  await api.delete(`/api/plant-report-fields/${id}`);
 }

@@ -25,11 +25,11 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/45">
-      <div className="w-full max-w-md overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/50">
+      <div className="w-full max-w-md overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-slate-50/60">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-red-600 bg-red-50 rounded-full">
+            <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-red-600 bg-red-50 rounded-full ring-1 ring-black/5">
               <AlertTriangle className="w-4.5 h-4.5" />
             </div>
             <h3 className="font-semibold text-[15px] text-slate-900">{title}</h3>
@@ -37,7 +37,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="p-1.5 rounded text-slate-400 hover:bg-slate-100 transition-colors disabled:opacity-60"
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors disabled:opacity-60"
           >
             <X className="w-4 h-4" />
           </button>
@@ -51,14 +51,14 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="px-4 py-2 text-[13px] font-medium border rounded text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
+            className="px-4 py-2 text-[13px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
             disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-red-600 rounded hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-red-600 rounded-lg shadow-sm hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {confirmText}

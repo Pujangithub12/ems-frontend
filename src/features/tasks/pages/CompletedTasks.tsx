@@ -146,28 +146,28 @@ const CompletedTasks: React.FC = () => {
             placeholder="Search completed tasks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-3 text-[13px] bg-slate-50 border border-slate-200 rounded-lg pl-9 outline-none focus:bg-white focus:border-blue-400 transition-colors"
           />
         </div>
         <div ref={projectFilterRef} className="relative">
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
             <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
-            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-              <div className="max-h-[180px] overflow-y-auto">
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
+              <div className="max-h-[180px] overflow-y-auto py-1">
                 <button
                   type="button"
                   onClick={() => {
                     setFilterProjectName("");
                     setProjectFilterOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-[13px] transition-colors hover:bg-slate-50 ${
+                  className={`w-[calc(100%-12px)] mx-1.5 text-left px-3 py-2 text-[13px] rounded-lg transition-colors hover:bg-slate-50 ${
                     !filterProjectName ? "font-semibold text-blue-900 bg-blue-50" : "text-slate-700"
                   }`}
                 >
@@ -181,7 +181,7 @@ const CompletedTasks: React.FC = () => {
                       setFilterProjectName(project.name);
                       setProjectFilterOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-[13px] truncate transition-colors hover:bg-slate-50 ${
+                    className={`w-[calc(100%-12px)] mx-1.5 text-left px-3 py-2 text-[13px] truncate rounded-lg transition-colors hover:bg-slate-50 ${
                       filterProjectName === project.name
                         ? "font-semibold text-blue-900 bg-blue-50"
                         : "text-slate-700"
@@ -196,7 +196,7 @@ const CompletedTasks: React.FC = () => {
         </div>
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -213,7 +213,7 @@ const CompletedTasks: React.FC = () => {
 
       {/* Content: grouped by project */}
       {loading ? (
-        <div className="bg-white border rounded-md border-slate-200">
+        <div className="bg-white border rounded-xl shadow-md border-slate-200">
           <div className="flex flex-col items-center justify-center gap-3 py-20">
             <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
             <div
@@ -227,8 +227,8 @@ const CompletedTasks: React.FC = () => {
       ) : error ? (
         <ErrorBanner message={error} />
       ) : filteredTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-xl shadow-md border-slate-200">
+          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
             <CheckCircle2 className="w-6 h-6 text-slate-400" />
           </div>
           <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -246,7 +246,7 @@ const CompletedTasks: React.FC = () => {
               return (
                 <div
                   key={group.key}
-                  className="overflow-hidden transition-shadow bg-white border rounded-lg shadow-sm border-slate-200 hover:shadow-md"
+                  className="overflow-hidden transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
                 >
                   <button
                     onClick={() => toggleGroup(group.key)}
@@ -257,7 +257,7 @@ const CompletedTasks: React.FC = () => {
                     ) : (
                       <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
                     )}
-                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50">
+                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50 ring-1 ring-black/5">
                       <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
                     </span>
                     <div className="flex-1 min-w-0">
@@ -347,7 +347,7 @@ const CompletedTasks: React.FC = () => {
           if (!t) return null;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/50 backdrop-blur-sm animate-drawer-fade-in">
               <div className="w-full max-w-lg h-full bg-white border-l border-slate-200 shadow-2xl overflow-hidden flex flex-col animate-drawer-slide-in">
                 <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
                   <div className="min-w-0">
@@ -370,7 +370,7 @@ const CompletedTasks: React.FC = () => {
                           setExpandedTaskId(null);
                           setShowAllMembers(false);
                         }}
-                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -414,7 +414,7 @@ const CompletedTasks: React.FC = () => {
                     <div className="mb-2">
                       <Eyebrow>Description</Eyebrow>
                     </div>
-                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50 ml-1.5">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/50 ml-1.5">
                       <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
                         {t.description || "No description provided."}
                       </p>
@@ -427,7 +427,7 @@ const CompletedTasks: React.FC = () => {
                         <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                         <Eyebrow>Sub-Tasks</Eyebrow>
                       </div>
-                      <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                      <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/50">
                         <div className="space-y-1.5">
                           {t.subTasks.map((st) => (
                             <div
@@ -458,7 +458,7 @@ const CompletedTasks: React.FC = () => {
                       <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
                       <Eyebrow>Assigned To</Eyebrow>
                     </div>
-                    <div className="p-3 rounded border border-slate-200 bg-slate-50/50">
+                    <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/50">
                       <div className="space-y-2">
                         {t.assignedUsers.length === 0 ? (
                           <p className="text-slate-400 text-[12px]">Unassigned</p>
@@ -512,13 +512,13 @@ const CompletedTasks: React.FC = () => {
           const t = completedTasks.find((task) => task.id === expandedTaskId);
           if (!t) return null;
           return (
-            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
-              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
-                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
+              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200 max-h-[80vh]">
+                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200 bg-slate-50/60">
                   <Eyebrow>Assigned Members ({t.assignedUsers.length})</Eyebrow>
                   <button
                     onClick={() => setShowAllMembers(false)}
-                    className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                    className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -532,7 +532,7 @@ const CompletedTasks: React.FC = () => {
                     t.assignedUsers.map((u) => (
                       <div
                         key={u.id}
-                        className="flex items-center gap-2.5 px-2 py-2 rounded hover:bg-slate-50"
+                        className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-50"
                       >
                         <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-semibold text-white rounded-full bg-blue-900">
                           {u.fullName.charAt(0)}

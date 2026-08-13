@@ -118,11 +118,13 @@ export const StatusPill: React.FC<{ type: "priority" | "status"; value: string }
   }
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium"
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] tracking-[0.05em] uppercase font-medium ring-1 ring-inset"
       style={{
         fontFamily: "'JetBrains Mono', monospace",
         background: bg,
         color: fg,
+        // @ts-expect-error -- CSS custom property used only to derive the ring color below
+        "--tw-ring-color": `${fg}26`,
       }}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: fg }} />

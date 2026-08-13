@@ -17,8 +17,8 @@ const NotificationSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose 
     useNotificationMute();
 
   return (
-    <div className="w-72 bg-white rounded border border-slate-200 shadow-lg">
-      <div className="px-4 py-3 border-b border-slate-200">
+    <div className="w-72 bg-white rounded-xl border border-slate-200/70 shadow-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/60">
         <div className="font-semibold text-[13px] text-slate-900">Notification Settings</div>
         <div className="text-[11.5px] text-slate-500 mt-0.5">
           Mute new notifications on this device
@@ -42,7 +42,7 @@ const NotificationSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose 
           <button
             key={opt.minutes}
             onClick={() => muteForMinutes(opt.minutes)}
-            className="w-full flex items-center justify-between px-4 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+            className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center justify-between px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
           >
             {opt.label}
             {isMuted && mutedUntil !== "forever" && (
@@ -58,7 +58,7 @@ const NotificationSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose 
         ))}
         <button
           onClick={muteForever}
-          className="w-full flex items-center justify-between px-4 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+          className="w-[calc(100%-12px)] mx-1.5 flex items-center justify-between px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
         >
           Until I turn it back on
           <Check
@@ -74,7 +74,7 @@ const NotificationSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose 
             onClose();
           }}
           disabled={!isMuted}
-          className="w-full px-4 py-2 text-left text-[13px] text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent"
+          className="w-[calc(100%-12px)] mx-1.5 px-2.5 py-2 text-left text-[13px] text-slate-500 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
         >
           Turn notifications back on
         </button>

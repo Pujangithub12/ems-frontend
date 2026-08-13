@@ -128,10 +128,10 @@ const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; i
   iconBg,
   title,
 }) => (
-  <div className="p-3 bg-white border rounded-lg border-slate-200" title={title}>
+  <div className="p-3 bg-white border rounded-xl shadow-md border-slate-200" title={title}>
     <div className="flex items-start justify-between">
       <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ${iconBg}`}>{icon}</div>
+      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ring-1 ring-black/5 ${iconBg}`}>{icon}</div>
     </div>
     <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{value}</div>
   </div>
@@ -473,7 +473,7 @@ const InventoryPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16">
+      <div className="flex flex-col items-center justify-center gap-3 py-16 bg-white">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
         <p className="text-[12px] text-slate-400">Loading inventory…</p>
       </div>
@@ -481,14 +481,16 @@ const InventoryPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full p-6">
+    <div className="w-full min-h-full p-6 bg-white lg:px-8 lg:py-8">
       {error ? (
         <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-          <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
+            <AlertCircle className="w-6 h-6 text-red-600" />
+          </div>
           <p className="text-[13px] text-slate-600">{error}</p>
           <button
             onClick={refresh}
-            className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded hover:bg-slate-50"
+            className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           >
             Retry
           </button>
@@ -526,7 +528,7 @@ const InventoryPage: React.FC = () => {
                       setPage(1);
                     }}
                     placeholder="Search items, SKU, projects..."
-                    className="pl-8 pr-3 py-2 w-56 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                    className="pl-8 pr-3 py-2 w-56 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
                   />
                 </div>
                 <div className="relative">
@@ -663,7 +665,7 @@ const InventoryPage: React.FC = () => {
                     </button>
                     <button
                       onClick={openCreateForm}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors shadow-sm"
                     >
                       <Plus size={14} /> Add Item
                     </button>
@@ -673,7 +675,7 @@ const InventoryPage: React.FC = () => {
             </div>
 
             {actionError && (
-              <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+              <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
                 <span>{actionError}</span>
                 <button onClick={() => setActionError(null)}>
                   <X size={14} />
@@ -682,7 +684,7 @@ const InventoryPage: React.FC = () => {
             )}
 
             {rowSelection.someSelected && isAdmin && (
-              <div className="flex items-center justify-between px-3 py-2 text-[12px] border rounded bg-blue-50 border-blue-200 text-blue-900">
+              <div className="flex items-center justify-between px-3 py-2 text-[12px] border rounded-lg bg-blue-50 border-blue-200 text-blue-900">
                 <span>{rowSelection.selectedIds.length} selected</span>
                 <div className="flex items-center gap-2">
                   <button
@@ -702,10 +704,10 @@ const InventoryPage: React.FC = () => {
             )}
 
             {/* Table */}
-            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
+            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
               {filteredItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+                  <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
                     <Package className="w-6 h-6 text-slate-400" />
                   </div>
                   <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -815,7 +817,7 @@ const InventoryPage: React.FC = () => {
                                 <MoreVertical size={14} />
                               </button>
                               {menuOpenId === item.id && (
-                                <div className="absolute right-3 top-9 z-10 w-40 bg-white border rounded-lg shadow-lg border-slate-200 py-1">
+                                <div className="absolute right-3 top-9 z-10 w-40 bg-white border rounded-lg shadow-lg ring-1 ring-black/5 border-slate-200 py-1">
                                   <button onClick={() => { setDrawerItemId(item.id); setMenuOpenId(null); }} className="flex items-center w-full gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50">
                                     <Eye size={13} /> View
                                   </button>
@@ -860,7 +862,7 @@ const InventoryPage: React.FC = () => {
 
           {/* Widgets */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="p-4 bg-white border rounded-lg border-slate-200">
+            <div className="p-4 bg-white border rounded-xl shadow-md border-slate-200">
               <h4 className="text-[12px] font-semibold text-slate-900 mb-3">Recent Purchases</h4>
               {(purchaseOrdersQuery.data ?? []).length === 0 ? (
                 <p className="text-[11px] text-slate-400">No recent purchases.</p>
@@ -881,7 +883,7 @@ const InventoryPage: React.FC = () => {
               )}
             </div>
 
-            <div className="p-4 bg-white border rounded-lg border-slate-200">
+            <div className="p-4 bg-white border rounded-xl shadow-md border-slate-200">
               <h4 className="text-[12px] font-semibold text-slate-900 mb-3 flex items-center gap-1.5">
                 <AlertTriangle size={13} className="text-amber-600" /> Low Stock Alerts
               </h4>

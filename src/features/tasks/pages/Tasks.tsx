@@ -52,13 +52,13 @@ const TasksPage: React.FC = () => {
   const pendingCount = summaryTasks.filter((t) => t.status === "to_do").length;
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col w-full min-h-full overflow-hidden bg-white">
       {/* Overall Progress / Total Tasks / In Progress / Pending / Overdue summary */}
       <div className="grid flex-shrink-0 grid-cols-2 gap-3 px-6 py-4 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="p-3 bg-white border rounded-lg border-slate-200">
+        <div className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg">
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-medium text-slate-500">Overall Progress</span>
-            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50">
+            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-blue-50 ring-1 ring-black/5">
               <CheckCircle2 className="w-4 h-4 text-blue-700" />
             </div>
           </div>
@@ -68,10 +68,10 @@ const TasksPage: React.FC = () => {
           <div className="mt-1 text-slate-400 text-[12px]">{doneCount} of {totalTasks} done</div>
         </div>
 
-        <div className="p-3 bg-white border rounded-lg border-slate-200">
+        <div className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg">
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-medium text-slate-500">Total Tasks</span>
-            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-slate-100">
+            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-slate-100 ring-1 ring-black/5">
               <ListChecks className="w-4 h-4 text-slate-600" />
             </div>
           </div>
@@ -81,10 +81,10 @@ const TasksPage: React.FC = () => {
           <div className="mt-1 text-slate-400 text-[12px]">across all projects</div>
         </div>
 
-        <div className="p-3 bg-white border rounded-lg border-slate-200">
+        <div className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg">
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-medium text-slate-500">In Progress</span>
-            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-amber-50">
+            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-amber-50 ring-1 ring-black/5">
               <Clock className="w-4 h-4 text-amber-700" />
             </div>
           </div>
@@ -94,10 +94,10 @@ const TasksPage: React.FC = () => {
           <div className="mt-1 text-slate-400 text-[12px]">active right now</div>
         </div>
 
-        <div className="p-3 bg-white border rounded-lg border-slate-200">
+        <div className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg">
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-medium text-slate-500">To Do</span>
-            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-orange-50">
+            <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-orange-50 ring-1 ring-black/5">
               <Hourglass className="w-4 h-4 text-orange-700" />
             </div>
           </div>
@@ -107,11 +107,11 @@ const TasksPage: React.FC = () => {
           <div className="mt-1 text-slate-400 text-[12px]">waiting to start</div>
         </div>
 
-        <div className="p-3 bg-white border rounded-lg border-slate-200">
+        <div className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg">
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-medium text-slate-500">Overdue</span>
             <div
-              className={`flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 ${
+              className={`flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 ring-1 ring-black/5 ${
                 overdueCount > 0 ? "bg-red-50" : "bg-slate-100"
               }`}
             >
@@ -134,7 +134,7 @@ const TasksPage: React.FC = () => {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex items-center flex-shrink-0 gap-1 px-6 overflow-x-auto border-b border-slate-200 no-scrollbar">
+      <div className="flex items-center flex-shrink-0 gap-1 px-6 overflow-x-auto border-b no-scrollbar border-slate-200 bg-slate-50/60">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -142,12 +142,12 @@ const TasksPage: React.FC = () => {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`relative flex items-center gap-2 whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 border-b-2 whitespace-nowrap transition-colors ${
                 isActive
-                  ? "text-slate-900 font-semibold"
-                  : "text-slate-500 hover:text-slate-700"
+                  ? "border-slate-900 text-slate-900 font-semibold"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
-              style={{ padding: "10px 14px", fontSize: 13 }}
+              style={{ padding: "13px 14px", fontSize: 13, marginBottom: -1 }}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
@@ -158,11 +158,6 @@ const TasksPage: React.FC = () => {
               >
                 {tabCounts[tab.key]}
               </span>
-              <span
-                className={`absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-slate-900 transition-opacity duration-150 ${
-                  isActive ? "opacity-100" : "opacity-0"
-                }`}
-              />
             </button>
           );
         })}

@@ -290,9 +290,9 @@ const Approvals: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden bg-white border rounded-md border-slate-200">
+    <div className="flex flex-col w-full min-h-full overflow-hidden bg-white">
       {/* Tab Bar */}
-      <div className="flex items-end flex-shrink-0 gap-1 px-6 pt-3 overflow-x-auto border-b no-scrollbar border-slate-200">
+      <div className="flex items-end flex-shrink-0 gap-1 px-6 pt-3 overflow-x-auto border-b no-scrollbar border-slate-200 bg-slate-50/60">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -327,7 +327,7 @@ const Approvals: React.FC = () => {
         {showNewRequestButton && (
           <button
             onClick={openForm}
-            className="ml-auto bg-slate-900 text-white rounded flex items-center gap-1.5 mb-2 hover:bg-slate-800 transition-colors"
+            className="ml-auto bg-slate-900 text-white rounded-lg flex items-center gap-1.5 mb-2 hover:bg-slate-800 transition-colors shadow-sm"
             style={{ padding: "6px 12px", fontSize: 13 }}
           >
             <Plus className="w-3.5 h-3.5" /> New Request
@@ -337,8 +337,8 @@ const Approvals: React.FC = () => {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-lg overflow-hidden bg-white border rounded-md shadow-lg border-slate-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
               <div>
                 <Eyebrow>New {TYPE_META[reqType].label}</Eyebrow>
@@ -365,7 +365,7 @@ const Approvals: React.FC = () => {
                   <select
                     value={reqType}
                     onChange={(e) => setReqType(e.target.value as RequestType)}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                   >
                     {creatableTypes.map((t) => (
                       <option key={t} value={t}>{TYPE_META[t].label}</option>
@@ -382,7 +382,7 @@ const Approvals: React.FC = () => {
                       required
                       value={leaveTitle}
                       onChange={(e) => setLeaveTitle(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       placeholder="e.g., Annual Vacation"
                     />
                   </div>
@@ -394,7 +394,7 @@ const Approvals: React.FC = () => {
                         type="date"
                         value={leaveStart}
                         onChange={(e) => setLeaveStart(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
                     <div>
@@ -404,7 +404,7 @@ const Approvals: React.FC = () => {
                         type="date"
                         value={leaveEnd}
                         onChange={(e) => setLeaveEnd(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
                   </div>
@@ -415,7 +415,7 @@ const Approvals: React.FC = () => {
                       rows={3}
                       value={leaveReason}
                       onChange={(e) => setLeaveReason(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                       placeholder="Briefly explain the reason for your leave..."
                     />
                   </div>
@@ -430,7 +430,7 @@ const Approvals: React.FC = () => {
                       required
                       value={svTitle}
                       onChange={(e) => setSvTitle(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       placeholder="e.g., Client Site Inspection"
                     />
                   </div>
@@ -441,7 +441,7 @@ const Approvals: React.FC = () => {
                         required
                         value={svLocation}
                         onChange={(e) => setSvLocation(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                         placeholder="e.g., Pokhara Site"
                       />
                     </div>
@@ -452,7 +452,7 @@ const Approvals: React.FC = () => {
                         type="date"
                         value={svDate}
                         onChange={(e) => setSvDate(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
                   </div>
@@ -463,7 +463,7 @@ const Approvals: React.FC = () => {
                       rows={3}
                       value={svReason}
                       onChange={(e) => setSvReason(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                       placeholder="Briefly explain the purpose of this visit..."
                     />
                   </div>
@@ -478,7 +478,7 @@ const Approvals: React.FC = () => {
                       required
                       value={expTitle}
                       onChange={(e) => setExpTitle(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       placeholder="e.g., Client Dinner"
                     />
                   </div>
@@ -492,7 +492,7 @@ const Approvals: React.FC = () => {
                         step="0.01"
                         value={expAmount}
                         onChange={(e) => setExpAmount(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                         placeholder="0.00"
                       />
                     </div>
@@ -501,7 +501,7 @@ const Approvals: React.FC = () => {
                       <select
                         value={expCategory}
                         onChange={(e) => setExpCategory(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       >
                         {EXPENSE_CATEGORIES.map((c) => (
                           <option key={c} value={c}>{c}</option>
@@ -515,7 +515,7 @@ const Approvals: React.FC = () => {
                         type="date"
                         value={expDate}
                         onChange={(e) => setExpDate(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
                   </div>
@@ -526,7 +526,7 @@ const Approvals: React.FC = () => {
                       rows={3}
                       value={expReason}
                       onChange={(e) => setExpReason(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                       placeholder="Briefly justify this expense..."
                     />
                   </div>
@@ -537,14 +537,14 @@ const Approvals: React.FC = () => {
                 <button
                   type="button"
                   onClick={closeForm}
-                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Submit Application
                 </button>
@@ -569,7 +569,7 @@ const Approvals: React.FC = () => {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+            <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
               <CalendarDays className="w-6 h-6 text-slate-400" />
             </div>
             <h3 className="font-semibold text-[14px] text-slate-900 mb-1">No requests found</h3>
@@ -658,7 +658,7 @@ const Approvals: React.FC = () => {
                     <>
                       <button
                         onClick={() => handleStatusUpdate(request.type, request.id, "approved")}
-                        className="flex items-center justify-center transition-colors bg-white border rounded border-slate-200 text-emerald-700 hover:bg-emerald-50"
+                        className="flex items-center justify-center transition-colors bg-white border rounded-lg border-slate-200 text-emerald-700 hover:bg-emerald-50"
                         style={{ width: 28, height: 28 }}
                         title="Approve"
                       >
@@ -666,7 +666,7 @@ const Approvals: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleStatusUpdate(request.type, request.id, "rejected")}
-                        className="flex items-center justify-center text-red-700 transition-colors bg-white border rounded border-slate-200 hover:bg-red-50"
+                        className="flex items-center justify-center text-red-700 transition-colors bg-white border rounded-lg border-slate-200 hover:bg-red-50"
                         style={{ width: 28, height: 28 }}
                         title="Reject"
                       >
