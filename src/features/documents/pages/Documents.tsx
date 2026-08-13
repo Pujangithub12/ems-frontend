@@ -38,19 +38,19 @@ import { useAuth } from "../../../context/AuthProvider";
 const ALL_DOCUMENTS = "all" as const;
 
 const FILE_TYPE_STYLES: Record<string, string> = {
-  pdf: "bg-red-100 text-red-700",
-  doc: "bg-blue-100 text-blue-700",
-  docx: "bg-blue-100 text-blue-700",
-  xls: "bg-emerald-100 text-emerald-700",
-  xlsx: "bg-emerald-100 text-emerald-700",
-  dwg: "bg-indigo-100 text-indigo-700",
-  jpg: "bg-amber-100 text-amber-700",
-  jpeg: "bg-amber-100 text-amber-700",
-  png: "bg-amber-100 text-amber-700",
+  pdf: "bg-red-50 text-red-600 ring-1 ring-red-100",
+  doc: "bg-blue-50 text-blue-600 ring-1 ring-blue-100",
+  docx: "bg-blue-50 text-blue-600 ring-1 ring-blue-100",
+  xls: "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100",
+  xlsx: "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100",
+  dwg: "bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100",
+  jpg: "bg-amber-50 text-amber-600 ring-1 ring-amber-100",
+  jpeg: "bg-amber-50 text-amber-600 ring-1 ring-amber-100",
+  png: "bg-amber-50 text-amber-600 ring-1 ring-amber-100",
 };
 
 const fileTypeStyle = (type?: string | null) =>
-  FILE_TYPE_STYLES[(type || "").toLowerCase()] || "bg-slate-100 text-slate-600";
+  FILE_TYPE_STYLES[(type || "").toLowerCase()] || "bg-slate-100 text-slate-500 ring-1 ring-slate-200";
 
 const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -121,17 +121,17 @@ const FolderTree: React.FC<{
         const isProjectManaged = folder.projectId != null;
         const canWrite = isAdmin || folder.myAccessLevel === "write";
         return (
-          <div key={folder.id} className="relative">
+          <div key={folder.id} className="relative px-1.5">
             <div
-              className={`group flex items-center gap-1.5 w-full py-1.5 pr-1 text-[12px] rounded transition-colors ${
+              className={`group flex items-center gap-1.5 w-full py-1.5 pr-1 text-[12px] rounded-lg transition-colors ${
                 isSelected
-                  ? "bg-blue-50 text-blue-900 font-medium"
+                  ? "bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-100"
                   : "text-slate-600 hover:bg-slate-50"
               }`}
             >
               <button
                 onClick={() => onSelect(folder.id)}
-                style={{ paddingLeft: `${12 + depth * 14}px` }}
+                style={{ paddingLeft: `${10 + depth * 14}px` }}
                 className="flex items-center flex-1 min-w-0 gap-1.5 text-left"
                 title={folder.isProjectRoot ? "Project — Documents tab" : undefined}
               >
@@ -146,7 +146,7 @@ const FolderTree: React.FC<{
                         return next;
                       });
                     }}
-                    className="flex items-center justify-center w-3.5 h-3.5 shrink-0"
+                    className="flex items-center justify-center w-3.5 h-3.5 shrink-0 text-slate-400"
                   >
                     {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </span>
@@ -156,7 +156,10 @@ const FolderTree: React.FC<{
                 {folder.isProjectRoot ? (
                   <Briefcase size={14} className="shrink-0 text-blue-900" />
                 ) : (
-                  <Folder size={14} className="shrink-0 text-slate-400" />
+                  <Folder
+                    size={14}
+                    className={`shrink-0 ${isSelected ? "text-blue-700" : "text-slate-400"}`}
+                  />
                 )}
                 <span className="truncate">{folder.name}</span>
               </button>
@@ -179,7 +182,7 @@ const FolderTree: React.FC<{
             {isMenuOpen && !isProjectManaged && (
               <div
                 ref={menuRef}
-                className="absolute z-20 overflow-hidden bg-white border rounded-md shadow-lg right-1 top-8 w-40 border-slate-200"
+                className="absolute z-20 overflow-hidden bg-white border rounded-lg shadow-lg ring-1 ring-black/5 right-1 top-9 w-40 border-slate-200"
               >
                 {isAdmin && (
                   <button
@@ -466,7 +469,7 @@ const Documents: React.FC = () => {
   const crumb = selectedFolderId === ALL_DOCUMENTS ? [] : folderPath(selectedFolderId);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="w-full min-h-full px-6 py-6 bg-white lg:px-8 lg:py-8">
 
       <input
         ref={fileInputRef}
@@ -477,17 +480,17 @@ const Documents: React.FC = () => {
       />
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <div className="flex flex-col items-center justify-center gap-3 py-24 bg-white border border-slate-200 rounded-xl shadow-md">
           <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
           <p className="text-[12px] text-slate-400">Loading documents…</p>
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+        <div className="flex flex-col items-center justify-center gap-2 py-24 text-center bg-white border border-slate-200 rounded-xl shadow-md">
           <AlertCircle className="w-6 h-6 text-red-600" />
           <p className="text-[13px] text-slate-600">{error}</p>
           <button
             onClick={refresh}
-            className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded hover:bg-slate-50"
+            className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           >
             Retry
           </button>
@@ -507,7 +510,7 @@ const Documents: React.FC = () => {
                       ? "You don't have write access to this folder"
                       : undefined
                 }
-                className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded text-[12px] font-medium hover:bg-blue-800 transition-colors disabled:opacity-60"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors shadow-sm disabled:opacity-60 disabled:shadow-none"
               >
                 {uploading ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -529,31 +532,45 @@ const Documents: React.FC = () => {
                       ? "You don't have write access to this folder"
                       : undefined
                 }
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-[12px] font-medium hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:hover:bg-white"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-[12px] font-medium hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:hover:bg-white"
               >
                 <Plus size={14} /> New Folder
               </button>
               <button
                 onClick={refresh}
-                className="flex items-center justify-center w-8 h-8 transition-colors border rounded text-slate-500 border-slate-200 hover:bg-slate-50"
+                className="flex items-center justify-center w-8 h-8 transition-colors border rounded-lg text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700"
                 title="Refresh"
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
               </button>
             </div>
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search documents..."
-                className="pl-8 pr-3 py-2 w-56 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search documents..."
+                  className="pl-9 pr-3 py-2 w-64 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
+                />
+              </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-50 text-blue-900 shrink-0">
+                  <FileText size={13} />
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold leading-none text-slate-900">{totalDocs}</div>
+                  <div className="text-[9.5px] uppercase tracking-wide text-slate-400 mt-0.5">
+                    Document{totalDocs !== 1 ? "s" : ""}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {actionError && (
-            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
               <span>{actionError}</span>
               <button onClick={() => setActionError(null)}>
                 <X size={14} />
@@ -563,22 +580,27 @@ const Documents: React.FC = () => {
 
           <div className="flex gap-4">
             {/* Sidebar */}
-            <div className="w-56 bg-white border rounded shrink-0 border-slate-200">
-              <div className="px-3 py-2 text-[11px] font-semibold tracking-wide uppercase text-slate-400 border-b border-slate-200">
+            <div className="w-60 bg-white border rounded-xl shadow-md shrink-0 border-slate-200 overflow-hidden">
+              <div className="px-3.5 py-2.5 text-[11px] font-semibold tracking-wide uppercase text-slate-400 border-b border-slate-200 bg-slate-50/60">
                 Folders
               </div>
-              <div className="py-1 min-h-[500px]">
-                <button
-                  onClick={() => setSelectedFolderId(ALL_DOCUMENTS)}
-                  className={`flex items-center gap-2 w-full px-3 py-1.5 text-[12px] text-left transition-colors ${
-                    selectedFolderId === ALL_DOCUMENTS
-                      ? "bg-blue-50 text-blue-900 font-medium"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <FolderOpen size={14} className="shrink-0 text-slate-400" />
-                  All Documents
-                </button>
+              <div className="py-1.5 min-h-[500px]">
+                <div className="px-1.5">
+                  <button
+                    onClick={() => setSelectedFolderId(ALL_DOCUMENTS)}
+                    className={`flex items-center gap-2 w-full px-2.5 py-1.5 text-[12px] text-left rounded-lg transition-colors ${
+                      selectedFolderId === ALL_DOCUMENTS
+                        ? "bg-blue-50 text-blue-900 font-medium ring-1 ring-blue-100"
+                        : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <FolderOpen
+                      size={14}
+                      className={`shrink-0 ${selectedFolderId === ALL_DOCUMENTS ? "text-blue-700" : "text-slate-400"}`}
+                    />
+                    All Documents
+                  </button>
+                </div>
                 <FolderTree
                   files={files}
                   childrenByParent={childrenByParent}
@@ -598,21 +620,21 @@ const Documents: React.FC = () => {
             </div>
 
             {/* Table */}
-            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded border-slate-200">
+            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
               {crumb.length > 0 && (
-                <div className="flex items-center gap-1 px-3 py-2 text-[12px] text-slate-500 border-b border-slate-200 bg-slate-50">
+                <div className="flex items-center gap-1.5 px-4 py-2.5 text-[12px] text-slate-500 border-b border-slate-200 bg-slate-50/60">
                   <button
                     onClick={() => setSelectedFolderId(ALL_DOCUMENTS)}
-                    className="hover:text-blue-900"
+                    className="hover:text-blue-900 transition-colors"
                   >
                     All Documents
                   </button>
                   {crumb.map((c) => (
                     <React.Fragment key={c.id}>
-                      <ChevronRight size={12} />
+                      <ChevronRight size={12} className="text-slate-300" />
                       <button
                         onClick={() => setSelectedFolderId(c.id)}
-                        className="hover:text-blue-900"
+                        className="hover:text-blue-900 transition-colors"
                       >
                         {c.name}
                       </button>
@@ -622,15 +644,15 @@ const Documents: React.FC = () => {
               )}
 
               {isProjectScoped && (
-                <div className="flex items-center gap-2 px-3 py-2 text-[12px] border-b text-blue-900 bg-blue-50 border-slate-200">
+                <div className="flex items-center gap-2 px-4 py-2.5 text-[12px] border-b text-blue-900 bg-blue-50/70 border-slate-200">
                   <Briefcase size={13} className="shrink-0" />
                   Mirrored from this project's Documents tab — manage uploads and folders there.
                 </div>
               )}
 
               {searchedRows.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="flex items-center justify-center w-14 h-14 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
                     <FolderOpen className="w-6 h-6 text-slate-400" />
                   </div>
                   <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -644,17 +666,17 @@ const Documents: React.FC = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full text-[12px]">
                     <thead>
-                      <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                        <th className="px-3 py-2 font-medium text-left">Name</th>
+                      <tr className="border-b border-slate-200 bg-slate-50/60 text-slate-400 text-[10.5px] uppercase tracking-wider">
+                        <th className="px-4 py-2.5 font-semibold text-left">Name</th>
                         {selectedFolderId === ALL_DOCUMENTS && (
-                          <th className="px-3 py-2 font-medium text-left">Folder</th>
+                          <th className="px-3 py-2.5 font-semibold text-left">Folder</th>
                         )}
-                        <th className="px-3 py-2 font-medium text-left">Type</th>
-                        <th className="px-3 py-2 font-medium text-left">Size</th>
-                        <th className="px-3 py-2 font-medium text-left">Uploaded By</th>
-                        <th className="px-3 py-2 font-medium text-left">Uploaded On</th>
-                        <th className="px-3 py-2 font-medium text-left">Version</th>
-                        <th className="px-3 py-2 font-medium text-right">Actions</th>
+                        <th className="px-3 py-2.5 font-semibold text-left">Type</th>
+                        <th className="px-3 py-2.5 font-semibold text-left">Size</th>
+                        <th className="px-3 py-2.5 font-semibold text-left">Uploaded By</th>
+                        <th className="px-3 py-2.5 font-semibold text-left">Uploaded On</th>
+                        <th className="px-3 py-2.5 font-semibold text-left">Version</th>
+                        <th className="px-4 py-2.5 font-semibold text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -667,21 +689,23 @@ const Documents: React.FC = () => {
                             if (row.isFolder) setSelectedFolderId(row.id);
                             else if (rowViewable) setViewedFile(row);
                           }}
-                          className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
+                          className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/80 transition-colors ${
                             row.isFolder || rowViewable ? "cursor-pointer" : ""
                           }`}
                         >
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-2 text-left">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2.5 text-left">
                               {row.isFolder ? (
-                                <Folder size={15} className="text-blue-900 shrink-0" />
+                                <span className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 bg-blue-50 ring-1 ring-blue-100">
+                                  <Folder size={14} className="text-blue-900" />
+                                </span>
                               ) : (
                                 <span
-                                  className={`flex items-center justify-center w-5 h-5 rounded shrink-0 ${fileTypeStyle(
+                                  className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${fileTypeStyle(
                                     row.type,
                                   )}`}
                                 >
-                                  <FileText size={12} />
+                                  <FileText size={13} />
                                 </span>
                               )}
                               <span
@@ -694,29 +718,29 @@ const Documents: React.FC = () => {
                             </div>
                           </td>
                           {selectedFolderId === ALL_DOCUMENTS && (
-                            <td className="px-3 py-2 text-slate-500">{folderNameOf(row)}</td>
+                            <td className="px-3 py-2.5 text-slate-500">{folderNameOf(row)}</td>
                           )}
-                          <td className="px-3 py-2 uppercase text-slate-500">
+                          <td className="px-3 py-2.5 uppercase text-slate-500">
                             {row.isFolder ? "Folder" : row.type || "--"}
                           </td>
-                          <td className="px-3 py-2 text-slate-500">
+                          <td className="px-3 py-2.5 text-slate-500">
                             {row.isFolder ? "--" : formatFileSize(row.size)}
                           </td>
-                          <td className="px-3 py-2 text-slate-500">
+                          <td className="px-3 py-2.5 text-slate-500">
                             {row.uploadedBy?.fullName || "--"}
                           </td>
-                          <td className="px-3 py-2 text-slate-500">
+                          <td className="px-3 py-2.5 text-slate-500">
                             {new Date(row.createdAt).toLocaleDateString()}
                           </td>
-                          <td className="px-3 py-2 text-slate-500">
+                          <td className="px-3 py-2.5 text-slate-500">
                             {row.isFolder ? "--" : row.version}
                           </td>
-                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
                               {!row.isFolder && (isAdmin || row.myAccessLevel === "write") && (
                                 <a
                                   href={organizationDownloadUrl(row.id)}
-                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
+                                  className="flex items-center justify-center transition-colors rounded-lg w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
                                   title="Download"
                                 >
                                   <Download size={14} />
@@ -725,7 +749,7 @@ const Documents: React.FC = () => {
                               {row.projectId == null && isAdmin && (
                                 <button
                                   onClick={() => setAccessTarget(row)}
-                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
+                                  className="flex items-center justify-center transition-colors rounded-lg w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100"
                                   title="Manage Access"
                                 >
                                   <ShieldCheck size={14} />
@@ -734,7 +758,7 @@ const Documents: React.FC = () => {
                               {row.projectId == null && (isAdmin || row.myAccessLevel === "write") && (
                                 <button
                                   onClick={() => setDeleteTarget(row)}
-                                  className="flex items-center justify-center transition-colors rounded w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100"
+                                  className="flex items-center justify-center transition-colors rounded-lg w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100"
                                   title="Delete"
                                 >
                                   <Trash2 size={14} />
@@ -750,7 +774,7 @@ const Documents: React.FC = () => {
                 </div>
               )}
 
-              <div className="px-3 py-2 text-[11px] text-slate-400 border-t border-slate-200">
+              <div className="px-4 py-2.5 text-[11px] text-slate-400 border-t border-slate-200 bg-slate-50/40">
                 {searchedRows.length} item{searchedRows.length !== 1 ? "s" : ""} · {totalDocs} document
                 {totalDocs !== 1 ? "s" : ""} total
               </div>

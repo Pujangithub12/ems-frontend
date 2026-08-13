@@ -902,7 +902,7 @@ const MyTasks: React.FC = () => {
                     setEditingSubTaskNameId(null);
                   }
                 }}
-                className="min-w-0 text-[13px] text-slate-700 px-1 py-0.5 -my-0.5 border border-blue-300 rounded outline-none focus:border-blue-500"
+                className="min-w-0 text-[13px] text-slate-700 px-1 py-0.5 -my-0.5 border border-blue-300 rounded-lg outline-none focus:border-blue-500"
               />
             ) : (
               <span
@@ -933,7 +933,7 @@ const MyTasks: React.FC = () => {
                 setSubTaskMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
                 setSubTaskMenuOpenId(st.id);
               }}
-              className="p-1 transition-colors rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              className="p-1 transition-colors rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               title="Sub-task options"
             >
               <MoreVertical className="w-3.5 h-3.5" />
@@ -949,12 +949,12 @@ const MyTasks: React.FC = () => {
                     }}
                   />
                   <div
-                    className="fixed z-[71] py-1 bg-white border rounded-md shadow-lg w-36 border-slate-200"
+                    className="fixed z-[71] py-1 bg-white border rounded-xl shadow-2xl w-36 border-slate-200"
                     style={{ top: subTaskMenuPos.top, right: subTaskMenuPos.right }}
                   >
                     <button
                       type="button"
-                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 hover:bg-slate-50"
+                      className="w-[calc(100%-12px)] mx-1.5 flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSubTaskMenuOpenId(null);
@@ -968,7 +968,7 @@ const MyTasks: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 hover:bg-slate-50"
+                      className="w-[calc(100%-12px)] mx-1.5 flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                       onClick={async (e) => {
                         e.stopPropagation();
                         setSubTaskMenuOpenId(null);
@@ -990,7 +990,7 @@ const MyTasks: React.FC = () => {
                     <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
-                      className="flex items-center w-full gap-2 px-3 py-1.5 text-[12.5px] text-red-600 hover:bg-red-50"
+                      className="w-[calc(100%-12px)] mx-1.5 flex items-center gap-2 px-3 py-1.5 text-[12.5px] text-red-600 rounded-lg hover:bg-red-50 transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSubTaskMenuOpenId(null);
@@ -1104,28 +1104,28 @@ const MyTasks: React.FC = () => {
             placeholder="Search my tasks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-3 text-[13px] bg-slate-50 border border-slate-200 rounded-lg pl-9 outline-none focus:bg-white focus:border-blue-400 transition-colors"
           />
         </div>
         <div ref={projectFilterRef} className="relative">
           <button
             type="button"
             onClick={() => setProjectFilterOpen((o) => !o)}
-            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-900 transition-colors min-w-[170px]"
+            className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors min-w-[170px]"
           >
             <span className="truncate">{filterProjectName || "All Projects"}</span>
             <ChevronDown className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
           </button>
           {projectFilterOpen && (
-            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-              <div className="max-h-[180px] overflow-y-auto">
+            <div className="absolute z-20 mt-1 w-full min-w-[190px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
+              <div className="max-h-[180px] overflow-y-auto py-1">
                 <button
                   type="button"
                   onClick={() => {
                     setFilterProjectName("");
                     setProjectFilterOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-[13px] transition-colors hover:bg-slate-50 ${
+                  className={`w-[calc(100%-12px)] mx-1.5 text-left px-3 py-2 text-[13px] rounded-lg transition-colors hover:bg-slate-50 ${
                     !filterProjectName
                       ? "font-semibold text-blue-900 bg-blue-50"
                       : "text-slate-700"
@@ -1141,7 +1141,7 @@ const MyTasks: React.FC = () => {
                       setFilterProjectName(project.name);
                       setProjectFilterOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-[13px] truncate transition-colors hover:bg-slate-50 ${
+                    className={`w-[calc(100%-12px)] mx-1.5 text-left px-3 py-2 text-[13px] truncate rounded-lg transition-colors hover:bg-slate-50 ${
                       filterProjectName === project.name
                         ? "font-semibold text-blue-900 bg-blue-50"
                         : "text-slate-700"
@@ -1158,7 +1158,7 @@ const MyTasks: React.FC = () => {
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:bg-white focus:border-blue-400 transition-colors"
           >
             <option value="">All Priorities</option>
             <option value="high">High</option>
@@ -1171,7 +1171,7 @@ const MyTasks: React.FC = () => {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+            className="pl-3 pr-8 py-2 text-[13px] font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:bg-white focus:border-blue-400 transition-colors"
           >
             <option value="">All Statuses</option>
             <option value="to_do">To Do</option>
@@ -1182,7 +1182,7 @@ const MyTasks: React.FC = () => {
         </div>
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -1193,14 +1193,14 @@ const MyTasks: React.FC = () => {
         </button>
         <button
           onClick={() => openAddTaskModal()}
-          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> Add My Own Task
         </button>
       </div>
 
       {actionError && (
-        <div className="p-4 mb-4 bg-red-50 border border-red-100 rounded flex items-center justify-between gap-3 text-red-700 text-[13px]">
+        <div className="p-4 mb-4 bg-red-50 border border-red-100 rounded-lg flex items-center justify-between gap-3 text-red-700 text-[13px]">
           <span className="flex items-center gap-3">
             <AlertCircle className="flex-shrink-0 w-4 h-4" />
             {actionError}
@@ -1213,7 +1213,7 @@ const MyTasks: React.FC = () => {
 
       {/* Content: grouped by project */}
       {tasksLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-md border-slate-200">
+        <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-xl shadow-md border-slate-200">
           <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
           <div
             className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
@@ -1223,13 +1223,13 @@ const MyTasks: React.FC = () => {
           </div>
         </div>
       ) : tasksError ? (
-        <div className="p-4 bg-red-50 border border-red-100 rounded flex items-center gap-3 text-red-700 text-[13px]">
+        <div className="p-4 bg-red-50 border border-red-100 rounded-lg flex items-center gap-3 text-red-700 text-[13px]">
           <AlertCircle className="flex-shrink-0 w-4 h-4" />
           <span>{tasksError}</span>
         </div>
       ) : filteredTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-xl shadow-md border-slate-200">
+          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
             <CheckCircle2 className="w-6 h-6 text-slate-400" />
           </div>
           <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -1254,7 +1254,7 @@ const MyTasks: React.FC = () => {
               return (
                 <div
                   key={group.key}
-                  className="overflow-hidden transition-shadow bg-white border rounded-lg shadow-sm border-slate-200 hover:shadow-md"
+                  className="overflow-hidden transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
                 >
                   <button
                     onClick={() => toggleGroup(group.key)}
@@ -1265,7 +1265,7 @@ const MyTasks: React.FC = () => {
                     ) : (
                       <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
                     )}
-                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50">
+                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50 ring-1 ring-black/5">
                       <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
                     </span>
                     <div className="flex-1 min-w-0">
@@ -1409,14 +1409,14 @@ const MyTasks: React.FC = () => {
                             <div className="items-center flex-shrink-0 hidden gap-1 sm:flex">
                               <button
                                 onClick={() => handleShowTaskFeedback(task.id)}
-                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
+                                className="p-1.5 transition-colors rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
                                 title="Show Feedback"
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteClick(task.id)}
-                                className="p-1.5 transition-colors rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                className="p-1.5 transition-colors rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
                                 title="Delete task"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1451,7 +1451,7 @@ const MyTasks: React.FC = () => {
           const t = selectedTask;
           const statusMeta = getStatusMeta(t.status);
           return (
-            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/45 animate-drawer-fade-in">
+            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/50 backdrop-blur-sm animate-drawer-fade-in">
               <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
                 <div className="flex items-start justify-end flex-shrink-0 px-7 pt-6 pb-5">
                   <div className="flex flex-col items-end flex-shrink-0 gap-2">
@@ -1468,7 +1468,7 @@ const MyTasks: React.FC = () => {
                       </span>
                       <button
                         onClick={closePopup}
-                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -1506,12 +1506,12 @@ const MyTasks: React.FC = () => {
                             }
                           }}
                           autoFocus
-                          className="flex-1 min-w-0 px-2 py-1 text-[18px] font-semibold text-slate-900 border border-blue-300 rounded outline-none focus:border-blue-900"
+                          className="flex-1 min-w-0 px-2 py-1 text-[18px] font-semibold text-slate-900 border border-blue-300 rounded-lg outline-none focus:border-blue-900"
                         />
                         <button
                           onClick={() => handleSaveTitle(t.id)}
                           disabled={savingTitle}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                           title="Save"
                         >
                           {savingTitle ? (
@@ -1523,7 +1523,7 @@ const MyTasks: React.FC = () => {
                         <button
                           onClick={() => setEditingTitleTaskId(null)}
                           disabled={savingTitle}
-                          className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                          className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                           title="Cancel"
                         >
                           <X className="w-4 h-4" />
@@ -1540,7 +1540,7 @@ const MyTasks: React.FC = () => {
                               setEditingTitleTaskId(t.id);
                               setEditTitleValue(t.title);
                             }}
-                            className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors flex-shrink-0"
+                            className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
                             title="Edit task name"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -1574,12 +1574,12 @@ const MyTasks: React.FC = () => {
                               }
                             }}
                             autoFocus
-                            className="px-2 py-0.5 text-[12px] border border-blue-300 rounded outline-none focus:border-blue-900"
+                            className="px-2 py-0.5 text-[12px] border border-blue-300 rounded-lg outline-none focus:border-blue-900"
                           />
                           <button
                             onClick={() => handleSaveDueDate(t.id)}
                             disabled={savingDueDate}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                             title="Save"
                           >
                             {savingDueDate ? (
@@ -1591,7 +1591,7 @@ const MyTasks: React.FC = () => {
                           <button
                             onClick={() => setEditingDueDateTaskId(null)}
                             disabled={savingDueDate}
-                            className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                             title="Cancel"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -1617,7 +1617,7 @@ const MyTasks: React.FC = () => {
                                 setEditingDueDateTaskId(t.id);
                                 setEditDueDateValue(t.dueDate.slice(0, 10));
                               }}
-                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors flex-shrink-0"
+                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
                               title="Edit due date"
                             >
                               <Edit2 className="w-3 h-3" />
@@ -1639,7 +1639,7 @@ const MyTasks: React.FC = () => {
                             value={editPriorityValue}
                             onChange={(e) => setEditPriorityValue(e.target.value)}
                             autoFocus
-                            className="px-2 py-1 text-[12px] font-medium bg-white border border-blue-300 rounded outline-none focus:border-blue-900"
+                            className="px-2 py-1 text-[12px] font-medium bg-white border border-blue-300 rounded-lg outline-none focus:border-blue-900"
                           >
                             <option value="high">High</option>
                             <option value="medium">Medium</option>
@@ -1648,7 +1648,7 @@ const MyTasks: React.FC = () => {
                           <button
                             onClick={() => handleSavePriority(t.id)}
                             disabled={savingPriority}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-50"
+                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                             title="Save"
                           >
                             {savingPriority ? (
@@ -1660,7 +1660,7 @@ const MyTasks: React.FC = () => {
                           <button
                             onClick={() => setEditingPriorityTaskId(null)}
                             disabled={savingPriority}
-                            className="p-1 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                             title="Cancel"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -1675,7 +1675,7 @@ const MyTasks: React.FC = () => {
                                 setEditingPriorityTaskId(t.id);
                                 setEditPriorityValue(t.priority);
                               }}
-                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors"
                               title="Edit priority"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
@@ -1691,7 +1691,7 @@ const MyTasks: React.FC = () => {
                       <SectionLabel>Description</SectionLabel>
                     </div>
                     {editingDescriptionTaskId === t.id ? (
-                      <div className="p-3 space-y-2 rounded border border-blue-300 bg-slate-50/50 ml-1.5">
+                      <div className="p-3 space-y-2 rounded-lg border border-blue-300 bg-slate-50/50 ml-1.5">
                         <textarea
                           value={editDescriptionValue}
                           onChange={(e) => setEditDescriptionValue(e.target.value)}
@@ -1700,20 +1700,20 @@ const MyTasks: React.FC = () => {
                           }}
                           autoFocus
                           rows={4}
-                          className="w-full text-slate-700 text-[13px] leading-relaxed bg-white border border-slate-200 rounded p-2 outline-none focus:border-blue-900 resize-none"
+                          className="w-full text-slate-700 text-[13px] leading-relaxed bg-slate-50 border border-slate-200 rounded-lg p-2 outline-none focus:bg-white focus:border-blue-400 resize-none"
                         />
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => setEditingDescriptionTaskId(null)}
                             disabled={savingDescription}
-                            className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-100 transition-colors"
+                            className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
                           >
                             Cancel
                           </button>
                           <button
                             onClick={() => handleSaveDescription(t.id)}
                             disabled={savingDescription}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors disabled:opacity-70"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors disabled:opacity-70"
                           >
                             {savingDescription && <Loader2 className="w-3 h-3 animate-spin" />}
                             Save
@@ -1727,7 +1727,7 @@ const MyTasks: React.FC = () => {
                           setEditingDescriptionTaskId(t.id);
                           setEditDescriptionValue(t.description || "");
                         }}
-                        className={`p-3 rounded border border-slate-200 bg-slate-50/50 ml-1.5 ${
+                        className={`p-3 rounded-lg border border-slate-200 bg-slate-50/50 ml-1.5 ${
                           t.createdBy?.id === user?.id
                             ? "cursor-pointer hover:border-blue-300 transition-colors"
                             : ""
@@ -1762,7 +1762,7 @@ const MyTasks: React.FC = () => {
                             addSubTaskToTask(t.id);
                           }
                         }}
-                        className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="flex-1 px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                         placeholder="Enter sub-task title"
                       />
                       <input
@@ -1782,14 +1782,14 @@ const MyTasks: React.FC = () => {
                             addSubTaskToTask(t.id);
                           }
                         }}
-                        className="w-24 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                        className="w-24 px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                         placeholder="Days"
                         title="Estimated days — weights this sub-task's share of the task's progress"
                       />
                       <button
                         type="button"
                         onClick={() => addSubTaskToTask(t.id)}
-                        className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
                       >
                         <Plus className="w-3.5 h-3.5" /> Add
                       </button>
@@ -1819,12 +1819,12 @@ const MyTasks: React.FC = () => {
                               setMemberSearchTerm("");
                               setShowAddMemberPopover((o) => !o);
                             }}
-                            className="flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-blue-900 rounded hover:bg-blue-50 transition-colors"
+                            className="flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-blue-900 rounded-lg hover:bg-blue-50 transition-colors"
                           >
                             <UserPlus className="w-3.5 h-3.5" /> Add
                           </button>
                           {showAddMemberPopover && (
-                            <div className="absolute right-0 z-30 mt-1 bg-white border rounded-md shadow-lg w-60 border-slate-200">
+                            <div className="absolute right-0 z-30 mt-1 bg-white border rounded-xl shadow-2xl w-60 border-slate-200">
                               <div className="p-2 border-b border-slate-100">
                                 <div className="relative">
                                   <Search className="absolute w-3 h-3 -translate-y-1/2 left-2.5 top-1/2 text-slate-400" />
@@ -1836,7 +1836,7 @@ const MyTasks: React.FC = () => {
                                     onChange={(e) =>
                                       setMemberSearchTerm(e.target.value)
                                     }
-                                    className="w-full py-1.5 pr-2 text-[12px] border rounded outline-none pl-7 border-slate-200 focus:border-blue-900"
+                                    className="w-full py-1.5 pr-2 text-[12px] bg-slate-50 border rounded-lg outline-none pl-7 border-slate-200 focus:bg-white focus:border-blue-400"
                                   />
                                 </div>
                               </div>
@@ -1892,7 +1892,7 @@ const MyTasks: React.FC = () => {
                                     pendingMemberIds.length === 0 || savingMembers
                                   }
                                   onClick={() => handleAddMembers(t.id)}
-                                  className="flex items-center justify-center w-full gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white transition-colors rounded bg-blue-900 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="flex items-center justify-center w-full gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white transition-colors rounded-lg shadow-sm bg-blue-900 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   {savingMembers && (
                                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -1954,13 +1954,13 @@ const MyTasks: React.FC = () => {
 
       {/* View All Assigned Members Popup */}
       {showAllMembers && selectedTask && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
-          <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
-            <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
+          <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200 max-h-[80vh]">
+            <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200 bg-slate-50/60">
               <Eyebrow>Assigned Members ({selectedTask.assignedUsers.length})</Eyebrow>
               <button
                 onClick={() => setShowAllMembers(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1974,7 +1974,7 @@ const MyTasks: React.FC = () => {
                 selectedTask.assignedUsers.map((u) => (
                   <div
                     key={u.id}
-                    className="flex items-center gap-2.5 px-2 py-2 rounded hover:bg-slate-50"
+                    className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-50"
                   >
                     <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-semibold text-white rounded-full bg-blue-900">
                       {u.fullName.charAt(0)}
@@ -1993,7 +1993,7 @@ const MyTasks: React.FC = () => {
                       type="button"
                       onClick={() => handleRemoveMember(selectedTask.id, u.id)}
                       disabled={removingMemberId === u.id}
-                      className="flex-shrink-0 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                      className="flex-shrink-0 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                       title="Remove member"
                     >
                       {removingMemberId === u.id ? (
@@ -2017,9 +2017,9 @@ const MyTasks: React.FC = () => {
         // the same check enforced on the backend.
         const canGiveFeedback = feedbackTask?.createdBy?.id === user?.id;
         return (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-6">
-          <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-md shadow-lg border-slate-200 max-h-[80vh]">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-6">
+          <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200 max-h-[80vh]">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
               <div>
                 <Eyebrow>Sub-Task Updates</Eyebrow>
                 <h3 className="font-semibold text-[15px] text-slate-900 mt-0.5">
@@ -2028,7 +2028,7 @@ const MyTasks: React.FC = () => {
               </div>
               <button
                 onClick={() => setShowTaskFeedbackPopup(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2066,7 +2066,7 @@ const MyTasks: React.FC = () => {
                       )}
                     </p>
                     {fb.feedback ? (
-                      <div className="flex items-start gap-2 p-2 mt-2 border rounded bg-white border-slate-200">
+                      <div className="flex items-start gap-2 p-2 mt-2 border rounded-lg bg-white border-slate-200">
                         <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
                         <p className="text-[12px] text-slate-800">{fb.feedback}</p>
                       </div>
@@ -2086,12 +2086,12 @@ const MyTasks: React.FC = () => {
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleSendTaskFeedback(fb);
                             }}
-                            className="flex-1 px-2.5 py-1.5 text-[12px] bg-white rounded border border-slate-200 outline-none focus:border-blue-900 transition-colors"
+                            className="flex-1 px-2.5 py-1.5 text-[12px] bg-slate-50 rounded-lg border border-slate-200 outline-none focus:bg-white focus:border-blue-400 transition-colors"
                           />
                           <button
                             type="button"
                             onClick={() => handleSendTaskFeedback(fb)}
-                            className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                            className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
                           >
                             Send
                           </button>
@@ -2109,9 +2109,9 @@ const MyTasks: React.FC = () => {
 
       {/* Sub-task Update Popup */}
       {showSubTaskUpdatePopup && editingSubTask && selectedTask && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50">
                   <Edit2 className="w-4 h-4 text-blue-900" />
@@ -2130,13 +2130,13 @@ const MyTasks: React.FC = () => {
                     setShowSubTaskUpdatePopup(false);
                     setShowSubTaskActivityPopup(true);
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-blue-900 rounded hover:bg-blue-50 transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-blue-900 rounded-lg hover:bg-blue-50 transition-colors"
                 >
                   <Clock className="w-3.5 h-3.5" /> Activity
                 </button>
                 <button
                   onClick={() => setShowSubTaskUpdatePopup(false)}
-                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2176,7 +2176,7 @@ const MyTasks: React.FC = () => {
                 <textarea
                   value={newSubTaskUpdateTitle}
                   onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors resize-none"
+                  className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors resize-none"
                   rows={3}
                   placeholder="Describe your update..."
                 />
@@ -2189,7 +2189,7 @@ const MyTasks: React.FC = () => {
                 />
                 <label
                   htmlFor="subtask-attachment"
-                  className="inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors border rounded cursor-pointer border-slate-200 text-slate-600 hover:border-blue-900 hover:text-blue-900"
+                  className="inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors border rounded-lg cursor-pointer border-slate-200 text-slate-600 hover:border-blue-900 hover:text-blue-900"
                 >
                   <Paperclip className="w-3.5 h-3.5" />
                   {subTaskUpdateFiles?.length
@@ -2242,14 +2242,14 @@ const MyTasks: React.FC = () => {
                   setShowSubTaskUpdatePopup(false);
                   setEditingSubTask(null);
                 }}
-                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSubTaskUpdate}
-                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
               >
                 Save Update
               </button>
@@ -2260,9 +2260,9 @@ const MyTasks: React.FC = () => {
 
       {/* Sub-task Activity Popup */}
       {showSubTaskActivityPopup && editingSubTask && selectedTask && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
               <div>
                 <Eyebrow>Activity & Feedback</Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
@@ -2271,7 +2271,7 @@ const MyTasks: React.FC = () => {
               </div>
               <button
                 onClick={() => setShowSubTaskActivityPopup(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2285,7 +2285,7 @@ const MyTasks: React.FC = () => {
                     editingSubTask.history.map((hist: any) => (
                       <div
                         key={hist.id}
-                        className="p-3 border rounded border-slate-200"
+                        className="p-3 border rounded-lg border-slate-200"
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-5 h-5 rounded-full bg-blue-900 flex items-center justify-center text-white text-[9px] font-semibold">
@@ -2325,7 +2325,7 @@ const MyTasks: React.FC = () => {
                   {subTaskComments.map((comment: any) => (
                     <div
                       key={comment.id}
-                      className="p-3 border rounded border-slate-200"
+                      className="p-3 border rounded-lg border-slate-200"
                     >
                       <div className="flex items-center gap-2 mb-1.5">
                         <div className="w-5 h-5 rounded-full bg-blue-900 flex items-center justify-center text-white text-[9px] font-semibold">
@@ -2345,7 +2345,7 @@ const MyTasks: React.FC = () => {
                         {comment.commentText}
                       </p>
                       {comment.feedback && (
-                        <div className="p-2 border border-blue-100 rounded bg-blue-50">
+                        <div className="p-2 border border-blue-100 rounded-lg bg-blue-50">
                           <p
                             className="text-[10px] font-bold text-blue-900 uppercase tracking-wider mb-0.5"
                             style={{
@@ -2372,7 +2372,7 @@ const MyTasks: React.FC = () => {
                                   [comment.id]: e.target.value,
                                 })
                               }
-                              className="flex-1 px-2.5 py-1.5 text-[12px] bg-white rounded border border-slate-200 outline-none focus:border-blue-900 transition-colors"
+                              className="flex-1 px-2.5 py-1.5 text-[12px] bg-slate-50 rounded-lg border border-slate-200 outline-none focus:bg-white focus:border-blue-400 transition-colors"
                             />
                             <button
                               type="button"
@@ -2401,7 +2401,7 @@ const MyTasks: React.FC = () => {
                                   setActionError(getErrorMessage(err, "Failed to send feedback!"));
                                 }
                               }}
-                              className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                              className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
                             >
                               Send
                             </button>
@@ -2438,7 +2438,7 @@ const MyTasks: React.FC = () => {
                     }
                   }
                 }}
-                className="flex-1 px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                className="flex-1 px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
               />
               <button
                 type="button"
@@ -2460,7 +2460,7 @@ const MyTasks: React.FC = () => {
                     setActionError(getErrorMessage(err, "Failed to add comment"));
                   }
                 }}
-                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
               >
                 Send
               </button>
@@ -2471,9 +2471,9 @@ const MyTasks: React.FC = () => {
 
       {/* Task Creation Modal */}
       {showAddTaskForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-lg bg-white rounded-md border border-slate-200 shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
               <div>
                 <Eyebrow>New Task</Eyebrow>
                 <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
@@ -2482,7 +2482,7 @@ const MyTasks: React.FC = () => {
               </div>
               <button
                 onClick={closeTaskModal}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2492,7 +2492,7 @@ const MyTasks: React.FC = () => {
               className="flex-1 p-6 space-y-5 overflow-y-auto"
             >
               {addTaskError && (
-                <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded flex items-center gap-2 text-[13px]">
+                <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-lg flex items-center gap-2 text-[13px]">
                   <AlertCircle className="flex-shrink-0 w-4 h-4" />
                   <span>{addTaskError}</span>
                 </div>
@@ -2507,7 +2507,7 @@ const MyTasks: React.FC = () => {
                         e.target.value ? Number(e.target.value) : null,
                       )
                     }
-                    className="w-full px-4 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
+                    className="w-full px-4 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors appearance-none"
                   >
                     <option value="" disabled>
                       Select a project
@@ -2529,7 +2529,7 @@ const MyTasks: React.FC = () => {
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     required
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                     placeholder="Task title"
                   />
                 </div>
@@ -2539,7 +2539,7 @@ const MyTasks: React.FC = () => {
                     <select
                       value={newPriority}
                       onChange={(e) => setNewPriority(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors appearance-none"
+                      className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors appearance-none"
                     >
                       <option value="high">High</option>
                       <option value="medium">Medium</option>
@@ -2557,7 +2557,7 @@ const MyTasks: React.FC = () => {
                       value={newDueDate}
                       onChange={(e) => setNewDueDate(e.target.value)}
                       required
-                      className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full pl-9 pr-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                     />
                   </div>
                 </div>
@@ -2569,7 +2569,7 @@ const MyTasks: React.FC = () => {
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                  className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 resize-none transition-colors"
                   placeholder="Task description"
                 />
               </div>
@@ -2585,12 +2585,12 @@ const MyTasks: React.FC = () => {
                         { id: Date.now().toString(), title: "", subTasks: [] },
                       ])
                     }
-                    className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
                   >
                     <Plus className="w-3 h-3" /> Add
                   </button>
                 </div>
-                <div className="min-h-[80px] p-3 space-y-2 rounded border border-slate-200 bg-slate-50/50">
+                <div className="min-h-[80px] p-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/50">
                   {newSubTasks.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-4 text-center text-slate-400">
                       <p className="text-[12px]">No sub-tasks yet</p>
@@ -2599,7 +2599,7 @@ const MyTasks: React.FC = () => {
                     newSubTasks.map((subTask, idx) => (
                       <div
                         key={subTask.id}
-                        className="flex items-center gap-2 p-2 bg-white border rounded border-slate-200"
+                        className="flex items-center gap-2 p-2 bg-white border rounded-lg border-slate-200"
                       >
                         <input
                           value={subTask.title}
@@ -2611,7 +2611,7 @@ const MyTasks: React.FC = () => {
                             };
                             setNewSubTasks(updated);
                           }}
-                          className="flex-1 px-2.5 py-1.5 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                          className="flex-1 px-2.5 py-1.5 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                           placeholder="Sub-task title"
                         />
                         <input
@@ -2627,7 +2627,7 @@ const MyTasks: React.FC = () => {
                             };
                             setNewSubTasks(updated);
                           }}
-                          className="w-16 px-2.5 py-1.5 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                          className="w-16 px-2.5 py-1.5 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
                           placeholder="Days"
                           title="Estimated days — weights this sub-task's share of the task's progress"
                         />
@@ -2638,7 +2638,7 @@ const MyTasks: React.FC = () => {
                             u.splice(idx, 1);
                             setNewSubTasks(u);
                           }}
-                          className="p-1 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50"
+                          className="p-1 transition-colors rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -2660,7 +2660,7 @@ const MyTasks: React.FC = () => {
                   />
                   <label
                     htmlFor="mytask-files"
-                    className="flex items-center justify-center w-full gap-2 px-4 py-3 text-[12px] transition-all border-2 border-dashed cursor-pointer rounded bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-900 hover:text-blue-900 group"
+                    className="flex items-center justify-center w-full gap-2 px-4 py-3 text-[12px] transition-all border-2 border-dashed cursor-pointer rounded-lg bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-900 hover:text-blue-900 group"
                   >
                     <Paperclip className="w-3.5 h-3.5" />
                     {newFiles?.length ? (
@@ -2678,14 +2678,14 @@ const MyTasks: React.FC = () => {
                 <button
                   type="button"
                   onClick={closeTaskModal}
-                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-white transition-colors"
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingTask}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
                   {addingTask ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />

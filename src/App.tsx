@@ -99,6 +99,12 @@ const RootRedirect: React.FC = () => {
   return null;
 };
 
+/** Legacy path — the Approvals page used to live at /leaverequests; keeps old links/bookmarks working. */
+const LeaveRequestsRedirect: React.FC = () => {
+  const { organizationId } = useParams<{ organizationId: string }>();
+  return <Navigate replace to={`/${organizationId}/approvals`} />;
+};
+
 /**
  * Purchase Orders and Vendors are admin/super_admin-only pages (any employee can raise a
  * Purchase Request, but browsing PO/vendor pricing is admin territory) — bounces anyone else
@@ -191,7 +197,8 @@ function App() {
             <Route path="/:organizationId/plant-report" element={<PlantReport />} />
             <Route path="/:organizationId/users" element={<Users />} />
             <Route path="/:organizationId/calendar" element={<CalendarPage />} />
-            <Route path="/:organizationId/leaverequests" element={<Approvals />} />
+            <Route path="/:organizationId/approvals" element={<Approvals />} />
+            <Route path="/:organizationId/leaverequests" element={<LeaveRequestsRedirect />} />
             <Route path="/:organizationId/reports" element={<Reports />} />
             <Route path="/:organizationId/settings" element={<Settings />} />
             <Route path="/:organizationId/profile" element={<Profile />} />

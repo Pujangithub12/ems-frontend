@@ -248,29 +248,7 @@ const ProjectsPage: React.FC = () => {
   }, [projectsWithProgress, searchQuery, statusFilter]);
 
   return (
-    <div className="w-full px-6 py-8 lg:px-8 lg:py-10">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 mb-6 md:flex-row md:items-center">
-        <div>
-          <Eyebrow>Project Management</Eyebrow>
-          <h2 className="font-semibold mt-1 text-[28px] tracking-tight text-slate-900">
-            Projects Library
-          </h2>
-          <p className="text-slate-500 text-[14px] mt-1">
-            Manage and track all company projects.
-          </p>
-        </div>
-        {isAdmin && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New Project
-          </button>
-        )}
-      </div>
-
+    <div className="w-full min-h-full px-6 py-6 bg-white lg:px-8 lg:py-8">
       {/* Controls */}
       <div className="flex flex-col gap-3 mb-6 sm:flex-row">
         <div className="relative flex-1">
@@ -280,15 +258,15 @@ const ProjectsPage: React.FC = () => {
             placeholder="Search projects..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-3 text-[13px] bg-slate-50 border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-400 focus:bg-white transition-colors"
           />
         </div>
-        <div className="relative min-w-[160px]">
+        <div className="relative sm:min-w-[160px]">
           <Filter className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none left-3 top-1/2 text-slate-400" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full py-2 pr-8 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer pl-9 outline-none focus:border-blue-900 transition-colors"
+            className="w-full py-2 pr-8 text-[13px] font-medium bg-slate-50 border border-slate-200 rounded-lg appearance-none cursor-pointer pl-9 outline-none focus:border-blue-400 focus:bg-white transition-colors"
           >
             <option value="all">All Status</option>
             <option value="in_progress">Active</option>
@@ -298,6 +276,15 @@ const ProjectsPage: React.FC = () => {
           </select>
           <ChevronDown className="absolute w-3.5 h-3.5 -translate-y-1/2 pointer-events-none right-3 top-1/2 text-slate-400" />
         </div>
+        {isAdmin && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            New Project
+          </button>
+        )}
       </div>
 
       {error && (
@@ -314,7 +301,7 @@ const ProjectsPage: React.FC = () => {
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div
               key={i}
-              className="h-[248px] bg-white border border-slate-200 rounded-xl animate-pulse"
+              className="h-[248px] bg-white border border-slate-200 rounded-xl shadow-md animate-pulse"
             />
           ))}
         </div>
@@ -335,12 +322,12 @@ const ProjectsPage: React.FC = () => {
                   navigate(`/${organization?.id}/project/${project.id}/details`);
                 }
               }}
-              className="relative flex flex-col w-full h-full p-5 text-left transition-shadow bg-white border rounded-xl shadow-sm cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-md group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              className="relative flex flex-col w-full h-full p-5 text-left transition-shadow bg-white border rounded-xl shadow-md cursor-pointer border-slate-200 hover:border-blue-300 hover:shadow-lg group outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
               {/* Top band: icon + menu */}
               <div className="flex items-start justify-between">
                 <div
-                  className={`flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-lg ${iconStyle.bg}`}
+                  className={`flex items-center justify-center flex-shrink-0 w-10 h-10 rounded-lg ring-1 ring-black/5 ${iconStyle.bg}`}
                 >
                   <FolderKanban className={`w-5 h-5 ${iconStyle.text}`} />
                 </div>
@@ -365,7 +352,7 @@ const ProjectsPage: React.FC = () => {
                     <div
                       ref={cardMenuRef}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 z-20 mt-1 overflow-hidden bg-white border rounded-md shadow-lg w-28 border-slate-200"
+                      className="absolute right-0 z-20 mt-1 overflow-hidden bg-white border rounded-lg shadow-lg ring-1 ring-black/5 w-28 border-slate-200"
                     >
                       <button
                         type="button"
@@ -488,8 +475,8 @@ const ProjectsPage: React.FC = () => {
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-md border-slate-200">
-          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+        <div className="flex flex-col items-center justify-center py-20 text-center bg-white border rounded-xl shadow-md border-slate-200">
+          <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
             <svg
               className="w-6 h-6 text-slate-400"
               fill="none"
@@ -517,8 +504,8 @@ const ProjectsPage: React.FC = () => {
 
       {/* Create Modal */}
       {showCreateForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-md shadow-lg border-slate-200 flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-xl shadow-2xl border-slate-200 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-3.5 border-b border-slate-200">
               <div>
                 <Eyebrow>New Project</Eyebrow>
@@ -544,7 +531,7 @@ const ProjectsPage: React.FC = () => {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                     placeholder="e.g. Website Redesign"
                   />
                 </div>
@@ -553,7 +540,7 @@ const ProjectsPage: React.FC = () => {
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                     rows={2}
                     placeholder="Describe the project goals..."
                   />
@@ -565,7 +552,7 @@ const ProjectsPage: React.FC = () => {
                       <select
                         value={status}
                         onChange={(e) => setStatus(e.target.value as any)}
-                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400 transition-colors"
                       >
                         <option value="pending">Pending</option>
                         <option value="in_progress">Active</option>
@@ -581,7 +568,7 @@ const ProjectsPage: React.FC = () => {
                       type="date"
                       value={dueDate}
                       onChange={(e) => setDueDate(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                     />
                   </div>
                 </div>
@@ -595,10 +582,10 @@ const ProjectsPage: React.FC = () => {
                       placeholder="Search users by name..."
                       value={assigneeSearchTerm}
                       onChange={(e) => setAssigneeSearchTerm(e.target.value)}
-                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-400 transition-colors"
                     />
                   </div>
-                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
                     {users
                       .filter((u) =>
                         u.fullName
@@ -649,14 +636,14 @@ const ProjectsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
                   {submitting && (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -671,8 +658,8 @@ const ProjectsPage: React.FC = () => {
 
       {/* Edit Modal */}
       {editingProject && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/45">
-          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-md shadow-lg border-slate-200 flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-xl max-h-[88vh] bg-white border rounded-xl shadow-2xl border-slate-200 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-3.5 border-b border-slate-200">
               <div>
                 <Eyebrow>Edit Project</Eyebrow>
@@ -698,7 +685,7 @@ const ProjectsPage: React.FC = () => {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     required
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                     placeholder="e.g. Website Redesign"
                   />
                 </div>
@@ -707,7 +694,7 @@ const ProjectsPage: React.FC = () => {
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 resize-none transition-colors"
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
                     rows={2}
                     placeholder="Describe the project goals..."
                   />
@@ -719,7 +706,7 @@ const ProjectsPage: React.FC = () => {
                       <select
                         value={editStatus}
                         onChange={(e) => setEditStatus(e.target.value as any)}
-                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:border-blue-400 transition-colors"
                       >
                         <option value="pending">Pending</option>
                         <option value="in_progress">Active</option>
@@ -735,7 +722,7 @@ const ProjectsPage: React.FC = () => {
                       type="date"
                       value={editDueDate}
                       onChange={(e) => setEditDueDate(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                      className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
                     />
                   </div>
                 </div>
@@ -749,10 +736,10 @@ const ProjectsPage: React.FC = () => {
                       placeholder="Search users by name..."
                       value={editAssigneeSearchTerm}
                       onChange={(e) => setEditAssigneeSearchTerm(e.target.value)}
-                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded pl-9 outline-none focus:border-blue-900 transition-colors"
+                      className="w-full py-2 pr-3 text-[13px] bg-white border border-slate-200 rounded-lg pl-9 outline-none focus:border-blue-400 transition-colors"
                     />
                   </div>
-                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded bg-slate-50 space-y-2">
+                  <div className="max-h-28 overflow-y-auto p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
                     {users
                       .filter((u) =>
                         u.fullName
@@ -805,14 +792,14 @@ const ProjectsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEditingProject(null)}
-                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-70 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-70 transition-colors"
                 >
                   {submitting && (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />

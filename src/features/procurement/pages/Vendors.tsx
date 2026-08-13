@@ -53,10 +53,10 @@ const formatDate = (value?: string | null) =>
     : "--";
 
 const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; iconBg: string }> = ({ label, value, icon, iconBg }) => (
-  <div className="p-3 bg-white border rounded-lg border-slate-200">
+  <div className="p-3 bg-white border rounded-xl shadow-md border-slate-200">
     <div className="flex items-start justify-between">
       <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ${iconBg}`}>{icon}</div>
+      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ring-1 ring-black/5 ${iconBg}`}>{icon}</div>
     </div>
     <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{value}</div>
   </div>
@@ -219,7 +219,7 @@ const VendorsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16">
+      <div className="flex flex-col items-center justify-center gap-3 py-16 bg-white">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
         <p className="text-[12px] text-slate-400">Loading vendors…</p>
       </div>
@@ -227,12 +227,14 @@ const VendorsPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full p-6">
+    <div className="w-full min-h-full p-6 bg-white lg:px-8 lg:py-8">
       {error ? (
         <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-          <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
+            <AlertCircle className="w-6 h-6 text-red-600" />
+          </div>
           <p className="text-[13px] text-slate-600">{error}</p>
-          <button onClick={refresh} className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded hover:bg-slate-50">
+          <button onClick={refresh} className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             Retry
           </button>
         </div>
@@ -253,7 +255,7 @@ const VendorsPage: React.FC = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search vendors, code, location, phone, email..."
-                className="pl-8 pr-3 py-2 w-64 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                className="pl-8 pr-3 py-2 w-64 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -267,7 +269,7 @@ const VendorsPage: React.FC = () => {
               {isAdmin && (
                 <button
                   onClick={openCreateForm}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors shadow-sm"
                 >
                   <Plus size={14} /> Add Vendor
                 </button>
@@ -276,7 +278,7 @@ const VendorsPage: React.FC = () => {
           </div>
 
           {actionError && (
-            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
               <span>{actionError}</span>
               <button onClick={() => setActionError(null)}>
                 <X size={14} />
@@ -285,10 +287,10 @@ const VendorsPage: React.FC = () => {
           )}
 
           {/* Table */}
-          <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
+          <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
             {filteredVendors.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="flex items-center justify-center w-12 h-12 mb-3 rounded bg-slate-100">
+                <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
                   <Building2 className="w-6 h-6 text-slate-400" />
                 </div>
                 <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -406,7 +408,7 @@ const VendorsPage: React.FC = () => {
             </div>
             <form onSubmit={handleSubmitForm} className="p-4 space-y-3">
               {formError && (
-                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>
+                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -416,7 +418,7 @@ const VendorsPage: React.FC = () => {
                     value={form.contactPerson}
                     onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
                     placeholder="e.g. Anshuman Pani"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
                 <div>
@@ -425,7 +427,7 @@ const VendorsPage: React.FC = () => {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="e.g. Himalayan Solar Supplies"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
               </div>
@@ -437,7 +439,7 @@ const VendorsPage: React.FC = () => {
                     value={form.contact}
                     onChange={(e) => setForm({ ...form, contact: e.target.value })}
                     placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
                 <div>
@@ -447,7 +449,7 @@ const VendorsPage: React.FC = () => {
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
               </div>
@@ -458,7 +460,7 @@ const VendorsPage: React.FC = () => {
                     value={form.location}
                     onChange={(e) => setForm({ ...form, location: e.target.value })}
                     placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
                 <div>
@@ -467,7 +469,7 @@ const VendorsPage: React.FC = () => {
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
                     placeholder="Optional"
-                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                   />
                 </div>
               </div>
@@ -478,7 +480,7 @@ const VendorsPage: React.FC = () => {
                   onChange={(e) => setForm({ ...form, address: e.target.value })}
                   rows={2}
                   placeholder="Used on generated Purchase Order PDFs"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none resize-none focus:border-blue-400"
+                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none resize-none focus:border-blue-400"
                 />
               </div>
               <div>
@@ -487,17 +489,17 @@ const VendorsPage: React.FC = () => {
                   type="date"
                   value={form.contractExpiryDate}
                   onChange={(e) => setForm({ ...form, contractExpiryDate: e.target.value })}
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={closeForm} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50">
+                <button type="button" onClick={closeForm} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editingVendor ? "Save Changes" : "Add Vendor"}

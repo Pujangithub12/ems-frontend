@@ -60,7 +60,7 @@ const ProjectDetails: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 bg-white">
         <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
         <div
           className="text-[11px] text-slate-400 tracking-[0.1em] uppercase"
@@ -74,8 +74,8 @@ const ProjectDetails: React.FC = () => {
 
   if (error || !project) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-center">
-        <div className="flex items-center justify-center w-12 h-12 mb-1 bg-red-100 rounded">
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-3 text-center bg-white">
+        <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
           <AlertCircle className="w-6 h-6 text-red-700" />
         </div>
         <h2 className="font-semibold text-[15px] text-slate-900">
@@ -86,7 +86,7 @@ const ProjectDetails: React.FC = () => {
         </p>
         <button
           onClick={() => navigate(`/${organizationId}/project`)}
-          className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 transition-colors"
+          className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
         >
           Back to Projects
         </button>
@@ -145,7 +145,7 @@ const ProjectDetails: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-shrink-0 w-52">
+        <div className="flex-shrink-0 w-52 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-md">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] font-medium text-slate-500">Progress</span>
             <span className="text-[13px] font-bold text-slate-900">{progress}%</span>
@@ -164,7 +164,7 @@ const ProjectDetails: React.FC = () => {
 
       {/* Tabs & Content — fills the remaining page height */}
       <div className="flex flex-col flex-1 w-full overflow-hidden">
-        <div className="flex flex-shrink-0 gap-1 px-2 overflow-x-auto border-b border-slate-200">
+        <div className="flex flex-shrink-0 gap-1 px-4 overflow-x-auto border-b border-slate-200 bg-slate-50/60 lg:px-8">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -184,7 +184,7 @@ const ProjectDetails: React.FC = () => {
             );
           })}
         </div>
-        <div className="flex-1 p-6 overflow-auto">{renderTabContent()}</div>
+        <div className="flex-1 p-6 overflow-auto bg-white">{renderTabContent()}</div>
       </div>
     </div>
   );

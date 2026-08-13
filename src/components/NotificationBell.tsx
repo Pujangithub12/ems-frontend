@@ -51,17 +51,17 @@ const NotificationBell: React.FC = () => {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 rounded hover:bg-slate-100 text-slate-600"
+        className="relative p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
       >
         {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unreadCount > 0 && !isMuted && (
-          <span className="absolute w-[7px] h-[7px] rounded-full bg-red-700 top-[7px] right-[7px] border-[1.5px] border-white" />
+          <span className="absolute w-[7px] h-[7px] rounded-full bg-red-600 top-[7px] right-[7px] border-[1.5px] border-white" />
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] bg-white rounded border border-slate-200 w-80 z-50 shadow-lg">
-          <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-200">
+        <div className="absolute right-0 top-[calc(100%+8px)] bg-white rounded-xl border border-slate-200/70 w-80 z-50 shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50/60">
             <span className="font-semibold text-[13px] text-slate-900">Notifications</span>
             {unreadCount > 0 && (
               <button
@@ -74,7 +74,7 @@ const NotificationBell: React.FC = () => {
             )}
           </div>
           {isMuted && (
-            <div className="flex items-center justify-between px-3.5 py-2 bg-amber-50 border-b border-amber-200 text-[11.5px] text-amber-800">
+            <div className="flex items-center justify-between px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11.5px] text-amber-800">
               <span className="flex items-center gap-1.5">
                 <BellOff className="w-3 h-3" />
                 Muted {mutedUntilLabel}
@@ -86,15 +86,18 @@ const NotificationBell: React.FC = () => {
           )}
           <div className="overflow-y-auto max-h-96">
             {notifications.length === 0 ? (
-              <div className="px-3.5 py-8 text-center text-[12.5px] text-slate-400">
-                No notifications yet
+              <div className="flex flex-col items-center gap-2.5 px-3.5 py-10 text-center">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
+                  <Bell className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="text-[12.5px] text-slate-400">No notifications yet</div>
               </div>
             ) : (
               notifications.map((n) => (
                 <button
                   key={n.id}
                   onClick={() => handleClick(n)}
-                  className={`w-full text-left px-3.5 py-2.5 border-b border-slate-100 hover:bg-slate-50 flex gap-2 ${
+                  className={`w-full text-left px-4 py-2.5 border-b border-slate-100 hover:bg-slate-50 flex gap-2 transition-colors ${
                     n.isRead ? "" : "bg-blue-50/60"
                   }`}
                 >

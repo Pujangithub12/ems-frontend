@@ -30,13 +30,18 @@ const SidebarDropdown: React.FC<SidebarDropdownProps> = ({ icon: Icon, label, it
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center gap-2.5 pl-2.5 pr-2.5 py-2 rounded text-left text-[14.5px] transition-colors ${
+        className={`relative w-full flex items-center gap-2.5 pl-2.5 pr-2.5 py-2 rounded-lg text-left text-[14.5px] transition-colors ${
           isChildActive
-            ? "bg-slate-800 text-white font-medium"
-            : "text-slate-200 hover:bg-slate-800/70 hover:text-white"
+            ? "bg-white/10 text-white font-medium shadow-sm ring-1 ring-white/10"
+            : "text-slate-300 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <Icon className="w-3.5 h-3.5 opacity-70" />
+        <span
+          className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full bg-blue-400 transition-opacity ${
+            isChildActive ? "opacity-100" : "opacity-0"
+          }`}
+        />
+        <Icon className={`w-3.5 h-3.5 ${isChildActive ? "opacity-100 text-blue-400" : "opacity-70"}`} />
         <span className="flex-1">{label}</span>
         <ChevronDown
           className={`w-3.5 h-3.5 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
@@ -51,10 +56,10 @@ const SidebarDropdown: React.FC<SidebarDropdownProps> = ({ icon: Icon, label, it
               end
               onClick={onNavigate}
               className={({ isActive }) =>
-                `flex items-center py-1.5 px-2.5 rounded text-[13.5px] transition-colors ${
+                `flex items-center py-1.5 px-2.5 rounded-lg text-[13.5px] transition-colors ${
                   isActive
-                    ? "bg-slate-800 text-white font-medium"
-                    : "text-slate-300 hover:bg-slate-800/70 hover:text-white"
+                    ? "bg-white/10 text-white font-medium"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
                 }`
               }
             >

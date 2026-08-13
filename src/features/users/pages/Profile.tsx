@@ -237,7 +237,7 @@ const Profile: React.FC = () => {
             title={`Leave Requests · ${thisYear}`}
             action={
               <Link
-                to={`${prefix}/leaverequests`}
+                to={`${prefix}/approvals`}
                 className="text-[12px] font-medium text-blue-900 hover:underline"
               >
                 View all
@@ -269,7 +269,7 @@ const Profile: React.FC = () => {
                   </span>
                 </div>
                 <Link
-                  to={`${prefix}/leaverequests`}
+                  to={`${prefix}/approvals`}
                   className="flex items-center justify-center w-full gap-2 px-3 py-2 text-[12.5px] font-medium border rounded border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   <Calendar className="w-3.5 h-3.5" /> Request leave

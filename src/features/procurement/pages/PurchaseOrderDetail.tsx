@@ -92,10 +92,10 @@ const Pill: React.FC<{ bg: string; fg: string; label: string }> = ({ bg, fg, lab
   </span>
 );
 
-const inputCls = "w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500";
+const inputCls = "w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500";
 const labelCls = "block mb-1 text-[11px] font-medium text-slate-900";
-const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60 transition-colors";
-const sectionCardCls = "p-4 bg-white border rounded-lg border-slate-200";
+const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors";
+const sectionCardCls = "p-4 bg-white border rounded-xl shadow-md border-slate-200";
 
 const numOrUndef = (s: string): number | undefined => {
   if (s.trim() === "") return undefined;
@@ -173,7 +173,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
   if (detailQuery.isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16">
+      <div className="flex flex-col items-center justify-center gap-3 py-16 bg-white">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
         <p className="text-[12px] text-slate-400">Loading purchase order…</p>
       </div>
@@ -182,12 +182,14 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
   if (detailQuery.isError || !po) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-        <AlertCircle className="w-6 h-6 text-red-600" />
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-center bg-white">
+        <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
+          <AlertCircle className="w-6 h-6 text-red-600" />
+        </div>
         <p className="text-[13px] text-slate-600">{getErrorMessage(detailQuery.error, "Purchase order not found.")}</p>
         <button
           onClick={() => navigate(`/${organizationId}/purchase-orders`)}
-          className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded hover:bg-slate-50"
+          className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           Back to Purchase Orders
         </button>
@@ -230,7 +232,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
         </div>
 
         {headerError && (
-          <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+          <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
             <span>{headerError}</span>
             <button onClick={() => setHeaderError(null)}><X size={14} /></button>
           </div>
@@ -286,7 +288,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
       {/* Tabs & Content */}
       <div className="flex flex-col flex-1 w-full overflow-hidden">
-        <div className="flex flex-shrink-0 gap-1 px-2 overflow-x-auto border-b border-slate-200">
+        <div className="flex flex-shrink-0 gap-1 px-4 overflow-x-auto border-b border-slate-200 bg-slate-50/60 lg:px-8">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -403,7 +405,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   return (
     <div className="flex flex-col gap-4 max-w-5xl">
       {error && (
-        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
           <span>{error}</span>
           <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
@@ -543,7 +545,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                       value={hsnCodes[item.id] ?? ""}
                       onChange={(e) => setHsnCodes({ ...hsnCodes, [item.id]: e.target.value })}
                       placeholder="Optional"
-                      className="w-24 px-2 py-1 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                      className="w-24 px-2 py-1 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
                     />
                   </td>
                   <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
@@ -769,7 +771,7 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             disabled={fieldsDisabled}
             value={form.transportMode}
             onChange={(e) => setForm({ ...form, transportMode: e.target.value as ShipmentTransportMode })}
-            className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded outline-none appearance-none focus:border-blue-400 disabled:bg-slate-50"
+            className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded-lg outline-none appearance-none focus:border-blue-400 disabled:bg-slate-50"
           >
             <option value="road">Road</option>
             <option value="sea">Sea</option>
@@ -785,7 +787,7 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             disabled={fieldsDisabled}
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value as ShipmentStatus })}
-            className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded outline-none appearance-none focus:border-blue-400 disabled:bg-slate-50"
+            className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded-lg outline-none appearance-none focus:border-blue-400 disabled:bg-slate-50"
           >
             <option value="booked">Booked</option>
             <option value="in_transit">In Transit</option>
@@ -853,7 +855,7 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   return (
     <div className="flex flex-col gap-4 max-w-5xl">
       {error && (
-        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
           <span>{error}</span>
           <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
@@ -940,7 +942,7 @@ const InsuranceBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged
 
   return (
     <div className={sectionCardCls}>
-      {error && <div className="mb-3 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{error}</div>}
+      {error && <div className="mb-3 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
       <div className="flex items-center justify-between mb-3">
         <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
           <Shield size={14} className="text-slate-400" /> Insurance
@@ -1087,7 +1089,7 @@ const CustomsBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged: 
 
   return (
     <div className={sectionCardCls}>
-      {error && <div className="mb-3 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{error}</div>}
+      {error && <div className="mb-3 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
       <div className="flex items-center justify-between mb-3">
         <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
           <FileCheck size={14} className="text-slate-400" /> Customs
@@ -1163,7 +1165,7 @@ const CustomsBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged: 
                 <select
                   value={docType}
                   onChange={(e) => setDocType(e.target.value as CustomsDocumentType)}
-                  className="px-2 py-1 text-[11px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                  className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                 >
                   {(Object.keys(DOCUMENT_TYPE_LABELS) as CustomsDocumentType[]).map((t) => (
                     <option key={t} value={t}>{DOCUMENT_TYPE_LABELS[t]}</option>
@@ -1386,7 +1388,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
   return (
     <div className="flex flex-col gap-4 max-w-5xl">
       {error && (
-        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+        <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
           <span>{error}</span>
           <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
@@ -1410,21 +1412,21 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                   <button
                     disabled={busy}
                     onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "accepted" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-60"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
                   >
                     <Check size={12} /> Accept
                   </button>
                   <button
                     disabled={busy}
                     onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "partially_accepted" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 bg-blue-50 rounded hover:bg-blue-100 disabled:opacity-60"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-60"
                   >
                     Partially Accept
                   </button>
                   <button
                     disabled={busy}
                     onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "rejected" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 disabled:opacity-60"
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
                   >
                     <XCircle size={12} /> Reject
                   </button>
@@ -1495,7 +1497,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                   {gr.photos.map((p) => (
                     <div key={p.id} className="relative group">
                       <a href={fileUrl(p.filePath)} target="_blank" rel="noreferrer">
-                        <img src={fileUrl(p.filePath)} alt={p.fileName} className="object-cover w-16 h-16 border rounded border-slate-200" />
+                        <img src={fileUrl(p.filePath)} alt={p.fileName} className="object-cover w-16 h-16 border rounded-lg border-slate-200" />
                       </a>
                       {isAdmin && (
                         <button
@@ -1524,7 +1526,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
           </div>
           {showForm && (
             <form onSubmit={handleSubmit} className="pt-3 mt-3 space-y-3 border-t border-slate-100">
-              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
+              {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelCls}>Warehouse</label>
@@ -1532,7 +1534,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                     <select
                       value={warehouseId}
                       onChange={(e) => setWarehouseId(e.target.value ? Number(e.target.value) : "")}
-                      className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded outline-none appearance-none focus:border-blue-400"
+                      className="w-full px-3 py-2 pr-8 text-[13px] bg-white border border-slate-200 rounded-lg outline-none appearance-none focus:border-blue-400"
                     >
                       <option value="">Select warehouse</option>
                       {warehouses.map((w) => (
@@ -1567,7 +1569,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                             min="0"
                             value={row.receivedQuantity}
                             onChange={(e) => updateRow(i, { receivedQuantity: e.target.value })}
-                            className="w-24 px-2 py-1.5 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                            className="w-24 px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -1576,7 +1578,7 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                             min="0"
                             value={row.damagedQuantity}
                             onChange={(e) => updateRow(i, { damagedQuantity: e.target.value })}
-                            className="w-24 px-2 py-1.5 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                            className="w-24 px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                           />
                         </td>
                       </tr>

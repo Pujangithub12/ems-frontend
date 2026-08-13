@@ -42,19 +42,19 @@ const Pill: React.FC<{ bg: string; fg: string; label: string }> = ({ bg, fg, lab
 );
 
 const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; iconBg: string }> = ({ label, value, icon, iconBg }) => (
-  <div className="p-3 bg-white border rounded-lg border-slate-200">
+  <div className="p-3 bg-white border rounded-xl shadow-md border-slate-200">
     <div className="flex items-start justify-between">
       <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ${iconBg}`}>{icon}</div>
+      <div className={`flex items-center justify-center flex-shrink-0 rounded-lg w-7 h-7 ring-1 ring-black/5 ${iconBg}`}>{icon}</div>
     </div>
     <div className="mt-2 text-[19px] font-bold leading-none tracking-tight text-slate-900">{value}</div>
   </div>
 );
 
-const inputCls = "w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500";
+const inputCls = "w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500";
 const labelCls = "block mb-1 text-[11px] font-medium text-slate-900";
-const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60 transition-colors";
-const sectionCardCls = "p-4 bg-white border rounded-lg border-slate-200";
+const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors";
+const sectionCardCls = "p-4 bg-white border rounded-xl shadow-md border-slate-200";
 
 const numOrUndef = (s: string): number | undefined => {
   if (s.trim() === "") return undefined;
@@ -221,7 +221,7 @@ const ProformaInvoicesPage: React.FC = () => {
 
   if (piQuery.isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-16">
+      <div className="flex flex-col items-center justify-center gap-3 py-16 bg-white">
         <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
         <p className="text-[12px] text-slate-400">Loading proforma invoices…</p>
       </div>
@@ -229,12 +229,14 @@ const ProformaInvoicesPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full p-6">
+    <div className="w-full min-h-full p-6 bg-white lg:px-8 lg:py-8">
       {piQuery.isError ? (
         <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-          <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="flex items-center justify-center w-12 h-12 mb-1 rounded-full bg-gradient-to-br from-red-50 to-red-100 ring-1 ring-red-100">
+            <AlertCircle className="w-6 h-6 text-red-600" />
+          </div>
           <p className="text-[13px] text-slate-600">{getErrorMessage(piQuery.error, "Failed to load proforma invoices.")}</p>
-          <button onClick={refresh} className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded hover:bg-slate-50">
+          <button onClick={refresh} className="mt-2 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             Retry
           </button>
         </div>
@@ -255,14 +257,14 @@ const ProformaInvoicesPage: React.FC = () => {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search PI#, PO#, vendor, project..."
-                  className="pl-8 pr-3 py-2 w-72 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                  className="pl-8 pr-3 py-2 w-72 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
                 />
               </div>
               <div className="relative">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as ProformaInvoiceStatus | "")}
-                  className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400"
+                  className="appearance-none pl-3 pr-8 py-2 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 focus:bg-white transition-colors"
                 >
                   <option value="">All statuses</option>
                   {(Object.keys(PI_STATUS_STYLES) as ProformaInvoiceStatus[]).map((s) => (
@@ -289,7 +291,7 @@ const ProformaInvoicesPage: React.FC = () => {
           </div>
 
           {rowError && (
-            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
               <span>{rowError}</span>
               <button onClick={() => setRowError(null)}><X size={14} /></button>
             </div>
@@ -299,13 +301,13 @@ const ProformaInvoicesPage: React.FC = () => {
             <div className={sectionCardCls}>
               <h3 className="text-[13px] font-semibold text-slate-900 mb-3">Add Proforma Invoice</h3>
               <form onSubmit={handleSubmit} className="space-y-3">
-                {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
+                {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
                 <div>
                   <label className={labelCls}>Purchase Order</label>
                   <select
                     value={targetPoId}
                     onChange={(e) => setTargetPoId(e.target.value ? Number(e.target.value) : "")}
-                    className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none cursor-pointer focus:border-blue-400"
+                    className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400"
                   >
                     <option value="">Select a purchase order…</option>
                     {purchaseOrders.map((po) => (
@@ -356,7 +358,7 @@ const ProformaInvoicesPage: React.FC = () => {
                           value={row.itemName}
                           onChange={(e) => updateItemRow(i, { itemName: e.target.value })}
                           placeholder="Item name"
-                          className="flex-[2] min-w-0 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                          className="flex-[2] min-w-0 px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <input
                           value={row.quantity}
@@ -364,13 +366,13 @@ const ProformaInvoicesPage: React.FC = () => {
                           placeholder="Qty"
                           type="number"
                           min="1"
-                          className="w-16 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                          className="w-16 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <input
                           value={row.unit}
                           onChange={(e) => updateItemRow(i, { unit: e.target.value })}
                           placeholder="Unit"
-                          className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                          className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <input
                           value={row.unitPrice}
@@ -378,7 +380,7 @@ const ProformaInvoicesPage: React.FC = () => {
                           placeholder="Unit price"
                           type="number"
                           min="0"
-                          className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+                          className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         {items.length > 1 && (
                           <button type="button" onClick={() => removeItemRow(i)} className="p-1.5 text-slate-400 hover:text-red-600">
@@ -402,7 +404,7 @@ const ProformaInvoicesPage: React.FC = () => {
 
           {filtered.length === 0 ? (
             <div className={`${sectionCardCls} text-center py-16`}>
-              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 rounded bg-slate-100">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
                 <FileText className="w-6 h-6 text-slate-400" />
               </div>
               <h3 className="font-semibold text-[14px] text-slate-900 mb-1">
@@ -454,7 +456,7 @@ const ProformaInvoicesPage: React.FC = () => {
                               setRowBusyId(pi.id);
                               runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "approved" }));
                             }}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-60"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
                           >
                             <Check size={12} /> Approve
                           </button>
@@ -464,7 +466,7 @@ const ProformaInvoicesPage: React.FC = () => {
                               setRowBusyId(pi.id);
                               runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "rejected" }));
                             }}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 disabled:opacity-60"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
                           >
                             <XCircle size={12} /> Reject
                           </button>
