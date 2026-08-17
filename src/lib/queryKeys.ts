@@ -85,6 +85,7 @@ export const queryKeys = {
   plantReportPrefill: (wsId: number, date: string) =>
     [...queryKeys.all(wsId), "plantReportPrefill", date] as const,
   plantReportFields: (wsId: number) => [...queryKeys.all(wsId), "plantReportFields"] as const,
+  plantReportItems: (wsId: number) => [...queryKeys.all(wsId), "plantReportItems"] as const,
 
   // Unauthenticated — no organization context yet.
   invite: (token: string) => ["invite", token] as const,

@@ -11,8 +11,13 @@ import {
   createPlantReportField,
   updatePlantReportField,
   deletePlantReportField,
+  getPlantReportItems,
+  createPlantReportItem,
+  updatePlantReportItem,
+  deletePlantReportItem,
   SavePlantReportPayload,
   SavePlantReportFieldPayload,
+  SavePlantReportItemPayload,
 } from "../api/plantReport.api";
 
 export function usePlantReportsForMonth(year: number, month: number, projectId?: number | null) {
@@ -106,6 +111,50 @@ export function useDeletePlantReportField() {
     mutationFn: (id: number) => deletePlantReportField(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
+    },
+  });
+}
+
+export function usePlantReportItems() {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.plantReportItems(wsId),
+    queryFn: () => getPlantReportItems(),
+    enabled: Number.isFinite(wsId),
+  });
+}
+
+export function useCreatePlantReportItem() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SavePlantReportItemPayload) => createPlantReportItem(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportItems(wsId) });
+    },
+  });
+}
+
+export function useUpdatePlantReportItem() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: SavePlantReportItemPayload }) =>
+      updatePlantReportItem(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportItems(wsId) });
+    },
+  });
+}
+
+export function useDeletePlantReportItem() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deletePlantReportItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportItems(wsId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
     },
   });
