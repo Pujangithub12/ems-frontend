@@ -34,13 +34,19 @@ import {
   useCreatePlantReportField,
   useUpdatePlantReportField,
   useDeletePlantReportField,
+  usePlantReportItems,
+  useCreatePlantReportItem,
+  useUpdatePlantReportItem,
+  useDeletePlantReportItem,
 } from "../hooks/usePlantReport";
 import type {
   PlantDailyReport,
   SavePlantReportPayload,
+  SavePlantReportItemEntryPayload,
   PlantReportCustomField,
   PlantReportFieldDataType,
   PlantReportCustomValue,
+  PlantReportItem,
 } from "../api/plantReport.api";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -116,15 +122,16 @@ const SectionCard: React.FC<{
   </div>
 );
 
+type ItemEntryForm = { receivedQty: string; usedQty: string; note: string };
+const emptyItemEntryForm: ItemEntryForm = { receivedQty: "", usedQty: "", note: "" };
+
 type FormState = {
   steamInitial: string;
   steamFinal: string;
   steamPressure: string;
   steamTemp: string;
   feedwaterTemp: string;
-  pelletUsedKg: string;
   pelletsBag: string;
-  pelletReceivedKg: string;
   waterInitial: string;
   waterFinal: string;
   burnerStatus: "running" | "stopped" | "maintenance" | "";
@@ -135,6 +142,8 @@ type FormState = {
    * "true"/"" so every custom value shares the same string-state shape as
    * the rest of this form. */
   customValues: Record<string, string>;
+  /** Keyed by tracked item id (as a string). */
+  itemEntries: Record<string, ItemEntryForm>;
 };
 
 const emptyForm: FormState = {
@@ -143,9 +152,7 @@ const emptyForm: FormState = {
   steamPressure: "",
   steamTemp: "",
   feedwaterTemp: "",
-  pelletUsedKg: "",
   pelletsBag: "",
-  pelletReceivedKg: "",
   waterInitial: "",
   waterFinal: "",
   burnerStatus: "",
@@ -153,17 +160,20 @@ const emptyForm: FormState = {
   shutdownReason: "",
   staffUserIds: [],
   customValues: {},
+  itemEntries: {},
 };
 
-const reportToForm = (r: PlantDailyReport, fields: PlantReportCustomField[]): FormState => ({
+const reportToForm = (
+  r: PlantDailyReport,
+  fields: PlantReportCustomField[],
+  items: PlantReportItem[],
+): FormState => ({
   steamInitial: r.steamInitial != null ? String(r.steamInitial) : "",
   steamFinal: r.steamFinal != null ? String(r.steamFinal) : "",
   steamPressure: r.steamPressure != null ? String(r.steamPressure) : "",
   steamTemp: r.steamTemp != null ? String(r.steamTemp) : "",
   feedwaterTemp: r.feedwaterTemp != null ? String(r.feedwaterTemp) : "",
-  pelletUsedKg: r.pelletUsedKg != null ? String(r.pelletUsedKg) : "",
   pelletsBag: r.pelletsBag != null ? String(r.pelletsBag) : "",
-  pelletReceivedKg: r.pelletReceivedKg != null ? String(r.pelletReceivedKg) : "",
   waterInitial: r.waterInitial != null ? String(r.waterInitial) : "",
   waterFinal: r.waterFinal != null ? String(r.waterFinal) : "",
   burnerStatus: r.burnerStatus ?? "",
@@ -174,6 +184,21 @@ const reportToForm = (r: PlantDailyReport, fields: PlantReportCustomField[]): Fo
     fields.map((f) => {
       const v = r.customValues?.[String(f.id)];
       return [String(f.id), v == null ? "" : f.dataType === "boolean" ? (v ? "true" : "") : String(v)];
+    }),
+  ),
+  itemEntries: Object.fromEntries(
+    items.map((item) => {
+      const reading = r.items.find((i) => i.itemId === item.id);
+      return [
+        String(item.id),
+        reading
+          ? {
+              receivedQty: reading.received ? String(reading.received) : "",
+              usedQty: reading.used ? String(reading.used) : "",
+              note: reading.note ?? "",
+            }
+          : emptyItemEntryForm,
+      ];
     }),
   ),
 });
@@ -197,6 +222,24 @@ const buildCustomValuesPayload = (
       return [String(f.id), raw];
     }),
   );
+
+/** Builds the itemEntries payload sent on save — always one entry per active
+ * item (even if the operator left it untouched, sending nulls) so an update
+ * never silently drops a previously-saved reading for an item the form
+ * happens not to render an edit for this time around. */
+const buildItemEntriesPayload = (
+  items: PlantReportItem[],
+  formValues: Record<string, ItemEntryForm>,
+): SavePlantReportItemEntryPayload[] =>
+  items.map((item) => {
+    const entry = formValues[String(item.id)] ?? emptyItemEntryForm;
+    return {
+      itemId: item.id,
+      receivedQty: num(entry.receivedQty),
+      usedQty: num(entry.usedQty),
+      note: entry.note.trim() || null,
+    };
+  });
 
 /** A single row in the field list — click the name/type to edit them
  * in place, matching the rest of this form's inline-edit conventions. */
@@ -411,12 +454,256 @@ const ManageCustomFieldsModal: React.FC<{ onClose: () => void }> = ({ onClose })
   );
 };
 
+/** A single row in the tracked-item list — click the name/unit to edit them
+ * in place, same convention as CustomFieldRow. */
+const ItemRow: React.FC<{
+  item: PlantReportItem;
+  onDeleteRequest: (item: PlantReportItem) => void;
+}> = ({ item, onDeleteRequest }) => {
+  const updateMutation = useUpdatePlantReportItem();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(item.name);
+  const [unit, setUnit] = useState(item.unit);
+  const [trackStock, setTrackStock] = useState(item.trackStock);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setName(item.name);
+    setUnit(item.unit);
+    setTrackStock(item.trackStock);
+    setRowError(null);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    if (!name.trim()) {
+      setRowError("Name is required.");
+      return;
+    }
+    if (!unit.trim()) {
+      setRowError("Unit is required.");
+      return;
+    }
+    try {
+      await updateMutation.mutateAsync({
+        id: item.id,
+        payload: { name: name.trim(), unit: unit.trim(), trackStock },
+      });
+      setEditing(false);
+    } catch (err) {
+      setRowError(getErrorMessage(err, "Failed to update item."));
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="p-3 rounded-lg bg-slate-50">
+        <div className="flex items-center gap-2">
+          <input
+            className={`${inputCls} flex-1`}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+          <input
+            className={inputCls}
+            style={{ width: 90 }}
+            placeholder="unit"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+          />
+          <label className="flex items-center flex-shrink-0 gap-1.5 px-2 text-[12px] text-slate-600">
+            <input
+              type="checkbox"
+              checked={trackStock}
+              onChange={(e) => setTrackStock(e.target.checked)}
+            />
+            Stock
+          </label>
+          <button
+            onClick={save}
+            disabled={updateMutation.isPending}
+            className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60"
+          >
+            {updateMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Check size={14} />
+            )}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-slate-500 border rounded-lg border-slate-200 hover:bg-white"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {rowError && <p className="mt-1.5 text-[11.5px] text-red-600">{rowError}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-50">
+      <button onClick={startEdit} className="flex items-center flex-1 min-w-0 gap-2 text-left">
+        <span className="text-[13px] font-medium truncate text-slate-800">{item.name}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 flex-shrink-0">
+          {item.unit}
+        </span>
+        {item.trackStock && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 flex-shrink-0">
+            Stock
+          </span>
+        )}
+      </button>
+      <button
+        onClick={startEdit}
+        className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+      >
+        <Pencil size={13} />
+      </button>
+      <button
+        onClick={() => onDeleteRequest(item)}
+        className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+};
+
+/** Admin-only modal for defining the org's tracked consumables/materials
+ * (Pellets, Diesel, ...) — name, unit, and whether it carries a running
+ * opening/closing stock ledger. Values themselves live per-report (see the
+ * "Tracked Items" SectionCard in DailyEntryDrawer); this only manages the
+ * item definitions. */
+const ManageItemsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { data: items = [] } = usePlantReportItems();
+  const createMutation = useCreatePlantReportItem();
+  const deleteMutation = useDeletePlantReportItem();
+
+  const [newName, setNewName] = useState("");
+  const [newUnit, setNewUnit] = useState("");
+  const [newTrackStock, setNewTrackStock] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PlantReportItem | null>(null);
+
+  const handleAdd = async () => {
+    setFormError(null);
+    if (!newName.trim()) {
+      setFormError("Enter a name for the item.");
+      return;
+    }
+    if (!newUnit.trim()) {
+      setFormError("Enter a unit (e.g. kg, ltr, bag).");
+      return;
+    }
+    try {
+      await createMutation.mutateAsync({
+        name: newName.trim(),
+        unit: newUnit.trim(),
+        trackStock: newTrackStock,
+      });
+      setNewName("");
+      setNewUnit("");
+      setNewTrackStock(true);
+    } catch (err) {
+      setFormError(getErrorMessage(err, "Failed to create item."));
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    await deleteMutation.mutateAsync(pendingDelete.id);
+    setPendingDelete(null);
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
+        <div className="w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/60">
+            <div>
+              <div className="font-semibold text-[15px] text-slate-900">Tracked Items</div>
+              <div className="text-[11.5px] text-slate-500 mt-0.5">
+                Consumables/materials logged per day, shared across this organization
+              </div>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-1 overflow-y-auto max-h-80">
+            {items.length === 0 ? (
+              <p className="py-6 text-[13px] text-center text-slate-400">
+                No tracked items yet — add one below.
+              </p>
+            ) : (
+              items.map((it) => <ItemRow key={it.id} item={it} onDeleteRequest={setPendingDelete} />)
+            )}
+          </div>
+
+          <div className="p-4 border-t border-slate-200 bg-slate-50/60">
+            <div className="flex items-center gap-2">
+              <input
+                className={`${inputCls} flex-1`}
+                placeholder="Item name (e.g. Diesel)"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <input
+                className={inputCls}
+                style={{ width: 90 }}
+                placeholder="unit"
+                value={newUnit}
+                onChange={(e) => setNewUnit(e.target.value)}
+              />
+              <label className="flex items-center flex-shrink-0 gap-1.5 px-2 text-[12px] text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={newTrackStock}
+                  onChange={(e) => setNewTrackStock(e.target.checked)}
+                />
+                Stock
+              </label>
+              <button
+                onClick={handleAdd}
+                disabled={createMutation.isPending}
+                className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60"
+              >
+                {createMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Plus size={14} />
+                )}
+              </button>
+            </div>
+            {formError && <p className="mt-1.5 text-[11.5px] text-red-600">{formError}</p>}
+          </div>
+        </div>
+      </div>
+
+      <ConfirmationModal
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Tracked Item"
+        message={`Delete "${pendingDelete?.name}"? This also removes every past reading logged for it — prefer disabling it instead if you want to keep the history.`}
+        confirmText="Delete"
+        isLoading={deleteMutation.isPending}
+      />
+    </>
+  );
+};
+
 const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const { data: users = [] } = useUsers();
   const { data: projects = [] } = useProjects();
   const { data: fields = [] } = usePlantReportFields();
+  const { data: items = [] } = usePlantReportItems();
   const prefillMutation = usePlantReportPrefill();
   const createMutation = useCreatePlantReport();
   const updateMutation = useUpdatePlantReport();
@@ -424,12 +711,13 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
   const [date, setDate] = useState(todayStr());
   const [projectId, setProjectId] = useState<number | "">("");
   const [existingId, setExistingId] = useState<number | null>(null);
-  const [openingBalance, setOpeningBalance] = useState(0);
+  const [itemOpeningBalances, setItemOpeningBalances] = useState<Record<string, number>>({});
   const [form, setForm] = useState<FormState>(emptyForm);
   const [loadingDate, setLoadingDate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [manageFieldsOpen, setManageFieldsOpen] = useState(false);
+  const [manageItemsOpen, setManageItemsOpen] = useState(false);
 
   // Default to the first project once the list loads, so a single-project
   // organization never has to think about the picker.
@@ -450,7 +738,7 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
     // other report instead of creating this one). Worst case with this in
     // place is a rejected duplicate-date 409, never a cross-project overwrite.
     setExistingId(null);
-    setOpeningBalance(0);
+    setItemOpeningBalances({});
     setLastReport(null);
     setForm(emptyForm);
     setLoadingDate(true);
@@ -462,12 +750,14 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
         if (cancelled) return;
         if (res.exists) {
           setExistingId(res.report.id);
-          setOpeningBalance(res.report.pelletStockOpening);
+          setItemOpeningBalances(
+            Object.fromEntries(res.report.items.map((i) => [String(i.itemId), i.opening])),
+          );
           setLastReport(res.report);
-          setForm(reportToForm(res.report, fields));
+          setForm(reportToForm(res.report, fields, items));
         } else {
           setExistingId(null);
-          setOpeningBalance(res.openingBalance);
+          setItemOpeningBalances(res.itemOpeningBalances);
           setLastReport(null);
           setForm(emptyForm);
         }
@@ -480,17 +770,22 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, projectId]);
 
-  // Custom field definitions load independently of the prefill fetch above
-  // (a separate query) — if they arrive after an existing report was already
-  // loaded into the form, re-derive just the customValues slice so those
-  // columns aren't stuck blank. Doesn't touch the rest of the form, so it
-  // never clobbers in-progress edits to the standard fields.
+  // Custom field / tracked item definitions load independently of the
+  // prefill fetch above (separate queries) — if they arrive after an
+  // existing report was already loaded into the form, re-derive just the
+  // customValues/itemEntries slices so those don't stay stuck blank. Doesn't
+  // touch the rest of the form, so it never clobbers in-progress edits to
+  // the standard fields.
   useEffect(() => {
     if (!lastReport) return;
-    const customValues = reportToForm(lastReport, fields).customValues;
-    setForm((prev) => ({ ...prev, customValues: { ...customValues, ...prev.customValues } }));
+    const derived = reportToForm(lastReport, fields, items);
+    setForm((prev) => ({
+      ...prev,
+      customValues: { ...derived.customValues, ...prev.customValues },
+      itemEntries: { ...derived.itemEntries, ...prev.itemEntries },
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fields]);
+  }, [fields, items]);
 
   const steamTon = useMemo(() => {
     const i = num(form.steamInitial);
@@ -503,12 +798,6 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
     const f = num(form.waterFinal);
     return i != null && f != null ? f - i : null;
   }, [form.waterInitial, form.waterFinal]);
-
-  const pelletStockClosing = useMemo(() => {
-    const received = num(form.pelletReceivedKg) ?? 0;
-    const used = num(form.pelletUsedKg) ?? 0;
-    return openingBalance + received - used;
-  }, [openingBalance, form.pelletReceivedKg, form.pelletUsedKg]);
 
   const shutdownRequired = steamTon === 0 || form.burnerStatus === "stopped";
 
@@ -550,9 +839,7 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
       steamPressure: num(form.steamPressure),
       steamTemp: num(form.steamTemp),
       feedwaterTemp: num(form.feedwaterTemp),
-      pelletUsedKg: num(form.pelletUsedKg),
       pelletsBag: num(form.pelletsBag),
-      pelletReceivedKg: num(form.pelletReceivedKg),
       waterInitial: num(form.waterInitial),
       waterFinal: num(form.waterFinal),
       burnerStatus: form.burnerStatus || null,
@@ -560,19 +847,20 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
       shutdownReason: form.shutdownReason.trim() || null,
       staffUserIds: form.staffUserIds,
       customValues: buildCustomValuesPayload(fields, form.customValues),
+      itemEntries: buildItemEntriesPayload(items, form.itemEntries),
     };
 
     try {
       if (existingId) {
         const updated = await updateMutation.mutateAsync({ id: existingId, payload });
         setLastReport(updated);
-        setForm(reportToForm(updated, fields));
+        setForm(reportToForm(updated, fields, items));
         setSuccess("Report updated.");
       } else {
         const created = await createMutation.mutateAsync(payload);
         setExistingId(created.id);
         setLastReport(created);
-        setForm(reportToForm(created, fields));
+        setForm(reportToForm(created, fields, items));
         setSuccess("Report saved.");
       }
     } catch (err) {
@@ -622,6 +910,14 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
           </div>
           {isAdmin && (
             <button
+              onClick={() => setManageItemsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+            >
+              <Package size={13} /> Tracked Items
+            </button>
+          )}
+          {isAdmin && (
+            <button
               onClick={() => setManageFieldsOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
             >
@@ -636,6 +932,7 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
         )}
       </div>
 
+      {manageItemsOpen && <ManageItemsModal onClose={() => setManageItemsOpen(false)} />}
       {manageFieldsOpen && <ManageCustomFieldsModal onClose={() => setManageFieldsOpen(false)} />}
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
@@ -708,37 +1005,72 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
             </div>
           </SectionCard>
 
-          <SectionCard icon={Package} title="Pellet">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Pellet used" suffix="kg">
-                <input
-                  type="number"
-                  className={inputCls}
-                  value={form.pelletUsedKg}
-                  onChange={(e) => setForm((p) => ({ ...p, pelletUsedKg: e.target.value }))}
-                />
-              </Field>
-              <Field label="Pallets" suffix="bag">
+          <SectionCard icon={Package} title="Tracked Items">
+            {items.length === 0 ? (
+              <p className="text-[12px] text-slate-400">
+                No tracked items yet
+                {isAdmin ? ' — add one via "Tracked Items" above.' : "."}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {items.map((item) => {
+                  const key = String(item.id);
+                  const entry = form.itemEntries[key] ?? emptyItemEntryForm;
+                  const setEntry = (patch: Partial<ItemEntryForm>) =>
+                    setForm((p) => ({
+                      ...p,
+                      itemEntries: { ...p.itemEntries, [key]: { ...entry, ...patch } },
+                    }));
+                  const opening = itemOpeningBalances[key] ?? 0;
+                  const received = num(entry.receivedQty) ?? 0;
+                  const used = num(entry.usedQty) ?? 0;
+                  const closing = opening + received - used;
+                  return (
+                    <div key={item.id} className="p-3 border rounded-lg border-slate-200 bg-slate-50/40">
+                      <div className="mb-2 text-[12.5px] font-semibold text-slate-700">
+                        {item.name} <span className="font-normal text-slate-400">({item.unit})</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Received" suffix={item.unit}>
+                          <input
+                            type="number"
+                            className={inputCls}
+                            value={entry.receivedQty}
+                            onChange={(e) => setEntry({ receivedQty: e.target.value })}
+                          />
+                        </Field>
+                        <Field label="Used" suffix={item.unit}>
+                          <input
+                            type="number"
+                            className={inputCls}
+                            value={entry.usedQty}
+                            onChange={(e) => setEntry({ usedQty: e.target.value })}
+                          />
+                        </Field>
+                        {item.trackStock && (
+                          <>
+                            <Field label="Opening balance" suffix={item.unit}>
+                              <div className={readOnlyCls}>{opening}</div>
+                            </Field>
+                            <Field label="Closing balance" suffix={item.unit}>
+                              <div className={readOnlyCls}>{closing}</div>
+                            </Field>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="mt-3">
+              <Field label="Pellet bags" suffix="bag">
                 <input
                   type="number"
                   className={inputCls}
                   value={form.pelletsBag}
                   onChange={(e) => setForm((p) => ({ ...p, pelletsBag: e.target.value }))}
                 />
-              </Field>
-              <Field label="Received today" suffix="kg">
-                <input
-                  type="number"
-                  className={inputCls}
-                  value={form.pelletReceivedKg}
-                  onChange={(e) => setForm((p) => ({ ...p, pelletReceivedKg: e.target.value }))}
-                />
-              </Field>
-              <Field label="Opening balance" suffix="kg">
-                <div className={readOnlyCls}>{openingBalance}</div>
-              </Field>
-              <Field label="Closing balance" suffix="kg">
-                <div className={readOnlyCls}>{pelletStockClosing}</div>
               </Field>
             </div>
           </SectionCard>
@@ -897,6 +1229,7 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
   const [projectFilter, setProjectFilter] = useState<number | "all">("all");
   const { data: projects = [] } = useProjects();
   const { data: fields = [] } = usePlantReportFields();
+  const { data: items = [] } = usePlantReportItems();
   const { data, isLoading, isError, error } = usePlantReportsForMonth(
     year,
     month,
@@ -987,14 +1320,13 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
                 data.summary.avgSteamPressure != null ? data.summary.avgSteamPressure.toFixed(1) : "—",
               ],
               ["Avg Temp", data.summary.avgSteamTemp != null ? data.summary.avgSteamTemp.toFixed(1) : "—"],
-              [
-                "Pellet Used",
-                data.summary.totalPelletUsedKg != null ? `${data.summary.totalPelletUsedKg} kg` : "—",
-              ],
-              [
-                "Pellet Received",
-                data.summary.totalPelletReceivedKg != null ? `${data.summary.totalPelletReceivedKg} kg` : "—",
-              ],
+              ...data.summary.itemTotals.map(
+                (t) =>
+                  [`${t.name} Used`, t.totalUsed != null ? `${t.totalUsed} ${t.unit}` : "—"] as [
+                    string,
+                    string,
+                  ],
+              ),
               ["Burner Hours", data.summary.totalBurnerHours ?? "—"],
               ["Shutdown Days", data.summary.shutdownDays],
             ].map(([label, value]) => (
@@ -1018,13 +1350,19 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
                   <th className="px-3 py-2 font-medium">Pressure</th>
                   <th className="px-3 py-2 font-medium">Temp</th>
                   <th className="px-3 py-2 font-medium">Feedwater</th>
-                  <th className="px-3 py-2 font-medium">Pellet Used</th>
-                  <th className="px-3 py-2 font-medium">Pellet Recv.</th>
-                  <th className="px-3 py-2 font-medium">Stock Close</th>
                   <th className="px-3 py-2 font-medium">Water Flow</th>
                   <th className="px-3 py-2 font-medium">Burner</th>
                   <th className="px-3 py-2 font-medium">Staff</th>
                   <th className="px-3 py-2 font-medium">Shutdown Reason</th>
+                  {items.map((it) => (
+                    <React.Fragment key={it.id}>
+                      <th className="px-3 py-2 font-medium">{it.name} Used</th>
+                      <th className="px-3 py-2 font-medium">{it.name} Recv.</th>
+                      {it.trackStock && (
+                        <th className="px-3 py-2 font-medium">{it.name} Close</th>
+                      )}
+                    </React.Fragment>
+                  ))}
                   {fields.map((f) => (
                     <th key={f.id} className="px-3 py-2 font-medium">
                       {f.name}
@@ -1049,9 +1387,6 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
                     <td className="px-3 py-2 text-slate-600">{r.steamPressure ?? "—"}</td>
                     <td className="px-3 py-2 text-slate-600">{r.steamTemp ?? "—"}</td>
                     <td className="px-3 py-2 text-slate-600">{r.feedwaterTemp ?? "—"}</td>
-                    <td className="px-3 py-2 text-slate-600">{r.pelletUsedKg ?? "—"}</td>
-                    <td className="px-3 py-2 text-slate-600">{r.pelletReceivedKg ?? "—"}</td>
-                    <td className="px-3 py-2 text-slate-600">{r.pelletStockClosing}</td>
                     <td className="px-3 py-2 text-slate-600">{r.waterFlow ?? "—"}</td>
                     <td className="px-3 py-2 capitalize text-slate-600">{r.burnerStatus ?? "—"}</td>
                     <td className="px-3 py-2 text-slate-600">{r.staffCount}</td>
@@ -1062,6 +1397,18 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
                         "—"
                       )}
                     </td>
+                    {items.map((it) => {
+                      const reading = r.items.find((i) => i.itemId === it.id);
+                      return (
+                        <React.Fragment key={it.id}>
+                          <td className="px-3 py-2 text-slate-600">{reading ? reading.used : "—"}</td>
+                          <td className="px-3 py-2 text-slate-600">{reading ? reading.received : "—"}</td>
+                          {it.trackStock && (
+                            <td className="px-3 py-2 text-slate-600">{reading ? reading.closing : "—"}</td>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                     {fields.map((f) => (
                       <td key={f.id} className="px-3 py-2 text-slate-600">
                         {formatCustomValue(r.customValues?.[String(f.id)] ?? null, f.dataType)}
