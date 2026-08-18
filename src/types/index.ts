@@ -585,11 +585,25 @@ export type MonthlyPerformance = {
   /** 1-12 (January = 1). */
   month: number;
   contractEnergy?: number | string | null;
+  /** Derived server-side from DailyGeneration rows — read-only, never sent in an upsert. */
   actualGeneration?: number | string | null;
   incomeReceived?: number | string | null;
   monthlyExpenditure?: number | string | null;
   sparePartPurchase?: number | string | null;
   createdAt: string;
+};
+
+/** One day's row from the Energy Performance daily entry grid. */
+export type DailyGeneration = {
+  date: string; // YYYY-MM-DD
+  generation?: number | string | null;
+};
+
+/** One month's row for the Energy Performance trend chart. */
+export type MonthlyGenerationSummaryRow = {
+  month: number;
+  generation: number | string | null;
+  contractEnergy: number | string | null;
 };
 
 export type Project = {

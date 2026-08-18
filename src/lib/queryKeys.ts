@@ -55,6 +55,10 @@ export const queryKeys = {
   allProformaInvoices: (wsId: number) => [...queryKeys.all(wsId), "allProformaInvoices"] as const,
   monthlyPerformance: (wsId: number, projectId: string | number, year: number) =>
     [...queryKeys.all(wsId), "monthlyPerformance", projectId, year] as const,
+  dailyGeneration: (wsId: number, projectId: string | number, year: number, month: number) =>
+    [...queryKeys.monthlyPerformance(wsId, projectId, year), "daily", month] as const,
+  generationSummary: (wsId: number, projectId: string | number, year: number) =>
+    [...queryKeys.monthlyPerformance(wsId, projectId, year), "summary"] as const,
   inventory: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "inventory", projectId] as const,
   organizationInventory: (wsId: number) => [...queryKeys.all(wsId), "organizationInventory"] as const,
