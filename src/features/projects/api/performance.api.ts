@@ -1,11 +1,12 @@
 import api from "../../../api/axios";
-import { MonthlyPerformance } from "../../../types";
+import { MonthlyPerformance, DailyGeneration, MonthlyGenerationSummaryRow } from "../../../types";
 
+/** actualGeneration is intentionally absent — it's derived from daily entries
+ * (see upsertDailyGeneration) and is never sent through this endpoint. */
 export interface MonthlyPerformanceInput {
   year: number;
   month: number;
   contractEnergy?: number | null;
-  actualGeneration?: number | null;
   incomeReceived?: number | null;
   monthlyExpenditure?: number | null;
   sparePartPurchase?: number | null;
@@ -33,6 +34,43 @@ export async function upsertMonthlyPerformance(
     input,
   );
   return res.data.row;
+}
+
+/** GET the full day-by-day grid for one month (gaps filled with generation: null). */
+export async function fetchDailyGeneration(
+  projectId: string,
+  year: number,
+  month: number,
+): Promise<DailyGeneration[]> {
+  const res = await api.get<{ days: DailyGeneration[] }>(
+    `/api/projects/${projectId}/performance/daily`,
+    { params: { year, month } },
+  );
+  return res.data.days ?? [];
+}
+
+/** PUT upsert (find-or-create) the row for one day. */
+export async function upsertDailyGeneration(
+  projectId: string,
+  input: { date: string; generation: number | null },
+): Promise<DailyGeneration> {
+  const res = await api.put<{ row: DailyGeneration }>(
+    `/api/projects/${projectId}/performance/daily`,
+    input,
+  );
+  return res.data.row;
+}
+
+/** GET the 12-month trend (summed daily generation vs. contract target) for the chart. */
+export async function fetchGenerationSummary(
+  projectId: string,
+  year: number,
+): Promise<MonthlyGenerationSummaryRow[]> {
+  const res = await api.get<{ rows: MonthlyGenerationSummaryRow[] }>(
+    `/api/projects/${projectId}/performance/summary`,
+    { params: { year } },
+  );
+  return res.data.rows ?? [];
 }
 
 export const MONTH_NAMES = [
