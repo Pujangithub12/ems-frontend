@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,24 +9,22 @@ import {
   X,
   Plus,
   Check,
+  Upload,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
-import { Project, MonthlyPerformance } from "../../../../types";
+import { Project, MonthlyPerformance, GenerationSummaryBucket } from "../../../../types";
 import { toNumber, formatCost } from "../../../../lib/currency";
-import {
-  MONTH_NAMES,
-  formatEnergy,
-  MonthlyPerformanceInput,
-} from "../../api/performance.api";
+import { formatEnergy, MonthlyPerformanceInput, UpsertDailyGenerationInput } from "../../api/performance.api";
 import {
   useMonthlyPerformanceQuery,
   useUpsertMonthlyPerformanceMutation,
   useDailyGenerationQuery,
   useUpsertDailyGenerationMutation,
-  useGenerationSummaryQuery,
+  useGenerationBucketsQuery,
 } from "../../hooks/useMonthlyPerformance";
 import { getErrorMessage } from "../../../../lib/errors";
 import EnergyPerformanceChart, { EnergyChartPoint } from "../../../../components/charts/EnergyPerformanceChart";
+import { daysInBsMonth, bsMonthLabel, bsMonthRangeAd, adDateForBsDay, currentBsYearMonth } from "../../../../lib/bsDate";
 
 interface ProjectPerformanceTabProps {
   project: Project;
@@ -38,18 +37,35 @@ const emptyForm = {
   sparePartPurchase: "",
 };
 
-const daysInMonth = (year: number, month: number) => new Date(year, month, 0).getDate();
+const emptyMeterForm = {
+  checkMeterInitial: "",
+  checkMeterFinal: "",
+  mainMeterInitial: "",
+  mainMeterFinal: "",
+};
+
+const diff = (initial: string, final: string): number | null => {
+  if (initial === "" || final === "") return null;
+  const i = Number(initial);
+  const f = Number(final);
+  return Number.isNaN(i) || Number.isNaN(f) ? null : f - i;
+};
+
+// BS months are zero-based internally (nepali-date-converter convention);
+// this is 1-based purely for display / financial-table row keys.
+const BS_MONTH_INDEXES = Array.from({ length: 12 }, (_, i) => i);
 
 const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }) => {
   const projectId = String(project.id);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { year: initialYear, month: initialMonth } = useMemo(() => currentBsYearMonth(), []);
+  const [year, setYear] = useState(initialYear);
+  const [month, setMonth] = useState(initialMonth);
   const [chartMode, setChartMode] = useState<"daily" | "monthly">("daily");
 
+  // MonthlyPerformance.year/month are stored as 1-based BS values (Baishakh = 1).
   const rowsQuery = useMonthlyPerformanceQuery(projectId, year);
   const rows = rowsQuery.data ?? [];
   const loading = rowsQuery.isLoading;
@@ -59,9 +75,24 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
 
   const upsertMutation = useUpsertMonthlyPerformanceMutation();
 
-  const dailyQuery = useDailyGenerationQuery(projectId, year, month);
+  const { startDate, endDate } = useMemo(() => bsMonthRangeAd(year, month), [year, month]);
+  const dailyQuery = useDailyGenerationQuery(projectId, year, month + 1, startDate, endDate);
   const upsertDailyMutation = useUpsertDailyGenerationMutation();
-  const summaryQuery = useGenerationSummaryQuery(projectId, year);
+
+  const buckets: GenerationSummaryBucket[] = useMemo(
+    () =>
+      BS_MONTH_INDEXES.map((m) => {
+        const range = bsMonthRangeAd(year, m);
+        return { key: m + 1, ...range };
+      }),
+    [year],
+  );
+  const bucketsQuery = useGenerationBucketsQuery(projectId, year, buckets);
+  const bucketByMonth = useMemo(() => {
+    const map = new Map<number, number | null>();
+    (bucketsQuery.data ?? []).forEach((b) => map.set(b.key, b.generation != null ? toNumber(b.generation) : null));
+    return map;
+  }, [bucketsQuery.data]);
 
   const rowsByMonth = useMemo(() => {
     const map = new Map<number, MonthlyPerformance>();
@@ -72,17 +103,18 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   const totals = useMemo(() => {
     const sum = (key: keyof MonthlyPerformance) =>
       rows.reduce((acc, r) => acc + toNumber(r[key] as number | string | null), 0);
+    const actualGeneration = BS_MONTH_INDEXES.reduce((acc, m) => acc + (bucketByMonth.get(m + 1) ?? 0), 0);
     return {
       contractEnergy: sum("contractEnergy"),
-      actualGeneration: sum("actualGeneration"),
+      actualGeneration,
       incomeReceived: sum("incomeReceived"),
       monthlyExpenditure: sum("monthlyExpenditure"),
       sparePartPurchase: sum("sparePartPurchase"),
     };
-  }, [rows]);
+  }, [rows, bucketByMonth]);
 
   // Only days that actually have a logged value are shown — entries are added
-  // one at a time via the "Add Entry" form below, not a pre-filled full-month grid.
+  // one at a time via the "Add Entry" form below, or in bulk via "Upload Sheet".
   const dailyEntries = useMemo(
     () =>
       (dailyQuery.data ?? [])
@@ -97,64 +129,82 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   );
 
   const loggedDates = useMemo(() => new Set(dailyEntries.map((d) => d.date)), [dailyEntries]);
-  const pad2 = (n: number) => String(n).padStart(2, "0");
-  const toISODate = (y: number, m: number, day: number) => `${y}-${pad2(m)}-${pad2(day)}`;
-  const firstOpenDate = useMemo(() => {
-    const dim = daysInMonth(year, month);
+  const dim = daysInBsMonth(year, month);
+  const firstOpenDay = useMemo(() => {
     for (let day = 1; day <= dim; day++) {
-      const iso = toISODate(year, month, day);
-      if (!loggedDates.has(iso)) return iso;
+      if (!loggedDates.has(adDateForBsDay(year, month, day))) return day;
     }
-    return toISODate(year, month, 1);
-  }, [year, month, loggedDates]);
+    return 1;
+  }, [year, month, dim, loggedDates]);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [addDate, setAddDate] = useState("");
-  const [addValue, setAddValue] = useState("");
+  const [addDay, setAddDay] = useState(1);
+  const [addMeter, setAddMeter] = useState(emptyMeterForm);
   const [addError, setAddError] = useState<string | null>(null);
 
   const openAddForm = () => {
-    setAddDate(firstOpenDate);
-    setAddValue("");
+    setAddDay(firstOpenDay);
+    setAddMeter(emptyMeterForm);
     setAddError(null);
     setAddOpen(true);
   };
 
   const submitAdd = async () => {
-    const generation = Number(addValue);
-    if (!addDate || addValue === "" || Number.isNaN(generation)) {
-      setAddError("Enter a date and a generation value.");
+    if (Object.values(addMeter).every((v) => v === "")) {
+      setAddError("Enter at least one meter reading.");
       return;
     }
     setAddError(null);
-    await upsertDailyMutation.mutateAsync({ projectId, input: { date: addDate, generation } });
+    const date = adDateForBsDay(year, month, addDay);
+    await upsertDailyMutation.mutateAsync({
+      projectId,
+      input: {
+        date,
+        checkMeterInitial: addMeter.checkMeterInitial === "" ? null : Number(addMeter.checkMeterInitial),
+        checkMeterFinal: addMeter.checkMeterFinal === "" ? null : Number(addMeter.checkMeterFinal),
+        mainMeterInitial: addMeter.mainMeterInitial === "" ? null : Number(addMeter.mainMeterInitial),
+        mainMeterFinal: addMeter.mainMeterFinal === "" ? null : Number(addMeter.mainMeterFinal),
+      },
+    });
     setAddOpen(false);
   };
 
   const [editingDate, setEditingDate] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
+  const [editMeter, setEditMeter] = useState(emptyMeterForm);
 
-  const startEdit = (date: string, current: number) => {
-    setEditingDate(date);
-    setEditValue(String(current));
+  const startEdit = (d: { date: string; checkMeterInitial?: number | string | null; checkMeterFinal?: number | string | null; mainMeterInitial?: number | string | null; mainMeterFinal?: number | string | null }) => {
+    setEditingDate(d.date);
+    setEditMeter({
+      checkMeterInitial: d.checkMeterInitial != null ? String(toNumber(d.checkMeterInitial)) : "",
+      checkMeterFinal: d.checkMeterFinal != null ? String(toNumber(d.checkMeterFinal)) : "",
+      mainMeterInitial: d.mainMeterInitial != null ? String(toNumber(d.mainMeterInitial)) : "",
+      mainMeterFinal: d.mainMeterFinal != null ? String(toNumber(d.mainMeterFinal)) : "",
+    });
   };
 
   const submitEdit = async () => {
     if (editingDate === null) return;
-    const generation = editValue === "" ? null : Number(editValue);
-    if (editValue !== "" && Number.isNaN(generation)) return;
-    await upsertDailyMutation.mutateAsync({ projectId, input: { date: editingDate, generation } });
+    await upsertDailyMutation.mutateAsync({
+      projectId,
+      input: {
+        date: editingDate,
+        checkMeterInitial: editMeter.checkMeterInitial === "" ? null : Number(editMeter.checkMeterInitial),
+        checkMeterFinal: editMeter.checkMeterFinal === "" ? null : Number(editMeter.checkMeterFinal),
+        mainMeterInitial: editMeter.mainMeterInitial === "" ? null : Number(editMeter.mainMeterInitial),
+        mainMeterFinal: editMeter.mainMeterFinal === "" ? null : Number(editMeter.mainMeterFinal),
+      },
+    });
     setEditingDate(null);
   };
 
   const navigateMonth = (dir: -1 | 1) => {
     let m = month + dir;
     let y = year;
-    if (m < 1) {
-      m = 12;
+    if (m < 0) {
+      m = 11;
       y -= 1;
-    } else if (m > 12) {
-      m = 1;
+    } else if (m > 11) {
+      m = 0;
       y += 1;
     }
     setMonth(m);
@@ -163,21 +213,100 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
 
   const chartData: EnergyChartPoint[] = useMemo(() => {
     if (chartMode === "daily") {
-      const contractEnergy = toNumber(rowsByMonth.get(month)?.contractEnergy ?? null);
-      const dim = daysInMonth(year, month);
+      const contractEnergy = toNumber(rowsByMonth.get(month + 1)?.contractEnergy ?? null);
       const target = contractEnergy > 0 ? contractEnergy / dim : null;
-      return (dailyQuery.data ?? []).map((d) => ({
-        label: String(new Date(`${d.date}T00:00:00`).getDate()),
-        value: d.generation != null ? toNumber(d.generation) : null,
-        target,
-      }));
+      return Array.from({ length: dim }, (_, i) => {
+        const day = i + 1;
+        const date = adDateForBsDay(year, month, day);
+        const entry = (dailyQuery.data ?? []).find((d) => d.date === date);
+        return {
+          label: String(day),
+          value: entry?.generation != null ? toNumber(entry.generation) : null,
+          target,
+        };
+      });
     }
-    return (summaryQuery.data ?? []).map((r) => ({
-      label: MONTH_NAMES[r.month - 1].slice(0, 3),
-      value: r.generation != null ? toNumber(r.generation) : null,
-      target: r.contractEnergy != null ? toNumber(r.contractEnergy) : null,
+    return BS_MONTH_INDEXES.map((m) => ({
+      label: bsMonthLabel(year, m).slice(0, 3),
+      value: bucketByMonth.get(m + 1) ?? null,
+      target: rowsByMonth.get(m + 1)?.contractEnergy != null ? toNumber(rowsByMonth.get(m + 1)!.contractEnergy) : null,
     }));
-  }, [chartMode, dailyQuery.data, summaryQuery.data, rowsByMonth, month, year]);
+  }, [chartMode, dailyQuery.data, bucketByMonth, rowsByMonth, month, year, dim]);
+
+  // Bulk import via .xlsx/.csv — parsed entirely client-side, matches columns
+  // from a real generation log sheet (Day, Check/Main Meter Initial/Final).
+  // "Upload Sheet" opens a modal explaining the expected format before the
+  // native file picker runs, since the column layout is specific.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const findColumn = (header: string[], needle: string) =>
+    header.findIndex((h) => (h || "").toString().toLowerCase().includes(needle));
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadModalOpen(false);
+    setImporting(true);
+    setImportStatus(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+      const headerRowIdx = rows2d.findIndex((r) => r.some((c) => String(c).trim().toLowerCase() === "day"));
+      if (headerRowIdx === -1) {
+        setImportStatus("Couldn't find a header row with a \"Day\" column.");
+        return;
+      }
+      const header = rows2d[headerRowIdx].map((c) => String(c));
+      const dayCol = findColumn(header, "day");
+      const checkInitCol = findColumn(header, "check meter initial");
+      const checkFinalCol = findColumn(header, "check meter final");
+      const mainInitCol = findColumn(header, "main meter initial");
+      const mainFinalCol = findColumn(header, "main meter final");
+
+      let imported = 0;
+      let skipped = 0;
+      for (let i = headerRowIdx + 1; i < rows2d.length; i++) {
+        const r = rows2d[i];
+        const dayRaw = r[dayCol];
+        const day = typeof dayRaw === "number" ? dayRaw : parseInt(String(dayRaw), 10);
+        if (!Number.isInteger(day) || day < 1 || day > dim) break; // stops at TOTAL row / end of data
+
+        const checkMeterInitial = checkInitCol >= 0 && r[checkInitCol] !== "" ? Number(r[checkInitCol]) : null;
+        const checkMeterFinal = checkFinalCol >= 0 && r[checkFinalCol] !== "" ? Number(r[checkFinalCol]) : null;
+        const mainMeterInitial = mainInitCol >= 0 && r[mainInitCol] !== "" ? Number(r[mainInitCol]) : null;
+        const mainMeterFinal = mainFinalCol >= 0 && r[mainFinalCol] !== "" ? Number(r[mainFinalCol]) : null;
+
+        if (checkMeterInitial === null && checkMeterFinal === null && mainMeterInitial === null && mainMeterFinal === null) {
+          skipped += 1;
+          continue;
+        }
+
+        const input: UpsertDailyGenerationInput = {
+          date: adDateForBsDay(year, month, day),
+          checkMeterInitial,
+          checkMeterFinal,
+          mainMeterInitial,
+          mainMeterFinal,
+        };
+        // eslint-disable-next-line no-await-in-loop -- sequential upserts keep per-row error attribution simple
+        await upsertDailyMutation.mutateAsync({ projectId, input });
+        imported += 1;
+      }
+
+      setImportStatus(`${imported} day${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.`);
+    } catch (err) {
+      setImportStatus(getErrorMessage(err, "Failed to import the file."));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -278,7 +407,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         </div>
         <EnergyPerformanceChart
           data={chartData}
-          navigatorLabel={chartMode === "daily" ? `${MONTH_NAMES[month - 1]} ${year}` : `${year}`}
+          navigatorLabel={chartMode === "daily" ? `${bsMonthLabel(year, month)} ${year}` : `${year}`}
           onNavigate={(dir) => (chartMode === "daily" ? navigateMonth(dir) : setYear((y) => y + dir))}
         />
       </div>
@@ -288,13 +417,30 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         <h3 className="text-[13px] font-semibold text-slate-900">Daily Generation Entry</h3>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <button
-              onClick={openAddForm}
-              className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
-            >
-              <Plus size={14} />
-              Add Entry
-            </button>
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
+              <button
+                onClick={() => setUploadModalOpen(true)}
+                disabled={importing}
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+              >
+                {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                Upload Sheet
+              </button>
+              <button
+                onClick={openAddForm}
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+              >
+                <Plus size={14} />
+                Add Entry
+              </button>
+            </>
           )}
           <div className="flex items-center gap-1">
             <button
@@ -308,7 +454,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               className="w-32 text-center text-[13px] font-semibold text-slate-900"
               style={{ fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {MONTH_NAMES[month - 1]} {year}
+              {bsMonthLabel(year, month)} {year}
             </span>
             <button
               onClick={() => navigateMonth(1)}
@@ -321,35 +467,131 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         </div>
       </div>
 
+      {importStatus && (
+        <div className="px-3 py-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded">
+          {importStatus}
+        </div>
+      )}
+
+      {/* Upload Sheet modal — explains the expected column layout before the native file picker opens. */}
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Upload Generation Sheet</h3>
+              <button
+                onClick={() => setUploadModalOpen(false)}
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-[12px] text-slate-600">
+              <p>
+                The file must have a header row with a <span className="font-medium text-slate-800">Day</span>{" "}
+                column plus these four meter-reading columns (any order, extra columns are ignored):
+              </p>
+              <ul className="pl-4 space-y-1 list-disc marker:text-slate-400">
+                <li>Check Meter Initial Reading</li>
+                <li>Check Meter Final Reading</li>
+                <li>Main Meter Initial Reading</li>
+                <li>Main Meter Final Reading</li>
+              </ul>
+              <p>
+                Each row's <span className="font-medium text-slate-800">Day</span> (1, 2, 3…) is matched against the
+                currently selected month —{" "}
+                <span className="font-medium text-slate-800">
+                  {bsMonthLabel(year, month)} {year}
+                </span>{" "}
+                — so make sure that's the right month before uploading. A trailing{" "}
+                <span className="font-medium text-slate-800">TOTAL</span> row (or anything after the daily rows) is
+                automatically ignored. Accepted formats: .xlsx, .xls, .csv.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setUploadModalOpen(false)}
+                  className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
+                >
+                  <Upload size={14} />
+                  Choose File & Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add entry form */}
       {addOpen && (
         <div className="p-3 bg-white border rounded-lg border-slate-200">
-          <div className="flex items-end gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-500">Date</label>
-              <input
-                type="date"
-                value={addDate}
-                min={toISODate(year, month, 1)}
-                max={toISODate(year, month, daysInMonth(year, month))}
-                onChange={(e) => setAddDate(e.target.value)}
+              <label className="block mb-1 text-[11px] font-medium text-slate-500">Day</label>
+              <select
+                value={addDay}
+                onChange={(e) => setAddDay(Number(e.target.value))}
                 className="px-2 py-1.5 text-[12px] border rounded outline-none border-slate-200 focus:border-blue-400"
-              />
+              >
+                {Array.from({ length: dim }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {bsMonthLabel(year, month)} {d}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-500">
-                Generation (kWh)
-              </label>
+              <label className="block mb-1 text-[11px] font-medium text-slate-500">Check Meter Initial</label>
               <input
                 autoFocus
                 type="number"
                 step="0.01"
-                value={addValue}
-                onChange={(e) => setAddValue(e.target.value)}
-                placeholder="0"
+                value={addMeter.checkMeterInitial}
+                onChange={(e) => setAddMeter({ ...addMeter, checkMeterInitial: e.target.value })}
                 className="px-2 py-1.5 text-[12px] border rounded outline-none w-28 border-slate-200 focus:border-blue-400"
               />
             </div>
+            <div>
+              <label className="block mb-1 text-[11px] font-medium text-slate-500">Check Meter Final</label>
+              <input
+                type="number"
+                step="0.01"
+                value={addMeter.checkMeterFinal}
+                onChange={(e) => setAddMeter({ ...addMeter, checkMeterFinal: e.target.value })}
+                className="px-2 py-1.5 text-[12px] border rounded outline-none w-28 border-slate-200 focus:border-blue-400"
+              />
+            </div>
+            <p className="pb-2 text-[12px] text-slate-500">
+              Diff: {formatEnergy(diff(addMeter.checkMeterInitial, addMeter.checkMeterFinal))}
+            </p>
+            <div>
+              <label className="block mb-1 text-[11px] font-medium text-slate-500">Main Meter Initial</label>
+              <input
+                type="number"
+                step="0.01"
+                value={addMeter.mainMeterInitial}
+                onChange={(e) => setAddMeter({ ...addMeter, mainMeterInitial: e.target.value })}
+                className="px-2 py-1.5 text-[12px] border rounded outline-none w-28 border-slate-200 focus:border-blue-400"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 text-[11px] font-medium text-slate-500">Main Meter Final</label>
+              <input
+                type="number"
+                step="0.01"
+                value={addMeter.mainMeterFinal}
+                onChange={(e) => setAddMeter({ ...addMeter, mainMeterFinal: e.target.value })}
+                className="px-2 py-1.5 text-[12px] border rounded outline-none w-28 border-slate-200 focus:border-blue-400"
+              />
+            </div>
+            <p className="pb-2 text-[12px] text-slate-500">
+              Diff: {formatEnergy(diff(addMeter.mainMeterInitial, addMeter.mainMeterFinal))}
+            </p>
             <button
               onClick={submitAdd}
               disabled={upsertDailyMutation.isPending}
@@ -368,7 +610,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         </div>
       )}
 
-      {/* Daily entries — only days that have been logged; add more via "Add Entry" above. */}
+      {/* Daily entries — only days that have been logged; add more via "Add Entry"/"Upload Sheet" above. */}
       <div className="overflow-hidden bg-white border rounded-lg border-slate-200">
         {dailyQuery.isLoading ? (
           <div className="flex items-center justify-center py-10">
@@ -376,89 +618,139 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
           </div>
         ) : dailyEntries.length === 0 ? (
           <p className="px-3 py-6 text-[12px] text-center text-slate-400">
-            No daily entries logged for {MONTH_NAMES[month - 1]} {year} yet.
+            No daily entries logged for {bsMonthLabel(year, month)} {year} yet.
           </p>
         ) : (
-          <div className="overflow-y-auto max-h-96">
-            <table className="w-full text-[12px]">
-              <thead className="sticky top-0 bg-white">
-                <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                  <th className="px-3 py-2 font-medium text-left">Date</th>
-                  <th className="px-3 py-2 font-medium text-left">Generation (kWh)</th>
-                  {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {dailyEntries.map((d) => {
-                  const isEditing = editingDate === d.date;
-                  return (
-                    <tr key={d.date} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-3 py-2 text-slate-600">
-                        {new Date(`${d.date}T00:00:00`).toLocaleDateString(undefined, {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </td>
-                      <td className="px-3 py-2 text-slate-800">
-                        {isEditing ? (
-                          <input
-                            autoFocus
-                            type="number"
-                            step="0.01"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && submitEdit()}
-                            className="px-2 py-1 text-[12px] border rounded outline-none w-28 border-slate-200 focus:border-blue-400"
-                          />
-                        ) : (
-                          formatEnergy(d.generation)
-                        )}
-                      </td>
-                      {isAdmin && (
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-1">
-                            {isEditing ? (
-                              <>
-                                <button
-                                  onClick={submitEdit}
-                                  className="flex items-center justify-center w-7 h-7 text-emerald-600 hover:bg-slate-100 rounded"
-                                  title="Save"
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  onClick={() => setEditingDate(null)}
-                                  className="flex items-center justify-center w-7 h-7 text-slate-500 hover:bg-slate-100 rounded"
-                                  title="Cancel"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => startEdit(d.date, toNumber(d.generation))}
-                                className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
-                                title="Edit"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                            )}
-                          </div>
+          <div className="overflow-x-auto">
+            <div className="overflow-y-auto max-h-96">
+              <table className="w-full text-[12px] whitespace-nowrap">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                    <th className="px-3 py-2 font-medium text-left">Date</th>
+                    <th className="px-3 py-2 font-medium text-left">Check Init.</th>
+                    <th className="px-3 py-2 font-medium text-left">Check Final</th>
+                    <th className="px-3 py-2 font-medium text-left">Check Diff.</th>
+                    <th className="px-3 py-2 font-medium text-left">Main Init.</th>
+                    <th className="px-3 py-2 font-medium text-left">Main Final</th>
+                    <th className="px-3 py-2 font-medium text-left">Main Diff.</th>
+                    {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyEntries.map((d) => {
+                    const isEditing = editingDate === d.date;
+                    return (
+                      <tr key={d.date} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                        <td className="px-3 py-2 text-slate-600">
+                          {new Date(`${d.date}T00:00:00`).toLocaleDateString(undefined, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                          })}
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                  <td className="px-3 py-2">Total</td>
-                  <td className="px-3 py-2">{formatEnergy(dailyTotal)}</td>
-                  {isAdmin && <td className="px-3 py-2" />}
-                </tr>
-              </tfoot>
-            </table>
+                        {isEditing ? (
+                          <>
+                            <td className="px-2 py-2">
+                              <input
+                                autoFocus
+                                type="number"
+                                step="0.01"
+                                value={editMeter.checkMeterInitial}
+                                onChange={(e) => setEditMeter({ ...editMeter, checkMeterInitial: e.target.value })}
+                                className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editMeter.checkMeterFinal}
+                                onChange={(e) => setEditMeter({ ...editMeter, checkMeterFinal: e.target.value })}
+                                className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-slate-500">
+                              {formatEnergy(diff(editMeter.checkMeterInitial, editMeter.checkMeterFinal))}
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editMeter.mainMeterInitial}
+                                onChange={(e) => setEditMeter({ ...editMeter, mainMeterInitial: e.target.value })}
+                                className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editMeter.mainMeterFinal}
+                                onChange={(e) => setEditMeter({ ...editMeter, mainMeterFinal: e.target.value })}
+                                className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-slate-500">
+                              {formatEnergy(diff(editMeter.mainMeterInitial, editMeter.mainMeterFinal))}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.checkMeterInitial)}</td>
+                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.checkMeterFinal)}</td>
+                            <td className="px-3 py-2 font-medium text-slate-800">{formatEnergy(d.checkMeterDifference)}</td>
+                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterInitial)}</td>
+                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterFinal)}</td>
+                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterDifference)}</td>
+                          </>
+                        )}
+                        {isAdmin && (
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end gap-1">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    onClick={submitEdit}
+                                    className="flex items-center justify-center w-7 h-7 text-emerald-600 hover:bg-slate-100 rounded"
+                                    title="Save"
+                                  >
+                                    <Check size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingDate(null)}
+                                    className="flex items-center justify-center w-7 h-7 text-slate-500 hover:bg-slate-100 rounded"
+                                    title="Cancel"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => startEdit(d)}
+                                  className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                                  title="Edit"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
+                    <td className="px-3 py-2" colSpan={3}>
+                      Total (Check Meter)
+                    </td>
+                    <td className="px-3 py-2">{formatEnergy(dailyTotal)}</td>
+                    <td className="px-3 py-2" colSpan={isAdmin ? 3 : 2} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -479,14 +771,14 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               </tr>
             </thead>
             <tbody>
-              {MONTH_NAMES.map((name, idx) => {
+              {BS_MONTH_INDEXES.map((idx) => {
                 const m = idx + 1;
                 const row = rowsByMonth.get(m);
                 return (
                   <tr key={m} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 font-medium text-slate-800">{name}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">{bsMonthLabel(year, idx)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatEnergy(row?.contractEnergy)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatEnergy(row?.actualGeneration)}</td>
+                    <td className="px-3 py-2 text-slate-600">{formatEnergy(bucketByMonth.get(m))}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.incomeReceived)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.monthlyExpenditure)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.sparePartPurchase)}</td>
@@ -528,7 +820,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
           <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h3 className="text-[14px] font-semibold text-slate-900">
-                {MONTH_NAMES[editingMonth - 1]} {year}
+                {bsMonthLabel(year, editingMonth - 1)} {year}
               </h3>
               <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
                 <X size={16} />

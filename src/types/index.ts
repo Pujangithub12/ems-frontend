@@ -581,11 +581,13 @@ export type ReportComment = {
 
 export type MonthlyPerformance = {
   id: number;
+  /** Bikram Sambat year. */
   year: number;
-  /** 1-12 (January = 1). */
+  /** Bikram Sambat month, 1-12 (Baishakh = 1). */
   month: number;
   contractEnergy?: number | string | null;
-  /** Derived server-side from DailyGeneration rows — read-only, never sent in an upsert. */
+  /** Not populated by the backend — actual generation is merged in client-side
+   * from the daily-generation summary buckets (see fetchGenerationBuckets). */
   actualGeneration?: number | string | null;
   incomeReceived?: number | string | null;
   monthlyExpenditure?: number | string | null;
@@ -595,16 +597,19 @@ export type MonthlyPerformance = {
 
 /** One day's row from the Energy Performance daily entry grid. */
 export type DailyGeneration = {
-  date: string; // YYYY-MM-DD
+  date: string; // AD, YYYY-MM-DD
   generation?: number | string | null;
+  checkMeterInitial?: number | string | null;
+  checkMeterFinal?: number | string | null;
+  checkMeterDifference?: number | string | null;
+  mainMeterInitial?: number | string | null;
+  mainMeterFinal?: number | string | null;
+  mainMeterDifference?: number | string | null;
 };
 
-/** One month's row for the Energy Performance trend chart. */
-export type MonthlyGenerationSummaryRow = {
-  month: number;
-  generation: number | string | null;
-  contractEnergy: number | string | null;
-};
+/** One date-range bucket to sum generation over (see fetchGenerationBuckets). */
+export type GenerationSummaryBucket = { key: number; startDate: string; endDate: string };
+export type GenerationSummaryBucketResult = { key: number; generation: number | string | null };
 
 export type Project = {
   id: number;
