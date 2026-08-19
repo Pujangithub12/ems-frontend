@@ -6,9 +6,11 @@ import {
   upsertMonthlyPerformance,
   fetchDailyGeneration,
   upsertDailyGeneration,
-  fetchGenerationSummary,
+  fetchGenerationBuckets,
   MonthlyPerformanceInput,
+  UpsertDailyGenerationInput,
 } from "../api/performance.api";
+import { GenerationSummaryBucket } from "../../../types";
 
 /** Thin query-hook wrappers around performance.api.ts, for the project Energy Performance tab. */
 export function useMonthlyPerformanceQuery(projectId: string, year: number) {
@@ -27,39 +29,41 @@ export function useUpsertMonthlyPerformanceMutation() {
   });
 }
 
-export function useDailyGenerationQuery(projectId: string, year: number, month: number) {
+/** startDate/endDate are AD ISO dates — compute via bsMonthRangeAd for the selected BS month. */
+export function useDailyGenerationQuery(
+  projectId: string,
+  year: number,
+  month: number,
+  startDate: string,
+  endDate: string,
+) {
   const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.dailyGeneration(wsId, projectId, year, month),
-    queryFn: () => fetchDailyGeneration(projectId, year, month),
+    queryFn: () => fetchDailyGeneration(projectId, startDate, endDate),
     enabled: Number.isFinite(wsId) && !!projectId,
   });
 }
 
-/** On success, invalidates both the daily grid (that month) and the summary
- * chart + monthly table (actualGeneration is derived from daily rows). */
+/** On success, invalidates both the daily grid (that month) and the monthly
+ * table/chart (actualGeneration is derived from daily rows client-side). */
 export function useUpsertDailyGenerationMutation() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      projectId,
-      input,
-    }: {
-      projectId: string;
-      input: { date: string; generation: number | null };
-    }) => upsertDailyGeneration(projectId, input),
+    mutationFn: ({ projectId, input }: { projectId: string; input: UpsertDailyGenerationInput }) =>
+      upsertDailyGeneration(projectId, input),
     onSuccess: (_data, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "monthlyPerformance", projectId] });
     },
   });
 }
 
-export function useGenerationSummaryQuery(projectId: string, year: number) {
+export function useGenerationBucketsQuery(projectId: string, year: number, buckets: GenerationSummaryBucket[]) {
   const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.generationSummary(wsId, projectId, year),
-    queryFn: () => fetchGenerationSummary(projectId, year),
-    enabled: Number.isFinite(wsId) && !!projectId,
+    queryKey: queryKeys.generationBuckets(wsId, projectId, year),
+    queryFn: () => fetchGenerationBuckets(projectId, buckets),
+    enabled: Number.isFinite(wsId) && !!projectId && buckets.length > 0,
   });
 }

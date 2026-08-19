@@ -16,8 +16,9 @@ import { useAuth } from "../../../../context/AuthProvider";
 import { useUpdateProject } from "../../hooks/useProjects";
 import { usePurchaseOrdersQuery } from "../../../procurement/hooks/usePurchaseOrder";
 import { formatCost, toNumber } from "../../../../lib/currency";
-import { useMonthlyPerformanceQuery } from "../../hooks/useMonthlyPerformance";
-import { MONTH_NAMES, formatEnergy } from "../../api/performance.api";
+import { useMonthlyPerformanceQuery, useGenerationBucketsQuery } from "../../hooks/useMonthlyPerformance";
+import { formatEnergy } from "../../api/performance.api";
+import { bsMonthLabel, currentBsYearMonth, bsMonthRangeAd } from "../../../../lib/bsDate";
 import { getErrorMessage } from "../../../../lib/errors";
 
 interface ProjectOverviewTabProps {
@@ -219,8 +220,8 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
   const budgetBarColor =
     budgetPct >= 100 ? "bg-red-600" : budgetPct >= 80 ? "bg-amber-500" : "bg-blue-900";
 
-  // Energy Performance glimpse — most recent month (this calendar year) with any recorded data.
-  const currentYear = new Date().getFullYear();
+  // Energy Performance glimpse — most recent month (this BS year) with any recorded data.
+  const currentYear = useMemo(() => currentBsYearMonth().year, []);
   const performanceQuery = useMonthlyPerformanceQuery(String(project.id), currentYear);
   const performanceRows = performanceQuery.data ?? [];
   const latestPerformanceRow = useMemo(() => {
@@ -230,6 +231,18 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
     if (withData.length === 0) return null;
     return withData.reduce((latest, r) => (r.month > latest.month ? r : latest));
   }, [performanceRows]);
+
+  // actualGeneration isn't stored on MonthlyPerformance (see performance.api.ts) —
+  // fetch the one bucket for the latest row's BS month to display it here.
+  const latestBucket = useMemo(
+    () =>
+      latestPerformanceRow
+        ? [{ key: latestPerformanceRow.month, ...bsMonthRangeAd(currentYear, latestPerformanceRow.month - 1) }]
+        : [],
+    [latestPerformanceRow, currentYear],
+  );
+  const latestBucketQuery = useGenerationBucketsQuery(String(project.id), currentYear, latestBucket);
+  const latestGeneration = latestBucketQuery.data?.[0]?.generation ?? null;
 
   const openFinancialsForm = () => {
     setFinancialsForm({
@@ -491,7 +504,8 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
           {latestPerformanceRow ? (
             <>
               <div className="mb-3 text-[12px] text-slate-500">
-                {MONTH_NAMES[latestPerformanceRow.month - 1]} {latestPerformanceRow.year}
+                {bsMonthLabel(latestPerformanceRow.year, latestPerformanceRow.month - 1)}{" "}
+                {latestPerformanceRow.year}
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -503,7 +517,7 @@ const ProjectOverviewTab: React.FC<ProjectOverviewTabProps> = ({ project, onNavi
                 <div>
                   <div className="text-[11px] text-slate-500">Actual Generation</div>
                   <div className="mt-1 text-[15px] font-semibold text-slate-900">
-                    {formatEnergy(latestPerformanceRow.actualGeneration)}
+                    {formatEnergy(latestGeneration)}
                   </div>
                 </div>
                 <div>

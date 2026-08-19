@@ -53,12 +53,13 @@ export const queryKeys = {
   purchaseOrderCostSheet: (wsId: number, id: number) =>
     [...queryKeys.all(wsId), "purchaseOrderCostSheet", id] as const,
   allProformaInvoices: (wsId: number) => [...queryKeys.all(wsId), "allProformaInvoices"] as const,
+  /** year/month here are Bikram Sambat values (see MonthlyPerformance type). */
   monthlyPerformance: (wsId: number, projectId: string | number, year: number) =>
     [...queryKeys.all(wsId), "monthlyPerformance", projectId, year] as const,
   dailyGeneration: (wsId: number, projectId: string | number, year: number, month: number) =>
     [...queryKeys.monthlyPerformance(wsId, projectId, year), "daily", month] as const,
-  generationSummary: (wsId: number, projectId: string | number, year: number) =>
-    [...queryKeys.monthlyPerformance(wsId, projectId, year), "summary"] as const,
+  generationBuckets: (wsId: number, projectId: string | number, year: number) =>
+    [...queryKeys.monthlyPerformance(wsId, projectId, year), "buckets"] as const,
   inventory: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "inventory", projectId] as const,
   organizationInventory: (wsId: number) => [...queryKeys.all(wsId), "organizationInventory"] as const,
