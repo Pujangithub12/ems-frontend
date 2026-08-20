@@ -34,6 +34,8 @@ import {
   adDateForBsDay,
   currentBsYearMonth,
   bsDateLabel,
+  adDateLabel,
+  bsMonthAdSpanLabel,
 } from "../../../../lib/bsDate";
 
 interface ProjectPerformanceTabProps {
@@ -74,6 +76,10 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
   const [chartMode, setChartMode] = useState<"daily" | "monthly">("daily");
+  // Display-only — doesn't change how data is entered/organized (still BS
+  // month-keyed throughout), just how dates are rendered in the daily grid.
+  const [dateFormat, setDateFormat] = useState<"bs" | "ad">("bs");
+  const dateLabel = (dateIso: string) => (dateFormat === "bs" ? bsDateLabel(dateIso) : adDateLabel(dateIso));
 
   // MonthlyPerformance.year/month are stored as 1-based BS values (Baishakh = 1).
   const rowsQuery = useMonthlyPerformanceQuery(projectId, year);
@@ -492,6 +498,22 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               </button>
             </>
           )}
+          <div className="flex text-[11px] border rounded-lg border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setDateFormat("bs")}
+              className={`px-2.5 py-1.5 font-medium ${dateFormat === "bs" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              title="Show dates in Bikram Sambat"
+            >
+              BS
+            </button>
+            <button
+              onClick={() => setDateFormat("ad")}
+              className={`px-2.5 py-1.5 font-medium ${dateFormat === "ad" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              title="Show dates in English (Gregorian)"
+            >
+              AD
+            </button>
+          </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => navigateMonth(-1)}
@@ -504,7 +526,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               className="w-32 text-center text-[13px] font-semibold text-slate-900"
               style={{ fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {bsMonthLabel(year, month)} {year}
+              {dateFormat === "bs" ? `${bsMonthLabel(year, month)} ${year}` : bsMonthAdSpanLabel(year, month)}
             </span>
             <button
               onClick={() => navigateMonth(1)}
@@ -711,7 +733,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                             />
                           </td>
                         )}
-                        <td className="px-3 py-2 text-slate-600">{bsDateLabel(d.date)}</td>
+                        <td className="px-3 py-2 text-slate-600">{dateLabel(d.date)}</td>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-2">
@@ -849,7 +871,9 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                 const row = rowsByMonth.get(m);
                 return (
                   <tr key={m} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 font-medium text-slate-800">{bsMonthLabel(year, idx)}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {dateFormat === "bs" ? bsMonthLabel(year, idx) : bsMonthAdSpanLabel(year, idx)}
+                    </td>
                     <td className="px-3 py-2 text-slate-600">{formatEnergy(row?.contractEnergy)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatEnergy(bucketByMonth.get(m))}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.incomeReceived)}</td>
@@ -893,7 +917,9 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
           <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
             <div className="flex items-center justify-between p-4 border-b border-slate-100">
               <h3 className="text-[14px] font-semibold text-slate-900">
-                {bsMonthLabel(year, editingMonth - 1)} {year}
+                {dateFormat === "bs"
+                  ? `${bsMonthLabel(year, editingMonth - 1)} ${year}`
+                  : bsMonthAdSpanLabel(year, editingMonth - 1)}
               </h3>
               <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
                 <X size={16} />
@@ -990,7 +1016,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         title="Delete Daily Entries"
         message={
           deleteTarget && deleteTarget.length === 1
-            ? `Delete the daily generation entry for ${bsDateLabel(deleteTarget[0])}? This can't be undone.`
+            ? `Delete the daily generation entry for ${dateLabel(deleteTarget[0])}? This can't be undone.`
             : `Delete ${deleteTarget?.length ?? 0} daily generation entries? This can't be undone.`
         }
       />
