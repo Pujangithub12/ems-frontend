@@ -6,6 +6,7 @@ import {
   upsertMonthlyPerformance,
   fetchDailyGeneration,
   upsertDailyGeneration,
+  deleteDailyGeneration,
   fetchGenerationBuckets,
   MonthlyPerformanceInput,
   UpsertDailyGenerationInput,
@@ -53,6 +54,19 @@ export function useUpsertDailyGenerationMutation() {
   return useMutation({
     mutationFn: ({ projectId, input }: { projectId: string; input: UpsertDailyGenerationInput }) =>
       upsertDailyGeneration(projectId, input),
+    onSuccess: (_data, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "monthlyPerformance", projectId] });
+    },
+  });
+}
+
+/** Deletes one or more days at once (single delete just sends a one-element array). */
+export function useDeleteDailyGenerationMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, dates }: { projectId: string; dates: string[] }) =>
+      deleteDailyGeneration(projectId, dates),
     onSuccess: (_data, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "monthlyPerformance", projectId] });
     },

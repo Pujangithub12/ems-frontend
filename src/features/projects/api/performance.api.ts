@@ -71,6 +71,11 @@ export async function upsertDailyGeneration(
   return res.data.row;
 }
 
+/** DELETE one or more days at once (single delete just sends a one-element array). */
+export async function deleteDailyGeneration(projectId: string, dates: string[]): Promise<void> {
+  await api.delete(`/api/projects/${projectId}/performance/daily`, { data: { dates } });
+}
+
 /** POST a set of AD date-range buckets (one per BS month) and get back each
  * bucket's summed generation — no calendar awareness on the backend, the
  * caller pairs the result with contractEnergy (from fetchMonthlyPerformance) itself. */
