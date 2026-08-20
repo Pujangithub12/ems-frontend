@@ -48,3 +48,15 @@ export const currentBsYearMonth = (): { year: number; month: number } => {
   const bs = NepaliDate.fromAD(new Date());
   return { year: bs.getYear(), month: bs.getMonth() };
 };
+
+/** Human-readable BS date for an AD ISO date, e.g. "Tue, Shrawan 5" — for
+ * displaying rows entered against a BS day picker (see Add Entry) so the
+ * calendar shown never flips back to Gregorian after saving. */
+export const bsDateLabel = (adDateIso: string, includeWeekday = true): string => {
+  const ad = new Date(`${adDateIso}T00:00:00`);
+  const bs = NepaliDate.fromAD(ad);
+  const monthDay = `${bsMonthLabel(bs.getYear(), bs.getMonth())} ${bs.getDate()}`;
+  if (!includeWeekday) return monthDay;
+  const weekday = ad.toLocaleDateString(undefined, { weekday: "short" });
+  return `${weekday}, ${monthDay}`;
+};

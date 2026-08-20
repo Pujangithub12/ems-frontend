@@ -10,6 +10,7 @@ import {
   Plus,
   Check,
   Upload,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, MonthlyPerformance, GenerationSummaryBucket } from "../../../../types";
@@ -20,11 +21,20 @@ import {
   useUpsertMonthlyPerformanceMutation,
   useDailyGenerationQuery,
   useUpsertDailyGenerationMutation,
+  useDeleteDailyGenerationMutation,
   useGenerationBucketsQuery,
 } from "../../hooks/useMonthlyPerformance";
 import { getErrorMessage } from "../../../../lib/errors";
+import ConfirmationModal from "../../../../components/ConfirmationModal";
 import EnergyPerformanceChart, { EnergyChartPoint } from "../../../../components/charts/EnergyPerformanceChart";
-import { daysInBsMonth, bsMonthLabel, bsMonthRangeAd, adDateForBsDay, currentBsYearMonth } from "../../../../lib/bsDate";
+import {
+  daysInBsMonth,
+  bsMonthLabel,
+  bsMonthRangeAd,
+  adDateForBsDay,
+  currentBsYearMonth,
+  bsDateLabel,
+} from "../../../../lib/bsDate";
 
 interface ProjectPerformanceTabProps {
   project: Project;
@@ -78,6 +88,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   const { startDate, endDate } = useMemo(() => bsMonthRangeAd(year, month), [year, month]);
   const dailyQuery = useDailyGenerationQuery(projectId, year, month + 1, startDate, endDate);
   const upsertDailyMutation = useUpsertDailyGenerationMutation();
+  const deleteDailyMutation = useDeleteDailyGenerationMutation();
 
   const buckets: GenerationSummaryBucket[] = useMemo(
     () =>
@@ -195,6 +206,36 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       },
     });
     setEditingDate(null);
+  };
+
+  // Multi-select + delete for daily entries.
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
+
+  const toggleSelected = (date: string) => {
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedDates((prev) =>
+      prev.size === dailyEntries.length ? new Set() : new Set(dailyEntries.map((d) => d.date)),
+    );
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteDailyMutation.mutateAsync({ projectId, dates: deleteTarget });
+    setSelectedDates((prev) => {
+      const next = new Set(prev);
+      deleteTarget.forEach((d) => next.delete(d));
+      return next;
+    });
+    setDeleteTarget(null);
   };
 
   const navigateMonth = (dir: -1 | 1) => {
@@ -416,6 +457,15 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       <div className="flex items-center justify-between">
         <h3 className="text-[13px] font-semibold text-slate-900">Daily Generation Entry</h3>
         <div className="flex items-center gap-2">
+          {isAdmin && selectedDates.size > 0 && (
+            <button
+              onClick={() => setDeleteTarget(Array.from(selectedDates))}
+              className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+            >
+              <Trash2 size={14} />
+              Delete Selected ({selectedDates.size})
+            </button>
+          )}
           {isAdmin && (
             <>
               <input
@@ -626,6 +676,16 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               <table className="w-full text-[12px] whitespace-nowrap">
                 <thead className="sticky top-0 bg-white">
                   <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                    {isAdmin && (
+                      <th className="w-8 px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedDates.size > 0 && selectedDates.size === dailyEntries.length}
+                          onChange={toggleSelectAll}
+                          className="rounded border-slate-300"
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-2 font-medium text-left">Date</th>
                     <th className="px-3 py-2 font-medium text-left">Check Init.</th>
                     <th className="px-3 py-2 font-medium text-left">Check Final</th>
@@ -641,13 +701,17 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                     const isEditing = editingDate === d.date;
                     return (
                       <tr key={d.date} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                        <td className="px-3 py-2 text-slate-600">
-                          {new Date(`${d.date}T00:00:00`).toLocaleDateString(undefined, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </td>
+                        {isAdmin && (
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedDates.has(d.date)}
+                              onChange={() => toggleSelected(d.date)}
+                              className="rounded border-slate-300"
+                            />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 text-slate-600">{bsDateLabel(d.date)}</td>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-2">
@@ -725,13 +789,22 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  onClick={() => startEdit(d)}
-                                  className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
-                                  title="Edit"
-                                >
-                                  <Pencil size={14} />
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => startEdit(d)}
+                                    className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                                    title="Edit"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteTarget([d.date])}
+                                    className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded transition-colors"
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -742,7 +815,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                    <td className="px-3 py-2" colSpan={3}>
+                    <td className="px-3 py-2" colSpan={isAdmin ? 4 : 3}>
                       Total (Check Meter)
                     </td>
                     <td className="px-3 py-2">{formatEnergy(dailyTotal)}</td>
@@ -908,6 +981,19 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        isLoading={deleteDailyMutation.isPending}
+        title="Delete Daily Entries"
+        message={
+          deleteTarget && deleteTarget.length === 1
+            ? `Delete the daily generation entry for ${bsDateLabel(deleteTarget[0])}? This can't be undone.`
+            : `Delete ${deleteTarget?.length ?? 0} daily generation entries? This can't be undone.`
+        }
+      />
     </div>
   );
 };
