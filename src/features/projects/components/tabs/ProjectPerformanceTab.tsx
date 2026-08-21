@@ -224,13 +224,22 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
     };
   }, [monthRows, rowsByMonth]);
 
-  // Only days that actually have a logged value are shown — entries are added
-  // one at a time via the "Add Entry" form below, or in bulk via "Upload Sheet".
+  // Only days that actually have some logged value are shown — entries are
+  // added one at a time via the "Add Entry" form below, or in bulk via
+  // "Upload Sheet". Check any of the 4 meter fields, not just `generation`
+  // (= Check Meter Final - Initial) — a row logged with only Main Meter
+  // readings, or a partial Check Meter reading, has no `generation` but
+  // should still show up.
+  const hasAnyReading = (d: {
+    checkMeterInitial?: number | string | null;
+    checkMeterFinal?: number | string | null;
+    mainMeterInitial?: number | string | null;
+    mainMeterFinal?: number | string | null;
+  }) =>
+    d.checkMeterInitial != null || d.checkMeterFinal != null || d.mainMeterInitial != null || d.mainMeterFinal != null;
+
   const dailyEntries = useMemo(
-    () =>
-      (dailyQuery.data ?? [])
-        .filter((d) => d.generation !== null && d.generation !== undefined)
-        .sort((a, b) => a.date.localeCompare(b.date)),
+    () => (dailyQuery.data ?? []).filter(hasAnyReading).sort((a, b) => a.date.localeCompare(b.date)),
     [dailyQuery.data],
   );
 
@@ -946,11 +955,11 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                    <td className="px-3 py-2" colSpan={isAdmin ? 4 : 3}>
-                      Total (Check Meter)
+                    <td className="px-3 py-2" colSpan={isAdmin ? 7 : 6}>
+                      Total (Main Meter)
                     </td>
                     <td className="px-3 py-2">{formatEnergy(dailyTotal)}</td>
-                    <td className="px-3 py-2" colSpan={isAdmin ? 3 : 2} />
+                    {isAdmin && <td className="px-3 py-2" />}
                   </tr>
                 </tfoot>
               </table>
