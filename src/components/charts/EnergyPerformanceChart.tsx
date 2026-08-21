@@ -31,6 +31,14 @@ const EnergyPerformanceChart: React.FC<{
   const stepX = data.length > 1 ? chartW / (data.length - 1) : 0;
   const yFor = (v: number) => padding.top + chartH - ((v - min) / range) * chartH;
 
+  // Fixed, non-scrolling y-axis (left of the horizontally-scrollable plot) so
+  // the scale stays visible regardless of how far the data is scrolled.
+  const yAxisWidth = 48;
+  const tickCount = 4;
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => min + (range * i) / tickCount).reverse();
+  const formatTick = (v: number) =>
+    Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : Math.round(v).toLocaleString();
+
   const points = data.map((d, i) => ({ x: padding.left + i * stepX, ...d }));
   const valuePoints = points.filter((p) => p.value !== null) as (typeof points[number] & { value: number })[];
   const linePath = valuePoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${yFor(p.value)}`).join(" ");
@@ -78,45 +86,73 @@ const EnergyPerformanceChart: React.FC<{
       {data.length === 0 ? (
         <p className="text-[12px] text-slate-400">No data for this range.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-            {targetPath && (
-              <path
-                d={targetPath}
-                fill="none"
-                stroke="#94A3B8"
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            )}
-            {linePath && (
-              <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            )}
-            {valuePoints.map((p) => (
-              <g key={p.label}>
-                <circle cx={p.x} cy={yFor(p.value)} r={3.5} fill="#fff" stroke={color} strokeWidth={2}>
-                  <title>
-                    {p.label}: {p.value.toLocaleString()} kWh
-                    {p.target !== null ? ` (target ${p.target.toLocaleString()} kWh)` : ""}
-                  </title>
-                </circle>
-              </g>
-            ))}
-            {points.map((p) => (
+        <div className="flex">
+          <svg width={yAxisWidth} height={height} className="flex-shrink-0">
+            {ticks.map((t, i) => (
               <text
-                key={`${p.label}-axis`}
-                x={p.x}
-                y={height - 8}
-                textAnchor="middle"
+                key={i}
+                x={yAxisWidth - 6}
+                y={yFor(t)}
+                dy={3}
+                textAnchor="end"
                 className="fill-slate-400"
                 style={{ fontSize: 10 }}
               >
-                {p.label}
+                {formatTick(t)}
               </text>
             ))}
           </svg>
+          <div className="overflow-x-auto">
+            <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+              {ticks.map((t, i) => (
+                <line
+                  key={i}
+                  x1={padding.left}
+                  y1={yFor(t)}
+                  x2={width - padding.right}
+                  y2={yFor(t)}
+                  stroke="#F1F5F9"
+                  strokeWidth={1}
+                />
+              ))}
+              {targetPath && (
+                <path
+                  d={targetPath}
+                  fill="none"
+                  stroke="#94A3B8"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )}
+              {linePath && (
+                <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              )}
+              {valuePoints.map((p) => (
+                <g key={p.label}>
+                  <circle cx={p.x} cy={yFor(p.value)} r={3.5} fill="#fff" stroke={color} strokeWidth={2}>
+                    <title>
+                      {p.label}: {p.value.toLocaleString()} kWh
+                      {p.target !== null ? ` (target ${p.target.toLocaleString()} kWh)` : ""}
+                    </title>
+                  </circle>
+                </g>
+              ))}
+              {points.map((p) => (
+                <text
+                  key={`${p.label}-axis`}
+                  x={p.x}
+                  y={height - 8}
+                  textAnchor="middle"
+                  className="fill-slate-400"
+                  style={{ fontSize: 10 }}
+                >
+                  {p.label}
+                </text>
+              ))}
+            </svg>
+          </div>
         </div>
       )}
     </div>
