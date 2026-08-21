@@ -35,7 +35,14 @@ import {
   currentBsYearMonth,
   bsDateLabel,
   adDateLabel,
-  bsMonthAdSpanLabel,
+  bsMonthAdLabel,
+  daysInAdMonth,
+  adMonthRangeIso,
+  adDateForAdDay,
+  currentAdYearMonth,
+  adMonthLabelFull,
+  adMonthLabel,
+  bsMonthPrimaryAdYearMonth,
 } from "../../../../lib/bsDate";
 
 interface ProjectPerformanceTabProps {
@@ -75,11 +82,31 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   const { year: initialYear, month: initialMonth } = useMemo(() => currentBsYearMonth(), []);
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
+  const { year: initialAdYear, month: initialAdMonth } = useMemo(() => currentAdYearMonth(), []);
+  const [adYear, setAdYear] = useState(initialAdYear);
+  const [adMonth, setAdMonth] = useState(initialAdMonth);
   const [chartMode, setChartMode] = useState<"daily" | "monthly">("daily");
-  // Display-only — doesn't change how data is entered/organized (still BS
-  // month-keyed throughout), just how dates are rendered in the daily grid.
+  // Controls both display AND, for the daily grid specifically, which
+  // calendar's month boundaries entries are grouped/navigated by — so e.g.
+  // Shrawan 31 and Bhadra 1 land together under "Aug" in AD mode if that's
+  // what the real calendar says. Contract Energy/Income/Expenditure/Spare
+  // Parts (financial fields) stay BS-anchored regardless, since those are
+  // single figures an admin enters for one BS month and can't be honestly
+  // split across an AD month boundary.
   const [dateFormat, setDateFormat] = useState<"bs" | "ad">("bs");
   const dateLabel = (dateIso: string) => (dateFormat === "bs" ? bsDateLabel(dateIso) : adDateLabel(dateIso));
+
+  // The period currently driving the daily grid (Add Entry, Upload Sheet,
+  // the entries table, and the daily-mode chart) — BS or AD depending on dateFormat.
+  const dim = dateFormat === "bs" ? daysInBsMonth(year, month) : daysInAdMonth(adYear, adMonth);
+  const periodLabel =
+    dateFormat === "bs" ? `${bsMonthLabel(year, month)} ${year}` : adMonthLabelFull(adYear, adMonth);
+  const periodDateForDay = (day: number) =>
+    dateFormat === "bs" ? adDateForBsDay(year, month, day) : adDateForAdDay(adYear, adMonth, day);
+  const periodDayLabel = (day: number) =>
+    dateFormat === "bs"
+      ? `${bsMonthLabel(year, month)} ${day}`
+      : `${new Date(adYear, adMonth, 1).toLocaleDateString("en-US", { month: "long" })} ${day}`;
 
   // MonthlyPerformance.year/month are stored as 1-based BS values (Baishakh = 1).
   const rowsQuery = useMonthlyPerformanceQuery(projectId, year);
@@ -91,11 +118,16 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
 
   const upsertMutation = useUpsertMonthlyPerformanceMutation();
 
-  const { startDate, endDate } = useMemo(() => bsMonthRangeAd(year, month), [year, month]);
-  const dailyQuery = useDailyGenerationQuery(projectId, year, month + 1, startDate, endDate);
+  const { startDate, endDate } = useMemo(
+    () => (dateFormat === "bs" ? bsMonthRangeAd(year, month) : adMonthRangeIso(adYear, adMonth)),
+    [dateFormat, year, month, adYear, adMonth],
+  );
+  const dailyQuery = useDailyGenerationQuery(projectId, startDate, endDate);
   const upsertDailyMutation = useUpsertDailyGenerationMutation();
   const deleteDailyMutation = useDeleteDailyGenerationMutation();
 
+  // BS-month buckets — always fetched, since financial fields (Contract Energy
+  // etc.) stay BS-anchored regardless of dateFormat.
   const buckets: GenerationSummaryBucket[] = useMemo(
     () =>
       BS_MONTH_INDEXES.map((m) => {
@@ -104,12 +136,27 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       }),
     [year],
   );
-  const bucketsQuery = useGenerationBucketsQuery(projectId, year, buckets);
+  const bucketsQuery = useGenerationBucketsQuery(projectId, year, buckets, "bs");
   const bucketByMonth = useMemo(() => {
     const map = new Map<number, number | null>();
     (bucketsQuery.data ?? []).forEach((b) => map.set(b.key, b.generation != null ? toNumber(b.generation) : null));
     return map;
   }, [bucketsQuery.data]);
+
+  // True AD-month buckets (key = AD month index 0-11 of adYear) — only used
+  // by the monthly table when dateFormat === "ad", so it can show a correct
+  // Actual Generation sum per real Gregorian month instead of an approximated
+  // BS-bucket value (fixes e.g. Shrawan 31 + Bhadra 1 both being in "August").
+  const adMonthlyBuckets: GenerationSummaryBucket[] = useMemo(
+    () => Array.from({ length: 12 }, (_, m) => ({ key: m, ...adMonthRangeIso(adYear, m) })),
+    [adYear],
+  );
+  const adBucketsQuery = useGenerationBucketsQuery(projectId, adYear, adMonthlyBuckets, "ad");
+  const adBucketByMonth = useMemo(() => {
+    const map = new Map<number, number | null>();
+    (adBucketsQuery.data ?? []).forEach((b) => map.set(b.key, b.generation != null ? toNumber(b.generation) : null));
+    return map;
+  }, [adBucketsQuery.data]);
 
   const rowsByMonth = useMemo(() => {
     const map = new Map<number, MonthlyPerformance>();
@@ -117,10 +164,57 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
     return map;
   }, [rows]);
 
+  // For each true AD month (0-11) of adYear, the one BS month (1-12) whose
+  // "primary" AD month (see bsMonthPrimaryAdYearMonth) is exactly this AD
+  // month — or null if none map here, or if more than one does (ambiguous).
+  // Only covers the currently-loaded BS `year`, so a BS month from an
+  // adjacent BS year that happens to primarily fall in this AD year's edge
+  // months (e.g. AD January) won't be found — a known, accepted limitation.
+  const adPrimaryBsMonth = useMemo(() => {
+    const buckets2 = new Map<number, number[]>();
+    BS_MONTH_INDEXES.forEach((idx) => {
+      const primary = bsMonthPrimaryAdYearMonth(year, idx);
+      if (primary.year !== adYear) return;
+      const arr = buckets2.get(primary.month) ?? [];
+      arr.push(idx + 1);
+      buckets2.set(primary.month, arr);
+    });
+    const map = new Map<number, number | null>();
+    for (let m = 0; m < 12; m++) {
+      const arr = buckets2.get(m) ?? [];
+      map.set(m, arr.length === 1 ? arr[0] : null);
+    }
+    return map;
+  }, [year, adYear]);
+
+  // Rows the financial table actually renders — 12 BS months (label + BS
+  // month number to look up financial fields + Actual Generation), or 12 true
+  // AD months (label + the mapped BS month, if unambiguous, for financial
+  // fields only — Actual Generation is always a true AD sum in this mode).
+  const monthRows = useMemo(() => {
+    if (dateFormat === "bs") {
+      return BS_MONTH_INDEXES.map((idx) => ({
+        key: idx + 1,
+        label: bsMonthLabel(year, idx),
+        bsMonth: idx + 1,
+        generation: bucketByMonth.get(idx + 1) ?? null,
+      }));
+    }
+    return Array.from({ length: 12 }, (_, m) => ({
+      key: m,
+      label: adMonthLabel(adYear, m),
+      bsMonth: adPrimaryBsMonth.get(m) ?? null,
+      generation: adBucketByMonth.get(m) ?? null,
+    }));
+  }, [dateFormat, year, adYear, bucketByMonth, adBucketByMonth, adPrimaryBsMonth]);
+
   const totals = useMemo(() => {
     const sum = (key: keyof MonthlyPerformance) =>
-      rows.reduce((acc, r) => acc + toNumber(r[key] as number | string | null), 0);
-    const actualGeneration = BS_MONTH_INDEXES.reduce((acc, m) => acc + (bucketByMonth.get(m + 1) ?? 0), 0);
+      monthRows.reduce((acc, r) => {
+        const row = r.bsMonth ? rowsByMonth.get(r.bsMonth) : undefined;
+        return acc + toNumber(row?.[key] as number | string | null);
+      }, 0);
+    const actualGeneration = monthRows.reduce((acc, r) => acc + (r.generation ?? 0), 0);
     return {
       contractEnergy: sum("contractEnergy"),
       actualGeneration,
@@ -128,7 +222,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       monthlyExpenditure: sum("monthlyExpenditure"),
       sparePartPurchase: sum("sparePartPurchase"),
     };
-  }, [rows, bucketByMonth]);
+  }, [monthRows, rowsByMonth]);
 
   // Only days that actually have a logged value are shown — entries are added
   // one at a time via the "Add Entry" form below, or in bulk via "Upload Sheet".
@@ -146,13 +240,13 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   );
 
   const loggedDates = useMemo(() => new Set(dailyEntries.map((d) => d.date)), [dailyEntries]);
-  const dim = daysInBsMonth(year, month);
   const firstOpenDay = useMemo(() => {
     for (let day = 1; day <= dim; day++) {
-      if (!loggedDates.has(adDateForBsDay(year, month, day))) return day;
+      if (!loggedDates.has(periodDateForDay(day))) return day;
     }
     return 1;
-  }, [year, month, dim, loggedDates]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- periodDateForDay is derived from these same values each render
+  }, [dateFormat, year, month, adYear, adMonth, dim, loggedDates]);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addDay, setAddDay] = useState(1);
@@ -172,7 +266,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       return;
     }
     setAddError(null);
-    const date = adDateForBsDay(year, month, addDay);
+    const date = periodDateForDay(addDay);
     await upsertDailyMutation.mutateAsync({
       projectId,
       input: {
@@ -245,6 +339,20 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   };
 
   const navigateMonth = (dir: -1 | 1) => {
+    if (dateFormat === "ad") {
+      let m = adMonth + dir;
+      let y = adYear;
+      if (m < 0) {
+        m = 11;
+        y -= 1;
+      } else if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+      setAdMonth(m);
+      setAdYear(y);
+      return;
+    }
     let m = month + dir;
     let y = year;
     if (m < 0) {
@@ -260,11 +368,14 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
 
   const chartData: EnergyChartPoint[] = useMemo(() => {
     if (chartMode === "daily") {
-      const contractEnergy = toNumber(rowsByMonth.get(month + 1)?.contractEnergy ?? null);
+      // Contract Energy is BS-anchored (see dateFormat comment above) — only
+      // meaningful as a target line when the grid itself is BS-grouped.
+      const contractEnergy =
+        dateFormat === "bs" ? toNumber(rowsByMonth.get(month + 1)?.contractEnergy ?? null) : 0;
       const target = contractEnergy > 0 ? contractEnergy / dim : null;
       return Array.from({ length: dim }, (_, i) => {
         const day = i + 1;
-        const date = adDateForBsDay(year, month, day);
+        const date = periodDateForDay(day);
         const entry = (dailyQuery.data ?? []).find((d) => d.date === date);
         return {
           label: String(day),
@@ -278,7 +389,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       value: bucketByMonth.get(m + 1) ?? null,
       target: rowsByMonth.get(m + 1)?.contractEnergy != null ? toNumber(rowsByMonth.get(m + 1)!.contractEnergy) : null,
     }));
-  }, [chartMode, dailyQuery.data, bucketByMonth, rowsByMonth, month, year, dim]);
+  }, [chartMode, dailyQuery.data, bucketByMonth, rowsByMonth, month, year, adMonth, adYear, dateFormat, dim]);
 
   // Bulk import via .xlsx/.csv — parsed entirely client-side, matches columns
   // from a real generation log sheet (Day, Check/Main Meter Initial/Final).
@@ -336,7 +447,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         }
 
         const input: UpsertDailyGenerationInput = {
-          date: adDateForBsDay(year, month, day),
+          date: periodDateForDay(day),
           checkMeterInitial,
           checkMeterFinal,
           mainMeterInitial,
@@ -454,7 +565,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
         </div>
         <EnergyPerformanceChart
           data={chartData}
-          navigatorLabel={chartMode === "daily" ? `${bsMonthLabel(year, month)} ${year}` : `${year}`}
+          navigatorLabel={chartMode === "daily" ? periodLabel : `${year}`}
           onNavigate={(dir) => (chartMode === "daily" ? navigateMonth(dir) : setYear((y) => y + dir))}
         />
       </div>
@@ -526,7 +637,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               className="w-32 text-center text-[13px] font-semibold text-slate-900"
               style={{ fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {dateFormat === "bs" ? `${bsMonthLabel(year, month)} ${year}` : bsMonthAdSpanLabel(year, month)}
+              {periodLabel}
             </span>
             <button
               onClick={() => navigateMonth(1)}
@@ -572,9 +683,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               <p>
                 Each row's <span className="font-medium text-slate-800">Day</span> (1, 2, 3…) is matched against the
                 currently selected month —{" "}
-                <span className="font-medium text-slate-800">
-                  {bsMonthLabel(year, month)} {year}
-                </span>{" "}
+                <span className="font-medium text-slate-800">{periodLabel}</span>{" "}
                 — so make sure that's the right month before uploading. A trailing{" "}
                 <span className="font-medium text-slate-800">TOTAL</span> row (or anything after the daily rows) is
                 automatically ignored. Accepted formats: .xlsx, .xls, .csv.
@@ -612,7 +721,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               >
                 {Array.from({ length: dim }, (_, i) => i + 1).map((d) => (
                   <option key={d} value={d}>
-                    {bsMonthLabel(year, month)} {d}
+                    {periodDayLabel(d)}
                   </option>
                 ))}
               </select>
@@ -690,7 +799,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
           </div>
         ) : dailyEntries.length === 0 ? (
           <p className="px-3 py-6 text-[12px] text-center text-slate-400">
-            No daily entries logged for {bsMonthLabel(year, month)} {year} yet.
+            No daily entries logged for {periodLabel} yet.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -866,29 +975,28 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               </tr>
             </thead>
             <tbody>
-              {BS_MONTH_INDEXES.map((idx) => {
-                const m = idx + 1;
-                const row = rowsByMonth.get(m);
+              {monthRows.map((r) => {
+                const row = r.bsMonth ? rowsByMonth.get(r.bsMonth) : undefined;
                 return (
-                  <tr key={m} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 font-medium text-slate-800">
-                      {dateFormat === "bs" ? bsMonthLabel(year, idx) : bsMonthAdSpanLabel(year, idx)}
-                    </td>
+                  <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-3 py-2 font-medium text-slate-800">{r.label}</td>
                     <td className="px-3 py-2 text-slate-600">{formatEnergy(row?.contractEnergy)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatEnergy(bucketByMonth.get(m))}</td>
+                    <td className="px-3 py-2 text-slate-600">{formatEnergy(r.generation)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.incomeReceived)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.monthlyExpenditure)}</td>
                     <td className="px-3 py-2 text-slate-600">{formatCost(row?.sparePartPurchase)}</td>
                     {isAdmin && (
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end">
-                          <button
-                            onClick={() => openEditForm(m)}
-                            className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil size={14} />
-                          </button>
+                          {r.bsMonth && (
+                            <button
+                              onClick={() => openEditForm(r.bsMonth!)}
+                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -919,7 +1027,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
               <h3 className="text-[14px] font-semibold text-slate-900">
                 {dateFormat === "bs"
                   ? `${bsMonthLabel(year, editingMonth - 1)} ${year}`
-                  : bsMonthAdSpanLabel(year, editingMonth - 1)}
+                  : bsMonthAdLabel(year, editingMonth - 1)}
               </h3>
               <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
                 <X size={16} />
