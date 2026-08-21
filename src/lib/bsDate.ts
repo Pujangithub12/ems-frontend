@@ -72,16 +72,52 @@ export const adDateLabel = (adDateIso: string, includeWeekday = true): string =>
   });
 };
 
-/** AD month/year span for a BS month, e.g. "Aug 2026" or "Aug/Sep 2026" when
- * the BS month straddles two Gregorian months — mirrors Calendar.tsx's adSpan. */
-export const bsMonthAdSpanLabel = (year: number, month: number): string => {
-  const { startDate, endDate } = bsMonthRangeAd(year, month);
-  const firstAd = new Date(`${startDate}T00:00:00`);
-  const lastAd = new Date(new Date(`${endDate}T00:00:00`).getTime() - 86400000);
-  if (firstAd.getMonth() === lastAd.getMonth() && firstAd.getFullYear() === lastAd.getFullYear()) {
-    return firstAd.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-  }
-  return `${firstAd.toLocaleDateString("en-US", { month: "short" })}/${lastAd.toLocaleDateString("en-US", {
-    month: "short",
-  })} ${lastAd.getFullYear()}`;
+/** Single AD month/year label for a BS month, e.g. "Aug 2026" — picked from
+ * the Gregorian month covering the BS month's midpoint, so it reads as one
+ * whole month (like the BS label) instead of a straddling "Apr/May" range.
+ * Used only where the underlying data stays BS-grouped (financial fields —
+ * see bsDate.ts usage in ProjectPerformanceTab) and just needs an AD label. */
+export const bsMonthAdLabel = (year: number, month: number): string => {
+  const { year: ay, month: am } = bsMonthPrimaryAdYearMonth(year, month);
+  return adMonthLabel(ay, am);
+};
+
+/** True Gregorian-calendar counterparts to the BS helpers above (`month` is
+ * zero-based, 0 = January, matching JS `Date`'s own convention) — used when
+ * the daily entry grid is actually regrouped by real AD months (not just
+ * relabeled), so e.g. Shrawan 31 and Bhadra 1 land in the same "Aug" bucket
+ * if that's what the real calendar says. */
+export const daysInAdMonth = (year: number, month: number): number => new Date(year, month + 1, 0).getDate();
+
+export const adMonthRangeIso = (year: number, month: number): { startDate: string; endDate: string } => ({
+  startDate: isoOfAd(new Date(year, month, 1)),
+  endDate: isoOfAd(new Date(year, month + 1, 1)),
+});
+
+export const adDateForAdDay = (year: number, month: number, day: number): string =>
+  isoOfAd(new Date(year, month, day));
+
+export const currentAdYearMonth = (): { year: number; month: number } => {
+  const today = new Date();
+  return { year: today.getFullYear(), month: today.getMonth() };
+};
+
+/** Full month name, e.g. "August 2026" — matches bsMonthLabel's full-name style. */
+export const adMonthLabelFull = (year: number, month: number): string =>
+  new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+/** Short AD month/year label, e.g. "Aug 2026" — for a true (not BS-approximated) AD month. */
+export const adMonthLabel = (year: number, month: number): string =>
+  new Date(year, month, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
+/** The exact (AD year, AD month) that bsMonthAdLabel picks for a BS month —
+ * the Gregorian month covering that BS month's midpoint. Used to find which
+ * single BS month, if any, "primarily" belongs to a given true AD month row
+ * (see ProjectPerformanceTab's monthly table in AD mode): a financial figure
+ * entered for a BS month is only shown against the one AD month it's
+ * genuinely associated with, not duplicated or split across a straddle. */
+export const bsMonthPrimaryAdYearMonth = (year: number, month: number): { year: number; month: number } => {
+  const midDay = Math.ceil(daysInBsMonth(year, month) / 2);
+  const mid = new Date(`${adDateForBsDay(year, month, midDay)}T00:00:00`);
+  return { year: mid.getFullYear(), month: mid.getMonth() };
 };

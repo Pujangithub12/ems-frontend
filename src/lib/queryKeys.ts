@@ -56,10 +56,15 @@ export const queryKeys = {
   /** year/month here are Bikram Sambat values (see MonthlyPerformance type). */
   monthlyPerformance: (wsId: number, projectId: string | number, year: number) =>
     [...queryKeys.all(wsId), "monthlyPerformance", projectId, year] as const,
-  dailyGeneration: (wsId: number, projectId: string | number, year: number, month: number) =>
-    [...queryKeys.monthlyPerformance(wsId, projectId, year), "daily", month] as const,
-  generationBuckets: (wsId: number, projectId: string | number, year: number) =>
-    [...queryKeys.monthlyPerformance(wsId, projectId, year), "buckets"] as const,
+  /** Keyed on the actual AD date range, since it can come from either a BS or
+   * an AD month depending on the tab's date-format toggle. */
+  dailyGeneration: (wsId: number, projectId: string | number, startDate: string, endDate: string) =>
+    [...queryKeys.all(wsId), "dailyGeneration", projectId, startDate, endDate] as const,
+  /** `calendar` disambiguates a BS-year bucket set from an AD-year one — the
+   * two `year` numbers are drawn from different ranges but could theoretically
+   * collide, so they must not share a cache entry. */
+  generationBuckets: (wsId: number, projectId: string | number, year: number, calendar: "bs" | "ad" = "bs") =>
+    [...queryKeys.monthlyPerformance(wsId, projectId, year), "buckets", calendar] as const,
   inventory: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "inventory", projectId] as const,
   organizationInventory: (wsId: number) => [...queryKeys.all(wsId), "organizationInventory"] as const,
