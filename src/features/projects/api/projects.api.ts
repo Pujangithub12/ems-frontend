@@ -13,9 +13,28 @@ export type ProjectPayload = Partial<{
   sellingPrice: number | null;
 }>;
 
-/** GET /api/projects — the organization's project list (lighter shape, no headings/files). */
+/** GET /api/projects — the organization's full project list (lighter shape, no headings/files). Used by
+ * dropdowns/lookups elsewhere in the app that need every project, not just the Projects list page. */
 export async function getProjects(): Promise<Project[]> {
   const res = await api.get<Project[]>("/api/projects");
+  return res.data;
+}
+
+export interface PagedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** GET /api/projects?page=&pageSize=&search=&status= — server-paginated variant for the Projects list page. */
+export async function getProjectsPage(
+  page: number,
+  pageSize: number,
+  search: string,
+  status: string,
+): Promise<PagedResult<Project>> {
+  const res = await api.get<PagedResult<Project>>("/api/projects", { params: { page, pageSize, search, status } });
   return res.data;
 }
 

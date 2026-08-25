@@ -22,14 +22,13 @@ import {
   Download,
   Upload,
   Warehouse as WarehouseIcon,
-  Users as VendorIcon,
   DollarSign,
   Truck,
   Percent,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
-import { InventoryItem, Vendor, Warehouse } from "../../../types";
+import { InventoryItem, Warehouse } from "../../../types";
 import { InventoryItemInput } from "../api/inventory.api";
 import {
   useOrganizationInventoryQuery,
@@ -41,9 +40,6 @@ import {
   useDeleteWarehouseMutation,
   useOrganizationPendingTransfersQuery,
   useOrganizationVendorsQuery,
-  useCreateVendorMutation,
-  useUpdateVendorMutation,
-  useDeleteVendorMutation,
 } from "../hooks/useInventory";
 import { useOrganizationPurchaseOrdersQuery } from "../../procurement/hooks/usePurchaseOrder";
 import { toNumber, formatCost } from "../../../lib/currency";
@@ -162,9 +158,6 @@ const InventoryPage: React.FC = () => {
   const deleteMutation = useDeleteInventoryItemMutation();
   const createWarehouseMutation = useCreateWarehouseMutation();
   const deleteWarehouseMutation = useDeleteWarehouseMutation();
-  const createVendorMutation = useCreateVendorMutation();
-  const updateVendorMutation = useUpdateVendorMutation();
-  const deleteVendorMutation = useDeleteVendorMutation();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -190,10 +183,6 @@ const InventoryPage: React.FC = () => {
   const [drawerItemId, setDrawerItemId] = useState<number | null>(null);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [newWarehouse, setNewWarehouse] = useState({ name: "", code: "", location: "", capacity: "" });
-  const [showVendorModal, setShowVendorModal] = useState(false);
-  const [newVendor, setNewVendor] = useState({ name: "", code: "", location: "", contact: "", contractExpiryDate: "" });
-  const [editingVendorId, setEditingVendorId] = useState<number | null>(null);
-  const [editVendor, setEditVendor] = useState({ contact: "", contractExpiryDate: "" });
   const [importing, setImporting] = useState(false);
   const [importProjectId, setImportProjectId] = useState<number | "">("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -374,18 +363,6 @@ const InventoryPage: React.FC = () => {
       setActionError(getErrorMessage(err, "Failed to delete inventory item."));
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleDeleteVendor = async (vendor: Vendor) => {
-    if (!window.confirm(`Delete vendor "${vendor.name}"? Items using it will just show no vendor.`)) return;
-    setActionError(null);
-    try {
-      await deleteVendorMutation.mutateAsync(vendor.id);
-      await Promise.all([vendorsQuery.refetch(), itemsQuery.refetch()]);
-      if (editingVendorId === vendor.id) setEditingVendorId(null);
-    } catch (err) {
-      setActionError(getErrorMessage(err, "Failed to delete vendor."));
     }
   };
 
@@ -656,12 +633,6 @@ const InventoryPage: React.FC = () => {
                       className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
                     >
                       <WarehouseIcon size={13} /> Warehouses
-                    </button>
-                    <button
-                      onClick={() => setShowVendorModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
-                    >
-                      <VendorIcon size={13} /> Vendors
                     </button>
                     <button
                       onClick={openCreateForm}
@@ -1214,168 +1185,6 @@ const InventoryPage: React.FC = () => {
                   className="w-full px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
                 >
                   Add Warehouse
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Vendor management modal */}
-      {showVendorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h3 className="text-[14px] font-semibold text-slate-900">Vendors</h3>
-              <button onClick={() => setShowVendorModal(false)} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
-              {actionError && (
-                <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
-                  <span>{actionError}</span>
-                  <button onClick={() => setActionError(null)}>
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-              {vendors.length === 0 ? (
-                <p className="text-[12px] text-slate-400">No vendors yet.</p>
-              ) : (
-                vendors.map((v) => (
-                  <div key={v.id} className="py-1.5 border-b border-slate-100 last:border-0 text-[13px]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-700">
-                        {v.name}
-                        {v.location ? ` · ${v.location}` : ""}
-                        {v.contact ? ` · ${v.contact}` : ""}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-400">{v.code || ""}</span>
-                        <button
-                          onClick={() => {
-                            if (editingVendorId === v.id) {
-                              setEditingVendorId(null);
-                            } else {
-                              setEditingVendorId(v.id);
-                              setEditVendor({
-                                contact: v.contact || "",
-                                contractExpiryDate: v.contractExpiryDate ? v.contractExpiryDate.slice(0, 10) : "",
-                              });
-                            }
-                          }}
-                          className="text-[11px] font-medium text-blue-900 hover:underline"
-                        >
-                          {editingVendorId === v.id ? "Cancel" : "Edit"}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteVendor(v)}
-                          title="Delete vendor"
-                          className="text-[11px] font-medium text-red-600 hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    {v.contractExpiryDate && (
-                      <div className="mt-0.5 text-[11px] text-slate-400">
-                        Contract until {new Date(v.contractExpiryDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                      </div>
-                    )}
-                    {editingVendorId === v.id && (
-                      <div className="flex items-end gap-2 mt-2">
-                        <div className="flex-1">
-                          <label className="block mb-1 text-[10px] font-medium text-slate-500">Contact</label>
-                          <input
-                            type="tel"
-                            value={editVendor.contact}
-                            onChange={(e) => setEditVendor({ ...editVendor, contact: e.target.value })}
-                            placeholder="Phone number"
-                            className="w-full px-2 py-1.5 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="block mb-1 text-[10px] font-medium text-slate-500">Contract expiry</label>
-                          <input
-                            type="date"
-                            value={editVendor.contractExpiryDate}
-                            onChange={(e) => setEditVendor({ ...editVendor, contractExpiryDate: e.target.value })}
-                            className="w-full px-2 py-1.5 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                          />
-                        </div>
-                        <button
-                          onClick={async () => {
-                            await updateVendorMutation.mutateAsync({
-                              vendorId: v.id,
-                              input: {
-                                contact: editVendor.contact,
-                                contractExpiryDate: editVendor.contractExpiryDate || null,
-                              },
-                            });
-                            setEditingVendorId(null);
-                            await vendorsQuery.refetch();
-                          }}
-                          className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-              <div className="pt-3 space-y-2 border-t border-slate-100">
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={newVendor.name}
-                    onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
-                    placeholder="Name"
-                    className="px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                  <input
-                    value={newVendor.code}
-                    onChange={(e) => setNewVendor({ ...newVendor, code: e.target.value })}
-                    placeholder="Code"
-                    className="px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                  <input
-                    value={newVendor.location}
-                    onChange={(e) => setNewVendor({ ...newVendor, location: e.target.value })}
-                    placeholder="Location"
-                    className="col-span-2 px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                  <input
-                    type="tel"
-                    value={newVendor.contact}
-                    onChange={(e) => setNewVendor({ ...newVendor, contact: e.target.value })}
-                    placeholder="Contact number"
-                    className="px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                  <input
-                    type="date"
-                    value={newVendor.contractExpiryDate}
-                    onChange={(e) => setNewVendor({ ...newVendor, contractExpiryDate: e.target.value })}
-                    title="Contract expiry"
-                    className="px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                  />
-                </div>
-                <button
-                  disabled={!newVendor.name.trim()}
-                  onClick={async () => {
-                    await createVendorMutation.mutateAsync({
-                      name: newVendor.name.trim(),
-                      code: newVendor.code.trim() || undefined,
-                      location: newVendor.location.trim() || undefined,
-                      contact: newVendor.contact.trim() || undefined,
-                      contractExpiryDate: newVendor.contractExpiryDate || undefined,
-                    });
-                    setNewVendor({ name: "", code: "", location: "", contact: "", contractExpiryDate: "" });
-                    await vendorsQuery.refetch();
-                  }}
-                  className="w-full px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
-                >
-                  Add Vendor
                 </button>
               </div>
             </div>

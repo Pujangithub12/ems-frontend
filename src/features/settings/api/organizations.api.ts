@@ -52,6 +52,38 @@ export async function deleteOrganization(
   return res.data.organization ?? null;
 }
 
+/** POST /api/workspace/signature — the org's letterhead signature image (used on generated Purchase Order PDFs), scoped to the caller's current organization. */
+export async function uploadOrganizationSignature(file: File): Promise<Organization> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await api.post("/api/workspace/signature", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data.organization;
+}
+
+/** DELETE /api/workspace/signature */
+export async function deleteOrganizationSignature(): Promise<Organization> {
+  const res = await api.delete("/api/workspace/signature");
+  return res.data.organization;
+}
+
+/** POST /api/workspace/stamp — the org's letterhead company seal/stamp image. */
+export async function uploadOrganizationStamp(file: File): Promise<Organization> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await api.post("/api/workspace/stamp", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data.organization;
+}
+
+/** DELETE /api/workspace/stamp */
+export async function deleteOrganizationStamp(): Promise<Organization> {
+  const res = await api.delete("/api/workspace/stamp");
+  return res.data.organization;
+}
+
 export type OrganizationAccessEmployee = {
   id: number;
   fullName: string;

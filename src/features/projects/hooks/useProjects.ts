@@ -3,6 +3,7 @@ import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   getProjects,
+  getProjectsPage,
   getProject,
   createProject,
   updateProject,
@@ -10,12 +11,24 @@ import {
   ProjectPayload,
 } from "../api/projects.api";
 
+/** Full, unpaginated project list — used by dropdowns/lookups elsewhere that need every project. */
 export function useProjects() {
   const wsId = useOrganizationId();
   return useQuery({
     queryKey: queryKeys.projects(wsId),
     queryFn: getProjects,
     enabled: Number.isFinite(wsId),
+  });
+}
+
+/** Server-paginated project list for the Projects list page. */
+export function useProjectsPage(page: number, pageSize: number, search: string, status: string) {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.projectsPage(wsId, page, pageSize, search, status),
+    queryFn: () => getProjectsPage(page, pageSize, search, status),
+    enabled: Number.isFinite(wsId),
+    placeholderData: (previousData) => previousData,
   });
 }
 

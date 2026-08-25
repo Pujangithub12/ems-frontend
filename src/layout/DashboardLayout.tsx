@@ -28,6 +28,7 @@ import {
   FileText,
   BellOff,
   Factory,
+  Tag,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -97,6 +98,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const userMenuRef = React.useRef<HTMLDivElement>(null);
   const { isMuted: notificationsMuted } = useNotificationMute();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isFinance = user?.role === "finance";
 
   const paramOrganizationId = organizationIdParam ? Number(organizationIdParam) : null;
   const isValidParamId = paramOrganizationId !== null && Number.isInteger(paramOrganizationId);
@@ -276,12 +278,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "inventory",
     },
     {
-      path: `${prefix}/purchase-requests`,
-      label: "Purchase Requests",
-      icon: ShoppingCart,
-      id: "procurement",
-    },
-    {
       path: `${prefix}/purchase-orders`,
       label: "Purchase Orders",
       icon: Truck,
@@ -292,6 +288,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       label: "Vendors",
       icon: Building2,
       id: "vendors",
+    },
+    {
+      path: `${prefix}/items`,
+      label: "Items",
+      icon: Tag,
+      id: "items",
     },
     {
       path: `${prefix}/proforma-invoices`,
@@ -377,6 +379,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     procurement: "Purchase requests across all your projects",
     "purchase-orders": "Purchase orders across all your projects",
     vendors: "Suppliers and vendors across all your projects",
+    items: "Shared item catalog across all your projects",
     "proforma-invoices": "Proforma invoices across all your purchase orders",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
@@ -422,32 +425,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="h-1.5" />
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
-              if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
-              if (it.id === "procurement") {
-                if (!isAdmin) {
-                  return (
-                    <SidebarLink
-                      key={it.id}
-                      to={it.path}
-                      icon={it.icon}
-                      label={it.label}
-                      badgeCount={it.badgeCount}
-                    />
-                  );
+              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
+              if (it.id === "purchase-orders") {
+                // Proforma Invoices/Vendors/Items are admin-only (see RequireAdmin in App.tsx).
+                // Finance gets a direct Purchase Orders link (they review the Purchase
+                // Approval tab there) but not the rest of the Procurement dropdown.
+                if (isFinance) {
+                  return <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} badgeCount={it.badgeCount} />;
                 }
-                const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
+                if (!isAdmin) return null;
                 const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                 const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
+                const itemsItem = navItems.find((n) => n.id === "items")!;
                 return (
                   <SidebarDropdown
                     key="purchase"
                     icon={ShoppingCart}
                     label="Procurement"
                     items={[
-                      { to: it.path, label: "Purchase Requests" },
-                      { to: purchaseOrders.path, label: "Purchase Orders" },
+                      { to: it.path, label: "Purchase Orders" },
                       { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                       { to: vendorsItem.path, label: "Vendors" },
+                      { to: itemsItem.path, label: "Items" },
                     ]}
                   />
                 );
@@ -503,9 +502,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="h-1.5" />
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
-                  if (it.id === "purchase-orders" || it.id === "vendors" || it.id === "proforma-invoices") return null;
-                  if (it.id === "procurement") {
-                    if (!isAdmin) {
+                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
+                  if (it.id === "purchase-orders") {
+                    // Proforma Invoices/Vendors/Items are admin-only (see RequireAdmin in App.tsx).
+                    // Finance gets a direct Purchase Orders link (they review the Purchase
+                    // Approval tab there) but not the rest of the Procurement dropdown.
+                    if (isFinance) {
                       return (
                         <SidebarLink
                           key={it.id}
@@ -517,19 +519,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                         />
                       );
                     }
-                    const purchaseOrders = navItems.find((n) => n.id === "purchase-orders")!;
+                    if (!isAdmin) return null;
                     const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                     const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
+                    const itemsItem = navItems.find((n) => n.id === "items")!;
                     return (
                       <SidebarDropdown
                         key="purchase"
                         icon={ShoppingCart}
                         label="Procurement"
                         items={[
-                          { to: it.path, label: "Purchase Requests" },
-                          { to: purchaseOrders.path, label: "Purchase Orders" },
+                          { to: it.path, label: "Purchase Orders" },
                           { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                           { to: vendorsItem.path, label: "Vendors" },
+                          { to: itemsItem.path, label: "Items" },
                         ]}
                         onNavigate={() => setIsMobileMenuOpen(false)}
                       />

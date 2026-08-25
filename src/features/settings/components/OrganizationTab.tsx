@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthProvider";
+import { apiBaseUrl } from "../../../api/axios";
 import {
   Building2,
   AlertCircle,
@@ -12,6 +13,7 @@ import {
   Users as UsersIcon,
   Plus,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Eyebrow } from "./SettingsShared";
 import {
@@ -19,6 +21,86 @@ import {
   useGrantOrganizationAccess,
   useRevokeOrganizationAccess,
 } from "../hooks/useOrganizationAccess";
+import {
+  uploadOrganizationSignature,
+  deleteOrganizationSignature,
+  uploadOrganizationStamp,
+  deleteOrganizationStamp,
+} from "../api/organizations.api";
+
+const MAX_LETTERHEAD_IMAGE_BYTES = 200 * 1024;
+
+/** One "Signature" or "Company Stamp" upload field — small preview thumbnail, Upload/Replace,
+ * and Remove, used in the letterhead section of the Organization details form below. */
+const ImageUploadField: React.FC<{
+  label: string;
+  hint: string;
+  imagePath?: string | null;
+  isAdmin: boolean;
+  busy: boolean;
+  error: string | null;
+  onUpload: (file: File) => void;
+  onRemove: () => void;
+}> = ({ label, hint, imagePath, isAdmin, busy, error, onUpload, onRemove }) => {
+  const inputId = `org-image-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  return (
+    <div className="space-y-1.5">
+      <Eyebrow>{label}</Eyebrow>
+      <div className="flex items-center gap-3 p-3 border border-slate-200 rounded bg-slate-50/60">
+        {imagePath ? (
+          <img
+            src={`${apiBaseUrl}/uploads/${imagePath}`}
+            alt={label}
+            className="object-contain flex-shrink-0 w-16 h-16 bg-white border rounded border-slate-200"
+          />
+        ) : (
+          <div className="flex items-center justify-center flex-shrink-0 w-16 h-16 text-slate-300 bg-white border rounded border-slate-200">
+            <ImageIcon className="w-6 h-6" />
+          </div>
+        )}
+        {isAdmin ? (
+          <div className="flex flex-col flex-1 min-w-0 gap-1.5">
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor={inputId}
+                className="px-2.5 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded cursor-pointer hover:bg-white transition-colors"
+              >
+                {imagePath ? "Replace" : "Upload"}
+              </label>
+              <input
+                id={inputId}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={busy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) onUpload(file);
+                }}
+              />
+              {imagePath && (
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  disabled={busy}
+                  className="px-2.5 py-1.5 text-[12px] font-medium text-red-600 hover:underline disabled:opacity-60"
+                >
+                  Remove
+                </button>
+              )}
+              {busy && <Loader2 className="flex-shrink-0 w-3.5 h-3.5 text-slate-400 animate-spin" />}
+            </div>
+            <p className="text-[11px] text-slate-400">{hint}</p>
+            {error && <p className="text-[11px] text-rose-600">{error}</p>}
+          </div>
+        ) : (
+          <p className="text-[12px] text-slate-400">{imagePath ? "Uploaded" : "Not uploaded"}</p>
+        )}
+      </div>
+    </div>
+  );
+};
 
 /**
  * Lets a caller who belongs to more than one of their own organizations control
@@ -243,10 +325,72 @@ const AccessMatrixSection: React.FC = () => {
 };
 
 const OrganizationTab: React.FC = () => {
-  const { user, organization, updateOrganization, deleteOrganization, createOrganization } = useAuth();
+  const { user, organization, updateOrganization, deleteOrganization, createOrganization, applyOrganizationUpdate } =
+    useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
+
+  const [signatureBusy, setSignatureBusy] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
+  const [stampBusy, setStampBusy] = useState(false);
+  const [stampError, setStampError] = useState<string | null>(null);
+
+  const handleUploadSignature = async (file: File) => {
+    if (file.size > MAX_LETTERHEAD_IMAGE_BYTES) {
+      setSignatureError("Image must be 200KB or smaller.");
+      return;
+    }
+    setSignatureBusy(true);
+    setSignatureError(null);
+    try {
+      applyOrganizationUpdate(await uploadOrganizationSignature(file));
+    } catch (err: any) {
+      setSignatureError(err?.response?.data?.message || "Failed to upload signature.");
+    } finally {
+      setSignatureBusy(false);
+    }
+  };
+
+  const handleRemoveSignature = async () => {
+    setSignatureBusy(true);
+    setSignatureError(null);
+    try {
+      applyOrganizationUpdate(await deleteOrganizationSignature());
+    } catch (err: any) {
+      setSignatureError(err?.response?.data?.message || "Failed to remove signature.");
+    } finally {
+      setSignatureBusy(false);
+    }
+  };
+
+  const handleUploadStamp = async (file: File) => {
+    if (file.size > MAX_LETTERHEAD_IMAGE_BYTES) {
+      setStampError("Image must be 200KB or smaller.");
+      return;
+    }
+    setStampBusy(true);
+    setStampError(null);
+    try {
+      applyOrganizationUpdate(await uploadOrganizationStamp(file));
+    } catch (err: any) {
+      setStampError(err?.response?.data?.message || "Failed to upload stamp.");
+    } finally {
+      setStampBusy(false);
+    }
+  };
+
+  const handleRemoveStamp = async () => {
+    setStampBusy(true);
+    setStampError(null);
+    try {
+      applyOrganizationUpdate(await deleteOrganizationStamp());
+    } catch (err: any) {
+      setStampError(err?.response?.data?.message || "Failed to remove stamp.");
+    } finally {
+      setStampBusy(false);
+    }
+  };
 
   const [wsName, setWsName] = useState(organization?.name || "");
   const [wsDescription, setWsDescription] = useState(organization?.description || "");
@@ -451,6 +595,33 @@ const OrganizationTab: React.FC = () => {
               placeholder="www.example.com"
             />
           </div>
+
+          <div className="pt-2 space-y-3 border-t border-slate-200">
+            <Eyebrow>Letterhead images (used on generated Purchase Order PDFs)</Eyebrow>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ImageUploadField
+                label="Signature"
+                hint="PNG or JPG, up to 200KB."
+                imagePath={organization?.signatureImagePath}
+                isAdmin={isAdmin}
+                busy={signatureBusy}
+                error={signatureError}
+                onUpload={handleUploadSignature}
+                onRemove={handleRemoveSignature}
+              />
+              <ImageUploadField
+                label="Company Stamp"
+                hint="PNG or JPG, up to 200KB."
+                imagePath={organization?.stampImagePath}
+                isAdmin={isAdmin}
+                busy={stampBusy}
+                error={stampError}
+                onUpload={handleUploadStamp}
+                onRemove={handleRemoveStamp}
+              />
+            </div>
+          </div>
+
           {isAdmin && (
             <div className="flex justify-end pt-2">
               <button

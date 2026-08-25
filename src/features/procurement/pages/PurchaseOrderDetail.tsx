@@ -26,6 +26,7 @@ import { formatCost, toNumber } from "../../../lib/currency";
 import {
   PurchaseOrder,
   PurchaseOrderStatus,
+  PurchaseOrderApprovalStatus,
   PurchaseType,
   ShipmentTransportMode,
   ShipmentStatus,
@@ -39,8 +40,6 @@ import {
   usePurchaseOrderDetailQuery,
   useUpdatePurchaseOrderMutation,
   useCostSheetQuery,
-  useUploadPurchaseOrderAttachmentMutation,
-  useDeletePurchaseOrderAttachmentMutation,
 } from "../hooks/usePurchaseOrder";
 import {
   useCreateShipmentMutation,
@@ -72,6 +71,12 @@ const PO_STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; la
   accepted: { bg: "#dcfce7", fg: "#166534", label: "Accepted" },
   completed: { bg: "#dbeafe", fg: "#1e40af", label: "Completed" },
   cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelled" },
+};
+
+const APPROVAL_STATUS_STYLES: Record<PurchaseOrderApprovalStatus, { bg: string; fg: string; label: string }> = {
+  pending_approval: { bg: "#fef9c3", fg: "#854d0e", label: "Pending Approval" },
+  approved: { bg: "#dcfce7", fg: "#166534", label: "Approved" },
+  rejected: { bg: "#fee2e2", fg: "#991b1b", label: "Rejected" },
 };
 
 const PURCHASE_TYPE_STYLES: Record<PurchaseType, { bg: string; fg: string; label: string }> = {
@@ -127,6 +132,9 @@ const PurchaseOrderDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  // Finance can edit a PO while reviewing it for approval (see PurchaseOrderController.updatePurchaseOrder's
+  // inline bypass) without holding the broader "projects.procurement" permission admins get.
+  const canEditHeader = isAdmin || user?.role === "finance";
   const poId = Number(id);
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -223,12 +231,21 @@ const PurchaseOrderDetailPage: React.FC = () => {
           >
             <ArrowLeft size={14} /> Back to Purchase Orders
           </button>
-          <a
-            href={pdfUrl(po.id)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
-          >
-            <Download size={13} /> Download PDF
-          </a>
+          {po.approvalStatus === "approved" ? (
+            <a
+              href={pdfUrl(po.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
+            >
+              <Download size={13} /> Download PDF
+            </a>
+          ) : (
+            <span
+              title="Available once this purchase order is approved"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-400 border border-slate-200 rounded-lg cursor-not-allowed w-fit"
+            >
+              <Download size={13} /> Download PDF
+            </span>
+          )}
         </div>
 
         {headerError && (
@@ -246,44 +263,59 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </h1>
               <Pill {...PURCHASE_TYPE_STYLES[po.purchaseType]} />
               <Pill {...PO_STATUS_STYLES[po.status]} />
+              <Pill {...APPROVAL_STATUS_STYLES[po.approvalStatus]} />
             </div>
             <p className="mt-1 text-[12px] text-slate-500">
               {po.vendor?.name || "Unknown vendor"} · {po.project?.name || "Unknown project"}
+              {po.approvedBy && po.approvalStatus !== "pending_approval"
+                ? ` · ${po.approvalStatus === "approved" ? "Approved" : "Rejected"} by ${po.approvedBy.fullName}`
+                : ""}
             </p>
           </div>
 
-          {isAdmin && (
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={po.purchaseType}
-                  disabled={headerBusy}
-                  onChange={(e) => changePurchaseType(e.target.value as PurchaseType)}
-                  className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
-                >
-                  {(Object.keys(PURCHASE_TYPE_STYLES) as PurchaseType[]).map((t) => (
-                    <option key={t} value={t}>{PURCHASE_TYPE_STYLES[t].label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
-              </div>
-              <div className="relative">
-                <select
-                  value={po.status}
-                  disabled={headerBusy}
-                  onChange={(e) => changeStatus(e.target.value as PurchaseOrderStatus)}
-                  className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
-                >
-                  {(Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[]).map((s) => (
-                    <option key={s} value={s}>{PO_STATUS_STYLES[s].label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
-              </div>
-              {headerBusy && <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {canEditHeader && (
+              <>
+                <div className="relative">
+                  <select
+                    value={po.purchaseType}
+                    disabled={headerBusy}
+                    onChange={(e) => changePurchaseType(e.target.value as PurchaseType)}
+                    className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
+                  >
+                    {(Object.keys(PURCHASE_TYPE_STYLES) as PurchaseType[]).map((t) => (
+                      <option key={t} value={t}>{PURCHASE_TYPE_STYLES[t].label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={po.status}
+                    disabled={headerBusy}
+                    onChange={(e) => changeStatus(e.target.value as PurchaseOrderStatus)}
+                    className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
+                  >
+                    {(Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[])
+                      .filter((s) => po.approvalStatus === "approved" || s === "created" || s === "cancelled")
+                      .map((s) => (
+                        <option key={s} value={s}>{PO_STATUS_STYLES[s].label}</option>
+                      ))}
+                  </select>
+                  <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </>
+            )}
+            {headerBusy && <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />}
+          </div>
         </div>
+
+        {canEditHeader && po.approvalStatus === "pending_approval" && (
+          <p className="text-[11.5px] text-amber-700 -mt-1">
+            Awaiting approval — status can only be "Created" or "Cancelled" until this purchase order is approved
+            on the Purchase Approval tab.
+          </p>
+        )}
       </div>
 
       {/* Tabs & Content */}
@@ -320,34 +352,28 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
 type OverviewForm = {
   poNumber: string;
-  deliveryAddress: string;
   paymentTerms: string;
   deliveryDate: string;
   incoterms: string;
   taxPercent: string;
   terms: string;
-  shippingTerms: string;
   deliveryPeriod: string;
   finalDestination: string;
 };
 
 const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   poNumber: po.poNumber || "",
-  deliveryAddress: po.deliveryAddress || "",
   paymentTerms: po.paymentTerms || "",
   deliveryDate: po.deliveryDate ? po.deliveryDate.slice(0, 10) : "",
   incoterms: po.incoterms || "",
   taxPercent: po.taxPercent !== null && po.taxPercent !== undefined ? String(po.taxPercent) : "",
   terms: po.terms || "",
-  shippingTerms: po.shippingTerms || "",
   deliveryPeriod: po.deliveryPeriod || "",
   finalDestination: po.finalDestination || "",
 });
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void> }> = ({ po, isAdmin, onChanged }) => {
   const updateMutation = useUpdatePurchaseOrderMutation();
-  const uploadAttachmentMutation = useUploadPurchaseOrderAttachmentMutation();
-  const deleteAttachmentMutation = useDeletePurchaseOrderAttachmentMutation();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
@@ -377,13 +403,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         id: po.id,
         input: {
           poNumber: trimmedPoNumber,
-          deliveryAddress: form.deliveryAddress.trim() || undefined,
           paymentTerms: form.paymentTerms.trim() || undefined,
           deliveryDate: form.deliveryDate || null,
           incoterms: form.incoterms.trim() || undefined,
           taxPercent: numOrUndef(form.taxPercent) ?? null,
           terms: form.terms.trim() || undefined,
-          shippingTerms: form.shippingTerms.trim() || undefined,
           deliveryPeriod: form.deliveryPeriod.trim() || undefined,
           finalDestination: form.finalDestination.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
@@ -397,13 +421,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     }
   };
 
-  const attachments = po.attachments ?? [];
   const statusHistory = po.statusHistory ?? [];
 
   const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
 
   return (
-    <div className="flex flex-col gap-4 max-w-5xl">
+    <div className="flex flex-col gap-4 w-full">
       {error && (
         <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
           <span>{error}</span>
@@ -428,15 +451,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.poNumber}
               onChange={(e) => setForm({ ...form, poNumber: e.target.value })}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Delivery Address</label>
-            <input
-              disabled={!isAdmin}
-              value={form.deliveryAddress}
-              onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })}
               className={inputCls}
             />
           </div>
@@ -476,16 +490,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.taxPercent}
               onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Shipping Terms</label>
-            <input
-              disabled={!isAdmin}
-              value={form.shippingTerms}
-              onChange={(e) => setForm({ ...form, shippingTerms: e.target.value })}
-              placeholder="e.g. Ex-factory, Bhiwadi, Rajasthan"
               className={inputCls}
             />
           </div>
@@ -565,50 +569,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </tfoot>
           </table>
         </div>
-      </div>
-
-      <div className={sectionCardCls}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[13px] font-semibold text-slate-900">Attachments</h3>
-          {isAdmin && (
-            <label className="flex items-center gap-1 text-[11px] font-medium text-blue-700 cursor-pointer hover:underline">
-              <Upload size={11} /> Upload
-              <input
-                type="file"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file) return;
-                  await uploadAttachmentMutation.mutateAsync({ id: po.id, file });
-                  await onChanged();
-                }}
-              />
-            </label>
-          )}
-        </div>
-        {attachments.length === 0 ? (
-          <p className="text-[12px] text-slate-400">No attachments yet.</p>
-        ) : (
-          attachments.map((a) => (
-            <div key={a.id} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0 text-[12px]">
-              <a href={fileUrl(a.filePath)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-900 hover:underline truncate">
-                <Paperclip size={12} className="text-slate-400 flex-shrink-0" /> {a.fileName}
-              </a>
-              {isAdmin && (
-                <button
-                  onClick={async () => {
-                    await deleteAttachmentMutation.mutateAsync({ id: po.id, attachmentId: a.id });
-                    await onChanged();
-                  }}
-                  className="flex-shrink-0 text-slate-400 hover:text-red-600"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          ))
-        )}
       </div>
 
       <div className={sectionCardCls}>

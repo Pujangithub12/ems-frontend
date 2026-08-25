@@ -39,6 +39,9 @@ export type Organization = {
   contact?: string | null;
   email?: string | null;
   website?: string | null;
+  /** Storage keys for the letterhead signature/stamp images used on generated Purchase Order PDFs — null when not uploaded. */
+  signatureImagePath?: string | null;
+  stampImagePath?: string | null;
   createdAt: string;
 };
 
@@ -93,6 +96,8 @@ type AuthContextType = {
   loading: boolean;
   /** Merges fresh fields (e.g. after a profile edit) into the local user state without a refetch. */
   updateUser: (user: User) => void;
+  /** Merges an updated Organization (e.g. after a signature/stamp image upload) into local state without a refetch. */
+  applyOrganizationUpdate: (updated: Organization) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -320,6 +325,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const applyOrganizationUpdate = (updated: Organization) => {
+    setOrganizations((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+    if (organization?.id === updated.id) {
+      setOrganization(updated);
+    }
+  };
+
   const updateOrganization = async (
     organizationId: number,
     name: string,
@@ -327,10 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     details?: OrganizationContactDetails,
   ) => {
     const updated = await updateOrganizationService(organizationId, name, description, details);
-    setOrganizations((prev) => prev.map((w) => (w.id === organizationId ? updated : w)));
-    if (organization?.id === organizationId) {
-      setOrganization(updated);
-    }
+    applyOrganizationUpdate(updated);
   };
 
   const deleteOrganization = async (
@@ -363,6 +372,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         deleteOrganization,
         loading,
         updateUser: setUser,
+        applyOrganizationUpdate,
       }}
     >
       {children}
