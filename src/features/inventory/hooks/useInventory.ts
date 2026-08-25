@@ -28,6 +28,8 @@ import {
   deleteVendor,
   fetchOrganizationItems,
   createCatalogItem,
+  updateCatalogItem,
+  deleteCatalogItem,
   InventoryItemInput,
 } from "../api/inventory.api";
 import { InventorySerial } from "../../../types";
@@ -271,5 +273,18 @@ export function useOrganizationItemCatalogQuery() {
 export function useCreateCatalogItemMutation() {
   return useMutation({
     mutationFn: (input: { name: string; code?: string }) => createCatalogItem(input),
+  });
+}
+
+export function useUpdateCatalogItemMutation() {
+  return useMutation({
+    mutationFn: ({ itemId, input }: { itemId: number; input: { name?: string; code?: string } }) =>
+      updateCatalogItem(itemId, input),
+  });
+}
+
+export function useDeleteCatalogItemMutation() {
+  return useMutation({
+    mutationFn: (itemId: number) => deleteCatalogItem(itemId),
   });
 }

@@ -24,8 +24,9 @@ import { Project } from "../../../types";
 import { flattenProjectTasks } from "../../tasks/utils/taskUtils";
 import { PriorityPill } from "../components/tabs";
 import { useUsers } from "../../users/hooks/useUsers";
+import Pagination from "../../../components/Pagination";
 import {
-  useProjects,
+  useProjectsPage,
   useCreateProject,
   useUpdateProject,
   useDeleteProject,
@@ -78,12 +79,29 @@ const ProjectsPage: React.FC = () => {
   const { user, organization } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Debounce search so every keystroke doesn't fire a new request.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  // Any filter change invalidates the current page number.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, pageSize]);
+
   const {
-    data: projects = [],
+    data: projectsPageResult,
     isLoading: loading,
     isError: projectsIsError,
     error: projectsQueryError,
-  } = useProjects();
+  } = useProjectsPage(page, pageSize, debouncedSearch, statusFilter);
+  const projects = projectsPageResult?.data ?? [];
+  const total = projectsPageResult?.total ?? 0;
   const { data: usersData = [] } = useUsers();
   const users = useMemo(
     () => [...usersData].sort((a, b) => a.fullName.localeCompare(b.fullName)),
@@ -95,8 +113,6 @@ const ProjectsPage: React.FC = () => {
     : mutationError;
 
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -233,19 +249,13 @@ const ProjectsPage: React.FC = () => {
     });
   }, [projects]);
 
+  // Search/status filtering now happens server-side (see useProjectsPage); this only
+  // re-sorts the current page so completed projects sink to the bottom within it.
   const filteredProjects = useMemo(() => {
-    const matched = projectsWithProgress.filter((p) => {
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-    // Completed projects sink to the bottom of the grid; everything else
-    // (pending/in_progress/on_hold) stays above, in its existing order —
-    // a stable sort that only distinguishes "completed" from everything else.
-    return [...matched].sort((a, b) => Number(a.status === "completed") - Number(b.status === "completed"));
-  }, [projectsWithProgress, searchQuery, statusFilter]);
+    return [...projectsWithProgress].sort(
+      (a, b) => Number(a.status === "completed") - Number(b.status === "completed"),
+    );
+  }, [projectsWithProgress]);
 
   return (
     <div className="w-full min-h-full px-6 py-6 bg-white lg:px-8 lg:py-8">
@@ -499,6 +509,18 @@ const ProjectsPage: React.FC = () => {
               ? "We couldn't find any projects matching your current filters."
               : "Your projects list is currently empty."}
           </p>
+        </div>
+      )}
+
+      {!loading && total > 0 && (
+        <div className="mt-4 bg-white border rounded-xl shadow-md border-slate-200">
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 

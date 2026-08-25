@@ -19,11 +19,11 @@ const Dashboard = lazy(() => import("./features/dashboard/pages/Dashboard"));
 const Announcements = lazy(() => import("./features/announcements/pages/Announcements"));
 const Documents = lazy(() => import("./features/documents/pages/Documents"));
 const Inventory = lazy(() => import("./features/inventory/pages/Inventory"));
-const PurchaseRequests = lazy(() => import("./features/procurement/pages/PurchaseRequests"));
 const PurchaseOrders = lazy(() => import("./features/procurement/pages/PurchaseOrders"));
 const PurchaseOrderDetail = lazy(() => import("./features/procurement/pages/PurchaseOrderDetail"));
 const ProformaInvoices = lazy(() => import("./features/procurement/pages/ProformaInvoices"));
 const Vendors = lazy(() => import("./features/procurement/pages/Vendors"));
+const Items = lazy(() => import("./features/procurement/pages/Items"));
 const Users = lazy(() => import("./features/users/pages/Users"));
 const ProjectPage = lazy(() => import("./features/projects/pages/Projects"));
 const ProjectDetails = lazy(() => import("./features/projects/pages/ProjectDetails"));
@@ -106,9 +106,9 @@ const LeaveRequestsRedirect: React.FC = () => {
 };
 
 /**
- * Purchase Orders and Vendors are admin/super_admin-only pages (any employee can raise a
- * Purchase Request, but browsing PO/vendor pricing is admin territory) — bounces anyone else
- * back to Purchase Requests. Mirrors RootRedirect's loading/no-user handling.
+ * Purchase Orders and Vendors are admin/super_admin-only pages (browsing PO/vendor pricing is
+ * admin territory) — bounces anyone else back to the dashboard. Mirrors RootRedirect's
+ * loading/no-user handling.
  */
 const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -117,7 +117,24 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   if (loading) return null;
   if (!user) return <Navigate replace to="/login" />;
   if (user.role !== "admin" && user.role !== "super_admin") {
-    return <Navigate replace to={`/${organizationId}/purchase-requests`} />;
+    return <Navigate replace to={`/${organizationId}/dashboard`} />;
+  }
+  return <>{children}</>;
+};
+
+/**
+ * Purchase Orders pages specifically also let `finance` in (on top of admin/super_admin) — they
+ * review the Purchase Approval tab and act on individual POs there. Otherwise identical to
+ * RequireAdmin. Vendors/Proforma Invoices stay RequireAdmin-only.
+ */
+const RequireProcurementAccess: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  const { organizationId } = useParams<{ organizationId: string }>();
+
+  if (loading) return null;
+  if (!user) return <Navigate replace to="/login" />;
+  if (user.role !== "admin" && user.role !== "super_admin" && user.role !== "finance") {
+    return <Navigate replace to={`/${organizationId}/dashboard`} />;
   }
   return <>{children}</>;
 };
@@ -160,21 +177,20 @@ function App() {
             <Route path="/:organizationId/announcements" element={<Announcements />} />
             <Route path="/:organizationId/documents" element={<Documents />} />
             <Route path="/:organizationId/inventory" element={<Inventory />} />
-            <Route path="/:organizationId/purchase-requests" element={<PurchaseRequests />} />
             <Route
               path="/:organizationId/purchase-orders"
               element={
-                <RequireAdmin>
+                <RequireProcurementAccess>
                   <PurchaseOrders />
-                </RequireAdmin>
+                </RequireProcurementAccess>
               }
             />
             <Route
               path="/:organizationId/purchase-orders/:id"
               element={
-                <RequireAdmin>
+                <RequireProcurementAccess>
                   <PurchaseOrderDetail />
-                </RequireAdmin>
+                </RequireProcurementAccess>
               }
             />
             <Route
@@ -190,6 +206,14 @@ function App() {
               element={
                 <RequireAdmin>
                   <Vendors />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/:organizationId/items"
+              element={
+                <RequireAdmin>
+                  <Items />
                 </RequireAdmin>
               }
             />

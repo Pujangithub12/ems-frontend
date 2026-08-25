@@ -1,15 +1,16 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchPurchaseOrders,
   fetchOrganizationPurchaseOrders,
   fetchPurchaseOrderDetail,
+  createPurchaseOrder,
   updatePurchaseOrder,
+  decidePurchaseOrderApproval,
   fetchCostSheet,
-  uploadPurchaseOrderAttachment,
-  deletePurchaseOrderAttachment,
   PurchaseOrderInput,
+  CreatePurchaseOrderInput,
 } from "../api/purchaseOrder.api";
 
 /** Thin query-hook wrappers around purchaseOrder.api.ts. */
@@ -41,9 +42,35 @@ export function usePurchaseOrderDetailQuery(id: number | null) {
   });
 }
 
+export function useCreatePurchaseOrderMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, input }: { projectId: string; input: CreatePurchaseOrderInput }) =>
+      createPurchaseOrder(projectId, input),
+    onSuccess: (_data, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders(wsId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizationPurchaseOrders(wsId) });
+    },
+  });
+}
+
 export function useUpdatePurchaseOrderMutation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: PurchaseOrderInput }) => updatePurchaseOrder(id, input),
+  });
+}
+
+export function useDecidePurchaseOrderApprovalMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, decision }: { id: number; decision: "approved" | "rejected" }) =>
+      decidePurchaseOrderApproval(id, decision),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrderDetail(wsId, id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizationPurchaseOrders(wsId) });
+    },
   });
 }
 
@@ -53,18 +80,5 @@ export function useCostSheetQuery(id: number | null) {
     queryKey: queryKeys.purchaseOrderCostSheet(wsId, id ?? -1),
     queryFn: () => fetchCostSheet(id as number),
     enabled: Number.isFinite(wsId) && !!id,
-  });
-}
-
-export function useUploadPurchaseOrderAttachmentMutation() {
-  return useMutation({
-    mutationFn: ({ id, file }: { id: number; file: File }) => uploadPurchaseOrderAttachment(id, file),
-  });
-}
-
-export function useDeletePurchaseOrderAttachmentMutation() {
-  return useMutation({
-    mutationFn: ({ id, attachmentId }: { id: number; attachmentId: number }) =>
-      deletePurchaseOrderAttachment(id, attachmentId),
   });
 }

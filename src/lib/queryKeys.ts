@@ -14,6 +14,9 @@ export const queryKeys = {
   projects: (wsId: number) => [...queryKeys.all(wsId), "projects"] as const,
   project: (wsId: number, projectId: string | number) =>
     [...queryKeys.projects(wsId), projectId] as const,
+  /** Nested under queryKeys.projects so invalidating that prefix also clears every cached page/filter combo. */
+  projectsPage: (wsId: number, page: number, pageSize: number, search: string, status: string) =>
+    [...queryKeys.projects(wsId), "page", page, pageSize, search, status] as const,
 
   dashboard: (wsId: number) => [...queryKeys.all(wsId), "dashboard"] as const,
 
@@ -40,11 +43,6 @@ export const queryKeys = {
     [...queryKeys.all(wsId), "projectFiles", projectId] as const,
   procurement: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "procurement", projectId] as const,
-  purchaseRequests: (wsId: number, projectId: string | number) =>
-    [...queryKeys.all(wsId), "purchaseRequests", projectId] as const,
-  organizationPurchaseRequests: (wsId: number) => [...queryKeys.all(wsId), "organizationPurchaseRequests"] as const,
-  purchaseRequestDetail: (wsId: number, id: number) =>
-    [...queryKeys.all(wsId), "purchaseRequestDetail", id] as const,
   purchaseOrders: (wsId: number, projectId: string | number) =>
     [...queryKeys.all(wsId), "purchaseOrders", projectId] as const,
   organizationPurchaseOrders: (wsId: number) => [...queryKeys.all(wsId), "organizationPurchaseOrders"] as const,
@@ -95,7 +93,6 @@ export const queryKeys = {
   plantReportPrefill: (wsId: number, date: string) =>
     [...queryKeys.all(wsId), "plantReportPrefill", date] as const,
   plantReportFields: (wsId: number) => [...queryKeys.all(wsId), "plantReportFields"] as const,
-  plantReportItems: (wsId: number) => [...queryKeys.all(wsId), "plantReportItems"] as const,
 
   // Unauthenticated — no organization context yet.
   invite: (token: string) => ["invite", token] as const,

@@ -14,52 +14,11 @@ export type PlantReportCustomField = {
 
 export type PlantReportCustomValue = string | number | boolean | null;
 
-export type PlantReportItem = {
-  id: number;
-  name: string;
-  unit: string;
-  trackStock: boolean;
-  isActive: boolean;
-  sortOrder: number;
-};
-
-/** One item's reading on a report, as returned by the API (opening/closing
- * are server-computed, never user-edited directly). */
-export type PlantReportItemReading = {
-  itemId: number;
-  name: string;
-  unit: string;
-  trackStock: boolean;
-  opening: number;
-  received: number;
-  used: number;
-  closing: number;
-  note: string | null;
-};
-
 export type PlantDailyReport = {
   id: number;
   date: string;
   project: PlantReportProject | null;
-  steamInitial: number | null;
-  steamFinal: number | null;
-  steamTon: number | null;
-  steamPressure: number | null;
-  steamTemp: number | null;
-  feedwaterTemp: number | null;
-  pelletUsedKg: number | null;
-  pelletsBag: number | null;
-  pelletReceivedKg: number | null;
-  pelletStockOpening: number;
-  pelletStockClosing: number;
-  waterInitial: number | null;
-  waterFinal: number | null;
-  waterFlow: number | null;
-  burnerStatus: "running" | "stopped" | "maintenance" | null;
-  burnerHours: number | null;
-  shutdownReason: string | null;
   customValues: Record<string, PlantReportCustomValue>;
-  items: PlantReportItemReading[];
   staff: PlantReportStaffMember[];
   staffCount: number;
   createdBy: PlantReportStaffMember | null;
@@ -67,24 +26,16 @@ export type PlantDailyReport = {
   updatedAt: string;
 };
 
-export type PlantReportItemTotal = {
-  itemId: number;
+/** Sum/avg across the month for one org-defined numeric custom field. */
+export type PlantReportCustomFieldTotal = {
+  fieldId: number;
   name: string;
-  unit: string;
-  totalUsed: number | null;
-  totalReceived: number | null;
+  sum: number | null;
+  avg: number | null;
 };
 
 export type PlantReportSummary = {
-  totalSteamTon: number | null;
-  avgSteamPressure: number | null;
-  avgSteamTemp: number | null;
-  totalPelletUsedKg: number | null;
-  totalPelletReceivedKg: number | null;
-  itemTotals: PlantReportItemTotal[];
-  totalWaterFlow: number | null;
-  totalBurnerHours: number | null;
-  shutdownDays: number;
+  customFieldTotals: PlantReportCustomFieldTotal[];
   daysLogged: number;
 };
 
@@ -95,37 +46,14 @@ export type PlantReportMonthResponse = {
   month: number;
 };
 
-export type PlantReportPrefillResponse =
-  | { exists: true; report: PlantDailyReport }
-  | { exists: false; openingBalance: number; itemOpeningBalances: Record<string, number> };
-
-export type SavePlantReportItemEntryPayload = {
-  itemId: number;
-  receivedQty?: number | null;
-  usedQty?: number | null;
-  note?: string | null;
-};
+export type PlantReportPrefillResponse = { exists: true; report: PlantDailyReport } | { exists: false };
 
 export type SavePlantReportPayload = {
   date: string;
   projectId?: number | null;
-  steamInitial?: number | null;
-  steamFinal?: number | null;
-  steamPressure?: number | null;
-  steamTemp?: number | null;
-  feedwaterTemp?: number | null;
-  pelletUsedKg?: number | null;
-  pelletsBag?: number | null;
-  pelletReceivedKg?: number | null;
-  waterInitial?: number | null;
-  waterFinal?: number | null;
-  burnerStatus?: "running" | "stopped" | "maintenance" | null;
-  burnerHours?: number | null;
-  shutdownReason?: string | null;
   staffUserIds?: number[];
   /** Keyed by custom field id (as a string). */
   customValues?: Record<string, PlantReportCustomValue>;
-  itemEntries?: SavePlantReportItemEntryPayload[];
 };
 
 /** GET /api/plant-reports?year=&month=&projectId= — omit projectId for a
@@ -203,40 +131,4 @@ export async function updatePlantReportField(
 /** DELETE /api/plant-report-fields/:id */
 export async function deletePlantReportField(id: number): Promise<void> {
   await api.delete(`/api/plant-report-fields/${id}`);
-}
-
-export type SavePlantReportItemPayload = {
-  name: string;
-  unit: string;
-  trackStock?: boolean;
-  isActive?: boolean;
-};
-
-/** GET /api/plant-report-items — active tracked items for this organization
- * (Pellets, Diesel, ...), in display order. */
-export async function getPlantReportItems(): Promise<PlantReportItem[]> {
-  const res = await api.get("/api/plant-report-items");
-  return res.data.items;
-}
-
-/** POST /api/plant-report-items */
-export async function createPlantReportItem(
-  payload: SavePlantReportItemPayload,
-): Promise<PlantReportItem> {
-  const res = await api.post("/api/plant-report-items", payload);
-  return res.data.item;
-}
-
-/** PUT /api/plant-report-items/:id */
-export async function updatePlantReportItem(
-  id: number,
-  payload: SavePlantReportItemPayload,
-): Promise<PlantReportItem> {
-  const res = await api.put(`/api/plant-report-items/${id}`, payload);
-  return res.data.item;
-}
-
-/** DELETE /api/plant-report-items/:id */
-export async function deletePlantReportItem(id: number): Promise<void> {
-  await api.delete(`/api/plant-report-items/${id}`);
 }

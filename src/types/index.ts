@@ -218,80 +218,15 @@ export type InventoryItemDetail = {
 };
 
 // ---------------------------------------------------------------------------
-// Procurement pipeline v2: Purchase Request -> Vendor Selection -> Purchase
-// Order -> Proforma Invoice -> Shipment/Insurance/Customs -> Cost Sheet ->
-// Goods Receipt -> Inventory. Replaces the retired flat ProcurementItem model
-// (old feature's pages/types have been removed along with it).
+// Procurement pipeline v2: Purchase Order -> Proforma Invoice ->
+// Shipment/Insurance/Customs -> Cost Sheet -> Goods Receipt -> Inventory.
+// Replaces the retired flat ProcurementItem model (old feature's
+// pages/types have been removed along with it). Purchase Orders are created
+// directly (no Purchase Request/Vendor Selection step ahead of them anymore).
 // ---------------------------------------------------------------------------
 
-export type PurchaseRequestPriority = "low" | "medium" | "high" | "urgent";
-export type PurchaseRequestStatus = "draft" | "submitted" | "approved" | "rejected" | "converted_to_po";
-export type PurchaseRequestAttachmentType = "general" | "quotation" | "comparison_sheet";
-
-export type PurchaseRequestItem = {
-  id: number;
-  itemName: string;
-  item?: { id: number; name: string; code?: string | null } | null;
-  itemId?: number | null;
-  quantity: number;
-  unit?: string | null;
-  estimatedPrice?: number | string | null;
-  notes?: string | null;
-};
-
-export type VendorQuote = {
-  id: number;
-  price: number | string;
-  notes?: string | null;
-  isSelected: boolean;
-  vendorId?: number | null;
-  vendor?: Vendor | null;
-  createdAt: string;
-};
-
-export type PurchaseRequestStatusHistoryEntry = {
-  id: number;
-  fromStatus?: string | null;
-  toStatus: string;
-  notes?: string | null;
-  changedBy?: { id: number; fullName: string } | null;
-  createdAt: string;
-};
-
-export type PurchaseRequestAttachment = {
-  id: number;
-  fileName: string;
-  filePath: string;
-  documentType: PurchaseRequestAttachmentType;
-  uploadedBy?: { id: number; fullName: string } | null;
-  createdAt: string;
-};
-
-export type PurchaseRequest = {
-  id: number;
-  prNumber?: string | null;
-  department?: string | null;
-  priority: PurchaseRequestPriority;
-  reason?: string | null;
-  status: PurchaseRequestStatus;
-  requestedBy?: { id: number; fullName: string } | null;
-  requestedById?: number | null;
-  project?: { id: number; name: string } | null;
-  projectId?: number;
-  items: PurchaseRequestItem[];
-  vendorQuotes: VendorQuote[];
-  purchaseOrder?: { id: number; poNumber?: string | null; status: string } | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PurchaseRequestDetail = {
-  purchaseRequest: PurchaseRequest;
-  statusHistory: PurchaseRequestStatusHistoryEntry[];
-  attachments: PurchaseRequestAttachment[];
-};
-
 export type PurchaseOrderStatus = "created" | "sent" | "accepted" | "cancelled" | "completed";
+export type PurchaseOrderApprovalStatus = "pending_approval" | "approved" | "rejected";
 export type PurchaseType = "local" | "international";
 
 export type PurchaseOrderItem = {
@@ -305,14 +240,6 @@ export type PurchaseOrderItem = {
   notes?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
   hsnCode?: string | null;
-};
-
-export type PurchaseOrderAttachment = {
-  id: number;
-  fileName: string;
-  filePath: string;
-  uploadedBy?: { id: number; fullName: string } | null;
-  createdAt: string;
 };
 
 export type PurchaseOrderStatusHistoryEntry = {
@@ -475,26 +402,25 @@ export type CostSheet = {
 export type PurchaseOrder = {
   id: number;
   poNumber?: string | null;
-  deliveryAddress?: string | null;
   paymentTerms?: string | null;
   deliveryDate?: string | null;
   incoterms?: string | null;
   taxPercent?: number | string | null;
   terms?: string | null;
-  /** Free-text shipping arrangement for the PO PDF (e.g. "Ex-factory, Bhiwadi, Rajasthan") — distinct from `incoterms`. */
-  shippingTerms?: string | null;
   /** Free-text delivery period for the PO PDF (e.g. "Within 6 weeks of submission of PO.") — distinct from `deliveryDate`, which is a specific date. */
   deliveryPeriod?: string | null;
   finalDestination?: string | null;
   purchaseType: PurchaseType;
   status: PurchaseOrderStatus;
+  approvalStatus: PurchaseOrderApprovalStatus;
+  approvedBy?: { id: number; fullName: string } | null;
+  approvedAt?: string | null;
+  createdBy?: { id: number; fullName: string } | null;
   vendor?: Vendor | null;
   vendorId?: number | null;
   project?: { id: number; name: string } | null;
   projectId?: number;
-  purchaseRequest?: { id: number; prNumber?: string | null } | null;
   items: PurchaseOrderItem[];
-  attachments?: PurchaseOrderAttachment[];
   statusHistory?: PurchaseOrderStatusHistoryEntry[];
   proformaInvoices?: ProformaInvoice[];
   shipment?: Shipment | null;

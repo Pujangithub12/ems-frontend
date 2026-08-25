@@ -1,15 +1,39 @@
 import api from "../../../api/axios";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType, CostSheet } from "../../../types";
 
+export interface CreatePurchaseOrderItemInput {
+  itemName: string;
+  itemId?: number | null;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | null;
+  notes?: string | null;
+}
+
+export interface CreatePurchaseOrderInput {
+  vendorId?: number | null;
+  items: CreatePurchaseOrderItemInput[];
+}
+
+/** POST create a purchase order directly for one project — no Purchase Request involved. */
+export async function createPurchaseOrder(
+  projectId: string,
+  input: CreatePurchaseOrderInput,
+): Promise<PurchaseOrder> {
+  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(
+    `/api/projects/${projectId}/purchase-orders`,
+    input,
+  );
+  return res.data.purchaseOrder;
+}
+
 export interface PurchaseOrderInput {
   poNumber?: string;
-  deliveryAddress?: string;
   paymentTerms?: string;
   deliveryDate?: string | null;
   incoterms?: string;
   taxPercent?: number | null;
   terms?: string;
-  shippingTerms?: string;
   deliveryPeriod?: string;
   finalDestination?: string;
   purchaseType?: PurchaseType;
@@ -29,7 +53,7 @@ export async function fetchOrganizationPurchaseOrders(): Promise<PurchaseOrder[]
   return res.data.purchaseOrders ?? [];
 }
 
-/** GET the full detail payload for one PO: items, PI list, shipment/insurance/customs, goods receipts, attachments, status history. */
+/** GET the full detail payload for one PO: items, PI list, shipment/insurance/customs, goods receipts, status history. */
 export async function fetchPurchaseOrderDetail(id: number): Promise<PurchaseOrder> {
   const res = await api.get<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/detail`);
   return res.data.purchaseOrder;
@@ -47,16 +71,11 @@ export async function fetchCostSheet(id: number): Promise<CostSheet> {
   return res.data.costSheet;
 }
 
-/** POST upload a document attachment, multipart. */
-export async function uploadPurchaseOrderAttachment(id: number, file: File): Promise<void> {
-  const formData = new FormData();
-  formData.append("file", file);
-  await api.post(`/api/purchase-orders/${id}/attachments`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-}
-
-/** DELETE an attachment. */
-export async function deletePurchaseOrderAttachment(id: number, attachmentId: number): Promise<void> {
-  await api.delete(`/api/purchase-orders/${id}/attachments/${attachmentId}`);
+/** POST the approve/reject decision — finance/super_admin only (enforced server-side). */
+export async function decidePurchaseOrderApproval(
+  id: number,
+  decision: "approved" | "rejected",
+): Promise<PurchaseOrder> {
+  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/approval`, { decision });
+  return res.data.purchaseOrder;
 }
