@@ -109,6 +109,7 @@ export type CatalogItem = {
   id: number;
   name: string;
   code?: string | null;
+  description?: string | null;
   createdAt: string;
 };
 
@@ -403,13 +404,16 @@ export type PurchaseOrder = {
   id: number;
   poNumber?: string | null;
   paymentTerms?: string | null;
-  deliveryDate?: string | null;
   incoterms?: string | null;
   taxPercent?: number | string | null;
   terms?: string | null;
-  /** Free-text delivery period for the PO PDF (e.g. "Within 6 weeks of submission of PO.") — distinct from `deliveryDate`, which is a specific date. */
+  /** Free-text delivery period for the PO PDF (e.g. "Within 6 weeks of submission of PO."). */
   deliveryPeriod?: string | null;
   finalDestination?: string | null;
+  /** Contact person name for the PDF's CUSTOMER box — the buying organization's own contact, distinct from the vendor's contactPerson. */
+  customerContactPerson?: string | null;
+  /** Currency label for the PDF's "Amount in Words" line (e.g. "Indian Rupees", "US Dollar") — falls back to "Rupees" when unset. */
+  currency?: string | null;
   purchaseType: PurchaseType;
   status: PurchaseOrderStatus;
   approvalStatus: PurchaseOrderApprovalStatus;
@@ -474,8 +478,6 @@ export type ReportSummary = {
     suggestedAction: string;
   }[];
   alerts: {
-    delayedPOs: { id: number; itemName: string; neededByDate: string; vendorName: string | null }[];
-    vendorDelays: { itemName: string; vendorName: string; neededByDate: string; deliveredAt: string }[];
     contractsExpiring: { id: number; name: string; contractExpiryDate: string }[];
     pendingAudits: unknown[];
   };

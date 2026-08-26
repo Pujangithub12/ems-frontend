@@ -17,6 +17,7 @@ const ForgotPassword = lazy(() => import("./features/auth/pages/ForgotPassword")
 const AcceptInvite = lazy(() => import("./features/auth/pages/AcceptInvite"));
 const Dashboard = lazy(() => import("./features/dashboard/pages/Dashboard"));
 const Announcements = lazy(() => import("./features/announcements/pages/Announcements"));
+const Notifications = lazy(() => import("./features/notifications/pages/Notifications"));
 const Documents = lazy(() => import("./features/documents/pages/Documents"));
 const Inventory = lazy(() => import("./features/inventory/pages/Inventory"));
 const PurchaseOrders = lazy(() => import("./features/procurement/pages/PurchaseOrders"));
@@ -123,9 +124,10 @@ const RequireAdmin: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 /**
- * Purchase Orders pages specifically also let `finance` in (on top of admin/super_admin) — they
- * review the Purchase Approval tab and act on individual POs there. Otherwise identical to
- * RequireAdmin. Vendors/Proforma Invoices stay RequireAdmin-only.
+ * Every Procurement-group page (Purchase Orders, Proforma Invoices, Vendors, Items) also lets
+ * `finance` in (on top of admin/super_admin) — finance reviews the Purchase Approval tab and
+ * needs the same vendor/item/proforma-invoice context admin has while doing so. Otherwise
+ * identical to RequireAdmin.
  */
 const RequireProcurementAccess: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -175,6 +177,7 @@ function App() {
             <Route path="/:organizationId/project" element={<ProjectPage />} />
             <Route path="/:organizationId/project/:id/details" element={<ProjectDetails />} />
             <Route path="/:organizationId/announcements" element={<Announcements />} />
+            <Route path="/:organizationId/notifications" element={<Notifications />} />
             <Route path="/:organizationId/documents" element={<Documents />} />
             <Route path="/:organizationId/inventory" element={<Inventory />} />
             <Route
@@ -196,25 +199,25 @@ function App() {
             <Route
               path="/:organizationId/proforma-invoices"
               element={
-                <RequireAdmin>
+                <RequireProcurementAccess>
                   <ProformaInvoices />
-                </RequireAdmin>
+                </RequireProcurementAccess>
               }
             />
             <Route
               path="/:organizationId/vendors"
               element={
-                <RequireAdmin>
+                <RequireProcurementAccess>
                   <Vendors />
-                </RequireAdmin>
+                </RequireProcurementAccess>
               }
             />
             <Route
               path="/:organizationId/items"
               element={
-                <RequireAdmin>
+                <RequireProcurementAccess>
                   <Items />
-                </RequireAdmin>
+                </RequireProcurementAccess>
               }
             />
             <Route path="/:organizationId/task" element={<TasksPage />} />

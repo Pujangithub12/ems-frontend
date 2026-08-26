@@ -30,12 +30,13 @@ export async function createPurchaseOrder(
 export interface PurchaseOrderInput {
   poNumber?: string;
   paymentTerms?: string;
-  deliveryDate?: string | null;
   incoterms?: string;
   taxPercent?: number | null;
   terms?: string;
   deliveryPeriod?: string;
   finalDestination?: string;
+  customerContactPerson?: string;
+  currency?: string;
   purchaseType?: PurchaseType;
   status?: PurchaseOrderStatus;
   items?: { id: number; hsnCode?: string | null }[];

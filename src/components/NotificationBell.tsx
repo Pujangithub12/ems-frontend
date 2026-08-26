@@ -7,7 +7,10 @@ import {
   useMarkAllNotificationsRead,
 } from "../features/notifications/hooks/useNotifications";
 import { useNotificationMute } from "../features/notifications/hooks/useNotificationMute";
+import { useOrganizationId } from "../hooks/useOrganizationId";
 import type { Notification } from "../features/notifications/api/notifications.api";
+
+const BELL_POPUP_LIMIT = 4;
 
 const timeAgo = (iso: string) => {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -25,6 +28,7 @@ const NotificationBell: React.FC = () => {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const organizationId = useOrganizationId();
 
   const { data: notifications = [] } = useNotifications();
   const markRead = useMarkNotificationRead();
@@ -46,6 +50,8 @@ const NotificationBell: React.FC = () => {
     setOpen(false);
     if (n.link) navigate(n.link);
   };
+
+  const visibleNotifications = notifications.slice(0, BELL_POPUP_LIMIT);
 
   return (
     <div className="relative" ref={ref}>
@@ -93,7 +99,7 @@ const NotificationBell: React.FC = () => {
                 <div className="text-[12.5px] text-slate-400">No notifications yet</div>
               </div>
             ) : (
-              notifications.map((n) => (
+              visibleNotifications.map((n) => (
                 <button
                   key={n.id}
                   onClick={() => handleClick(n)}
@@ -117,6 +123,17 @@ const NotificationBell: React.FC = () => {
               ))
             )}
           </div>
+          {notifications.length > BELL_POPUP_LIMIT && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                navigate(`/${organizationId}/notifications`);
+              }}
+              className="block w-full py-2.5 text-center text-[12px] font-medium text-blue-900 hover:bg-slate-50 border-t border-slate-100"
+            >
+              View more
+            </button>
+          )}
         </div>
       )}
     </div>
