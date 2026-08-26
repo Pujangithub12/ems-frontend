@@ -427,13 +427,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             {navItems.map((it) => {
               if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
               if (it.id === "purchase-orders") {
-                // Proforma Invoices/Vendors/Items are admin-only (see RequireAdmin in App.tsx).
-                // Finance gets a direct Purchase Orders link (they review the Purchase
-                // Approval tab there) but not the rest of the Procurement dropdown.
-                if (isFinance) {
-                  return <SidebarLink key={it.id} to={it.path} icon={it.icon} label={it.label} badgeCount={it.badgeCount} />;
-                }
-                if (!isAdmin) return null;
+                // The whole Procurement dropdown (Purchase Orders, Proforma Invoices, Vendors,
+                // Items) is available to admin/super_admin/finance (see RequireProcurementAccess
+                // in App.tsx) — finance reviews the Purchase Approval tab and needs the same
+                // vendor/item/proforma-invoice context admin has while doing so.
+                if (!isAdmin && !isFinance) return null;
                 const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                 const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                 const itemsItem = navItems.find((n) => n.id === "items")!;
@@ -504,22 +502,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 {navItems.map((it) => {
                   if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
                   if (it.id === "purchase-orders") {
-                    // Proforma Invoices/Vendors/Items are admin-only (see RequireAdmin in App.tsx).
-                    // Finance gets a direct Purchase Orders link (they review the Purchase
-                    // Approval tab there) but not the rest of the Procurement dropdown.
-                    if (isFinance) {
-                      return (
-                        <SidebarLink
-                          key={it.id}
-                          to={it.path}
-                          icon={it.icon}
-                          label={it.label}
-                          badgeCount={it.badgeCount}
-                          onClick={() => setIsMobileMenuOpen(false)}
-                        />
-                      );
-                    }
-                    if (!isAdmin) return null;
+                    // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
+                    // Vendors, Items) is available to admin/super_admin/finance (see
+                    // RequireProcurementAccess in App.tsx) — finance reviews the Purchase
+                    // Approval tab and needs the same vendor/item/proforma-invoice context
+                    // admin has while doing so.
+                    if (!isAdmin && !isFinance) return null;
                     const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                     const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                     const itemsItem = navItems.find((n) => n.id === "items")!;

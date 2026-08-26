@@ -22,8 +22,8 @@ import {
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 
-type ItemForm = { name: string; code: string };
-const emptyForm: ItemForm = { name: "", code: "" };
+type ItemForm = { name: string; code: string; description: string };
+const emptyForm: ItemForm = { name: "", code: "", description: "" };
 
 const formatDate = (value?: string | null) =>
   value
@@ -81,7 +81,10 @@ const ItemsPage: React.FC = () => {
     const q = search.trim().toLowerCase();
     const rows = q
       ? items.filter(
-          (i) => i.name.toLowerCase().includes(q) || (i.code || "").toLowerCase().includes(q),
+          (i) =>
+            i.name.toLowerCase().includes(q) ||
+            (i.code || "").toLowerCase().includes(q) ||
+            (i.description || "").toLowerCase().includes(q),
         )
       : items;
     return [...rows].sort((a, b) => a.name.localeCompare(b.name));
@@ -104,7 +107,7 @@ const ItemsPage: React.FC = () => {
 
   const openEditForm = (item: CatalogItem) => {
     setEditingItem(item);
-    setForm({ name: item.name, code: item.code || "" });
+    setForm({ name: item.name, code: item.code || "", description: item.description || "" });
     setFormError(null);
     setShowForm(true);
   };
@@ -129,12 +132,13 @@ const ItemsPage: React.FC = () => {
       if (editingItem) {
         await updateMutation.mutateAsync({
           itemId: editingItem.id,
-          input: { name: trimmedName, code: form.code.trim() },
+          input: { name: trimmedName, code: form.code.trim(), description: form.description.trim() },
         });
       } else {
         await createMutation.mutateAsync({
           name: trimmedName,
           code: form.code.trim() || undefined,
+          description: form.description.trim() || undefined,
         });
       }
       await itemsQuery.refetch();
@@ -251,6 +255,7 @@ const ItemsPage: React.FC = () => {
                     <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
                       <th className="px-3 py-2 font-medium text-left">Item Name</th>
                       <th className="px-3 py-2 font-medium text-left">Code</th>
+                      <th className="px-3 py-2 font-medium text-left">Description</th>
                       <th className="px-3 py-2 font-medium text-left">Added</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
                     </tr>
@@ -277,6 +282,9 @@ const ItemsPage: React.FC = () => {
                           ) : (
                             "--"
                           )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 max-w-xs truncate" title={i.description || undefined}>
+                          {i.description || "--"}
                         </td>
                         <td className="px-3 py-2 text-slate-500">{formatDate(i.createdAt)}</td>
                         {isAdmin && (
@@ -342,6 +350,16 @@ const ItemsPage: React.FC = () => {
                   onChange={(e) => setForm({ ...form, code: e.target.value })}
                   placeholder="Optional"
                   className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-medium text-slate-900">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={3}
+                  placeholder="Optional"
+                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none resize-none focus:border-blue-400"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">

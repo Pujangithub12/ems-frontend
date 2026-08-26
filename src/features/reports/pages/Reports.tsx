@@ -803,28 +803,6 @@ const ReportsPage: React.FC = () => {
             <Card>
               <CardHeader icon={AlertTriangle} title="Recent Alerts" />
               <div className="p-4 space-y-3 max-h-[420px] overflow-y-auto">
-                {summary.alerts.delayedPOs.length > 0 && (
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Delayed Purchase Orders</div>
-                    {summary.alerts.delayedPOs.slice(0, 5).map((p) => (
-                      <div key={p.id} className="flex items-center justify-between text-[11.5px] py-0.5">
-                        <span className="truncate text-slate-600">{p.itemName}</span>
-                        <span className="text-red-600">{new Date(p.neededByDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {summary.alerts.vendorDelays.length > 0 && (
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Vendor Delays</div>
-                    {summary.alerts.vendorDelays.slice(0, 5).map((v, i) => (
-                      <div key={i} className="flex items-center justify-between text-[11.5px] py-0.5">
-                        <span className="truncate text-slate-600">{v.vendorName}</span>
-                        <span className="text-red-600 truncate">{v.itemName}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 {summary.alerts.contractsExpiring.length > 0 && (
                   <div>
                     <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Contracts Expiring Soon</div>
@@ -840,11 +818,9 @@ const ReportsPage: React.FC = () => {
                   <div className="mb-1 text-[10px] font-semibold tracking-wide uppercase text-slate-400">Pending Inventory Audit</div>
                   <p className="text-[11.5px] text-slate-400">No audit workflow set up yet.</p>
                 </div>
-                {summary.alerts.delayedPOs.length === 0 &&
-                  summary.alerts.vendorDelays.length === 0 &&
-                  summary.alerts.contractsExpiring.length === 0 && (
-                    <p className="text-[12px] text-slate-400">Nothing needs attention right now.</p>
-                  )}
+                {summary.alerts.contractsExpiring.length === 0 && (
+                  <p className="text-[12px] text-slate-400">Nothing needs attention right now.</p>
+                )}
               </div>
             </Card>
             <Card>

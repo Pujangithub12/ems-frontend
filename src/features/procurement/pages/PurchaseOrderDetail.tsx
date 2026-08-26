@@ -231,21 +231,6 @@ const PurchaseOrderDetailPage: React.FC = () => {
           >
             <ArrowLeft size={14} /> Back to Purchase Orders
           </button>
-          {po.approvalStatus === "approved" ? (
-            <a
-              href={pdfUrl(po.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
-            >
-              <Download size={13} /> Download PDF
-            </a>
-          ) : (
-            <span
-              title="Available once this purchase order is approved"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-400 border border-slate-200 rounded-lg cursor-not-allowed w-fit"
-            >
-              <Download size={13} /> Download PDF
-            </span>
-          )}
         </div>
 
         {headerError && (
@@ -353,23 +338,25 @@ const PurchaseOrderDetailPage: React.FC = () => {
 type OverviewForm = {
   poNumber: string;
   paymentTerms: string;
-  deliveryDate: string;
   incoterms: string;
   taxPercent: string;
   terms: string;
   deliveryPeriod: string;
   finalDestination: string;
+  customerContactPerson: string;
+  currency: string;
 };
 
 const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   poNumber: po.poNumber || "",
   paymentTerms: po.paymentTerms || "",
-  deliveryDate: po.deliveryDate ? po.deliveryDate.slice(0, 10) : "",
   incoterms: po.incoterms || "",
   taxPercent: po.taxPercent !== null && po.taxPercent !== undefined ? String(po.taxPercent) : "",
   terms: po.terms || "",
   deliveryPeriod: po.deliveryPeriod || "",
   finalDestination: po.finalDestination || "",
+  customerContactPerson: po.customerContactPerson || "",
+  currency: po.currency || "",
 });
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void> }> = ({ po, isAdmin, onChanged }) => {
@@ -404,12 +391,13 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         input: {
           poNumber: trimmedPoNumber,
           paymentTerms: form.paymentTerms.trim() || undefined,
-          deliveryDate: form.deliveryDate || null,
           incoterms: form.incoterms.trim() || undefined,
           taxPercent: numOrUndef(form.taxPercent) ?? null,
           terms: form.terms.trim() || undefined,
           deliveryPeriod: form.deliveryPeriod.trim() || undefined,
           finalDestination: form.finalDestination.trim() || undefined,
+          customerContactPerson: form.customerContactPerson.trim() || undefined,
+          currency: form.currency.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
         },
       });
@@ -437,12 +425,29 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       <div className={sectionCardCls}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[13px] font-semibold text-slate-900">Purchase Order Details</h3>
-          {isAdmin && (
-            <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
-              {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Save Changes
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {po.approvalStatus === "approved" ? (
+              <a
+                href={pdfUrl(po.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
+              >
+                <Download size={13} /> Download PDF
+              </a>
+            ) : (
+              <span
+                title="Available once this purchase order is approved"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-400 border border-slate-200 rounded-lg cursor-not-allowed w-fit"
+              >
+                <Download size={13} /> Download PDF
+              </span>
+            )}
+            {isAdmin && (
+              <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Save Changes
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -460,16 +465,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.paymentTerms}
               onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Delivery Date</label>
-            <input
-              type="date"
-              disabled={!isAdmin}
-              value={form.deliveryDate}
-              onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })}
               className={inputCls}
             />
           </div>
@@ -509,6 +504,26 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.finalDestination}
               onChange={(e) => setForm({ ...form, finalDestination: e.target.value })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer Contact Person</label>
+            <input
+              disabled={!isAdmin}
+              value={form.customerContactPerson}
+              onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
+              placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Currency</label>
+            <input
+              disabled={!isAdmin}
+              value={form.currency}
+              onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              placeholder="e.g. Indian Rupees — used in the PDF's Amount in Words line"
               className={inputCls}
             />
           </div>

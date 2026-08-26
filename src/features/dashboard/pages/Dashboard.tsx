@@ -24,7 +24,6 @@ import {
   Building2,
   Loader2,
   ArrowRight,
-  Bell,
   Users as UsersIcon,
   Sparkles,
   Wand2,
@@ -58,18 +57,6 @@ const isSameDay = (a: Date, b: Date) =>
 
 const daysBetween = (a: Date, b: Date) =>
   Math.round((b.getTime() - a.getTime()) / 86400000);
-
-/** "10 min ago" / "2 hrs ago" / "3 days ago" — coarse, human relative time. */
-const timeAgo = (dateString: string) => {
-  const diffMs = Date.now() - new Date(dateString).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-};
 
 /**
  * Derives a project's schedule health by comparing actual progress against
@@ -273,11 +260,6 @@ const Dashboard: React.FC = () => {
         (t) => t.status === "completed" && daysBetween(new Date(t.createdAt), new Date()) <= 7,
       ).length,
     [allTasks],
-  );
-
-  const pendingLeaveRequests = useMemo(
-    () => leaveRequests.filter((lr) => lr.status === "pending"),
-    [leaveRequests],
   );
 
   // Present / On Leave / On Site Visit — derived from today's *approved*
@@ -586,39 +568,18 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Notifications/Activity + Supply Chain + Team Availability */}
+      {/* AI Insights + Supply Chain + Team Availability */}
       <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-3">
+        {/* AI Insights — no AI feature is wired up yet */}
         <div className="bg-white border rounded-xl shadow-md border-slate-200 overflow-hidden">
-          <div className="flex items-center px-5 pt-3 pb-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="text-[13px] font-medium text-slate-900">Notifications</div>
-            <button
-              onClick={() => navigate(`/${organization?.id}/activities`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[12px] font-medium text-blue-900 hover:text-blue-700"
-            >
-              View All
-            </button>
+          <div className="flex items-center px-5 py-3 border-b border-slate-200 bg-slate-50/60">
+            <div className="font-semibold text-[15px] text-slate-900">AI Insights</div>
+            <span className="flex items-center flex-shrink-0 gap-1 ml-auto text-[10px] font-medium text-violet-500 tracking-wide uppercase">
+              <Sparkles className="w-3 h-3" />
+              Powered by AI
+            </span>
           </div>
-          <div className="p-4 space-y-3 max-h-[200px] overflow-y-auto">
-            {pendingLeaveRequests.length > 0 ? (
-              pendingLeaveRequests.slice(0, 6).map((lr) => (
-                <div key={lr.id} className="flex gap-2.5 items-start">
-                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-[13px] text-slate-700">
-                      <span className="font-semibold text-slate-900">Leave request from {lr.user?.fullName || "a team member"}</span>{" "}
-                      needs your approval
-                    </div>
-                    <div className="text-slate-400 text-[11px] mt-0.5">{timeAgo(lr.createdAt)}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="flex gap-2.5 items-start">
-                <Bell className="mt-0.5 w-4 h-4 text-slate-300 flex-shrink-0" />
-                <div className="text-slate-400 text-[13px]">Nothing needs your attention right now.</div>
-              </div>
-            )}
-          </div>
+          <ComingSoon />
         </div>
 
         {/* Supply Chain — procurement/inventory tracking isn't built yet */}
@@ -656,10 +617,10 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Construction Progress Today + AI Insights */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      {/* Construction Progress Today */}
+      <div className="grid grid-cols-1 gap-6">
         {/* No construction-metric fields exist on Project/Task yet */}
-        <div className="bg-white border rounded-xl shadow-md lg:col-span-3 border-slate-200 overflow-hidden">
+        <div className="bg-white border rounded-xl shadow-md border-slate-200 overflow-hidden">
           <div className="flex items-center px-5 py-4 border-b border-slate-200 bg-slate-50/60">
             <div className="font-semibold text-[15px] text-slate-900">Construction Progress Today</div>
             <button
@@ -669,18 +630,6 @@ const Dashboard: React.FC = () => {
               View Details
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
-          </div>
-          <ComingSoon />
-        </div>
-
-        {/* AI Insights — no AI feature is wired up yet */}
-        <div className="bg-white border rounded-xl shadow-md lg:col-span-2 border-slate-200 overflow-hidden">
-          <div className="flex items-center px-5 py-4 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[15px] text-slate-900">AI Insights</div>
-            <span className="flex items-center flex-shrink-0 gap-1 ml-auto text-[10px] font-medium text-violet-500 tracking-wide uppercase">
-              <Sparkles className="w-3 h-3" />
-              Powered by AI
-            </span>
           </div>
           <ComingSoon />
         </div>
