@@ -272,13 +272,13 @@ export function useOrganizationItemCatalogQuery() {
 
 export function useCreateCatalogItemMutation() {
   return useMutation({
-    mutationFn: (input: { name: string; code?: string; description?: string }) => createCatalogItem(input),
+    mutationFn: (input: { name: string; code?: string }) => createCatalogItem(input),
   });
 }
 
 export function useUpdateCatalogItemMutation() {
   return useMutation({
-    mutationFn: ({ itemId, input }: { itemId: number; input: { name?: string; code?: string; description?: string } }) =>
+    mutationFn: ({ itemId, input }: { itemId: number; input: { name?: string; code?: string } }) =>
       updateCatalogItem(itemId, input),
   });
 }

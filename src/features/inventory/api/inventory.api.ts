@@ -232,15 +232,15 @@ export async function fetchOrganizationItems(): Promise<CatalogItem[]> {
 }
 
 /** POST add a new item to the shared catalog. */
-export async function createCatalogItem(input: { name: string; code?: string; description?: string }): Promise<CatalogItem> {
+export async function createCatalogItem(input: { name: string; code?: string }): Promise<CatalogItem> {
   const res = await api.post<{ item: CatalogItem }>("/api/workspace/items", input);
   return res.data.item;
 }
 
-/** PUT rename/re-code/re-describe a catalog item. */
+/** PUT rename/re-code a catalog item. */
 export async function updateCatalogItem(
   itemId: number,
-  input: { name?: string; code?: string; description?: string },
+  input: { name?: string; code?: string },
 ): Promise<CatalogItem> {
   const res = await api.put<{ item: CatalogItem }>(`/api/workspace/items/${itemId}`, input);
   return res.data.item;

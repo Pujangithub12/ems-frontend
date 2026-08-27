@@ -13,17 +13,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { CatalogItem } from "../../../types";
-import {
-  useOrganizationItemCatalogQuery,
-  useCreateCatalogItemMutation,
-  useUpdateCatalogItemMutation,
-  useDeleteCatalogItemMutation,
-} from "../../inventory/hooks/useInventory";
+import { useOrganizationItemCatalogQuery, useDeleteCatalogItemMutation } from "../../inventory/hooks/useInventory";
 import { getErrorMessage } from "../../../lib/errors";
 import ConfirmationModal from "../../../components/ConfirmationModal";
-
-type ItemForm = { name: string; code: string; description: string };
-const emptyForm: ItemForm = { name: "", code: "", description: "" };
+import CatalogItemFormModal from "../../inventory/components/CatalogItemFormModal";
 
 const formatDate = (value?: string | null) =>
   value
@@ -57,16 +50,11 @@ const ItemsPage: React.FC = () => {
     : null;
   const [refreshing, setRefreshing] = useState(false);
 
-  const createMutation = useCreateCatalogItemMutation();
-  const updateMutation = useUpdateCatalogItemMutation();
   const deleteMutation = useDeleteCatalogItemMutation();
 
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
-  const [form, setForm] = useState<ItemForm>(emptyForm);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CatalogItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -81,10 +69,7 @@ const ItemsPage: React.FC = () => {
     const q = search.trim().toLowerCase();
     const rows = q
       ? items.filter(
-          (i) =>
-            i.name.toLowerCase().includes(q) ||
-            (i.code || "").toLowerCase().includes(q) ||
-            (i.description || "").toLowerCase().includes(q),
+          (i) => i.name.toLowerCase().includes(q) || (i.code || "").toLowerCase().includes(q),
         )
       : items;
     return [...rows].sort((a, b) => a.name.localeCompare(b.name));
@@ -100,54 +85,22 @@ const ItemsPage: React.FC = () => {
 
   const openCreateForm = () => {
     setEditingItem(null);
-    setForm(emptyForm);
-    setFormError(null);
     setShowForm(true);
   };
 
   const openEditForm = (item: CatalogItem) => {
     setEditingItem(item);
-    setForm({ name: item.name, code: item.code || "", description: item.description || "" });
-    setFormError(null);
     setShowForm(true);
   };
 
   const closeForm = () => {
     setShowForm(false);
     setEditingItem(null);
-    setForm(emptyForm);
-    setFormError(null);
   };
 
-  const handleSubmitForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      setFormError("Item name is required.");
-      return;
-    }
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      if (editingItem) {
-        await updateMutation.mutateAsync({
-          itemId: editingItem.id,
-          input: { name: trimmedName, code: form.code.trim(), description: form.description.trim() },
-        });
-      } else {
-        await createMutation.mutateAsync({
-          name: trimmedName,
-          code: form.code.trim() || undefined,
-          description: form.description.trim() || undefined,
-        });
-      }
-      await itemsQuery.refetch();
-      closeForm();
-    } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to save item."));
-    } finally {
-      setSubmitting(false);
-    }
+  const handleSaved = async () => {
+    await itemsQuery.refetch();
+    closeForm();
   };
 
   const handleDelete = async () => {
@@ -255,7 +208,6 @@ const ItemsPage: React.FC = () => {
                     <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
                       <th className="px-3 py-2 font-medium text-left">Item Name</th>
                       <th className="px-3 py-2 font-medium text-left">Code</th>
-                      <th className="px-3 py-2 font-medium text-left">Description</th>
                       <th className="px-3 py-2 font-medium text-left">Added</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
                     </tr>
@@ -282,9 +234,6 @@ const ItemsPage: React.FC = () => {
                           ) : (
                             "--"
                           )}
-                        </td>
-                        <td className="px-3 py-2 text-slate-500 max-w-xs truncate" title={i.description || undefined}>
-                          {i.description || "--"}
                         </td>
                         <td className="px-3 py-2 text-slate-500">{formatDate(i.createdAt)}</td>
                         {isAdmin && (
@@ -317,68 +266,8 @@ const ItemsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Add/Edit item modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h3 className="text-[14px] font-semibold text-slate-900">
-                {editingItem ? "Edit Item" : "Add Item"}
-              </h3>
-              <button onClick={closeForm} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmitForm} className="p-4 space-y-3">
-              {formError && (
-                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>
-              )}
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Item name</label>
-                <input
-                  autoFocus
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Steel Tubular Pole"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
-                />
-              </div>
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Code</label>
-                <input
-                  value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
-                  placeholder="Optional"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
-                />
-              </div>
-              <div>
-                <label className="block mb-1 text-[11px] font-medium text-slate-900">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Optional"
-                  className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none resize-none focus:border-blue-400"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={closeForm} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors"
-                >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {editingItem ? "Save Changes" : "Add Item"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Add/Edit item modal — shared with ItemNameField's "Add new item" shortcut elsewhere in the app. */}
+      {showForm && <CatalogItemFormModal editingItem={editingItem} onClose={closeForm} onSaved={handleSaved} />}
 
       <ConfirmationModal
         isOpen={!!deleteTarget}

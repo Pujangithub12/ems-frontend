@@ -7,12 +7,52 @@ export interface CreatePurchaseOrderItemInput {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
-  notes?: string | null;
+  description?: string | null;
 }
 
 export interface CreatePurchaseOrderInput {
   vendorId?: number | null;
-  items: CreatePurchaseOrderItemInput[];
+  items?: CreatePurchaseOrderItemInput[];
+}
+
+export interface AddPurchaseOrderItemInput {
+  itemName: string;
+  itemId?: number | null;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | null;
+  description?: string | null;
+}
+
+/** POST add a single line item to an existing purchase order (Overview tab's "Add Item"). */
+export async function addPurchaseOrderItem(id: number, input: AddPurchaseOrderItemInput): Promise<PurchaseOrder> {
+  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/items`, input);
+  return res.data.purchaseOrder;
+}
+
+export interface EditPurchaseOrderItemInput {
+  itemName: string;
+  itemId?: number | null;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: number | null;
+  description?: string | null;
+}
+
+/** PUT full edit of one existing line item (Overview tab's Line Items table). */
+export async function editPurchaseOrderItem(
+  id: number,
+  itemId: number,
+  input: EditPurchaseOrderItemInput,
+): Promise<PurchaseOrder> {
+  const res = await api.put<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/items/${itemId}`, input);
+  return res.data.purchaseOrder;
+}
+
+/** DELETE one line item from a purchase order. */
+export async function deletePurchaseOrderItem(id: number, itemId: number): Promise<PurchaseOrder> {
+  const res = await api.delete<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/items/${itemId}`);
+  return res.data.purchaseOrder;
 }
 
 /** POST create a purchase order directly for one project — no Purchase Request involved. */
@@ -70,13 +110,4 @@ export async function updatePurchaseOrder(id: number, input: PurchaseOrderInput)
 export async function fetchCostSheet(id: number): Promise<CostSheet> {
   const res = await api.get<{ costSheet: CostSheet }>(`/api/purchase-orders/${id}/cost-sheet`);
   return res.data.costSheet;
-}
-
-/** POST the approve/reject decision — finance/super_admin only (enforced server-side). */
-export async function decidePurchaseOrderApproval(
-  id: number,
-  decision: "approved" | "rejected",
-): Promise<PurchaseOrder> {
-  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(`/api/purchase-orders/${id}/approval`, { decision });
-  return res.data.purchaseOrder;
 }

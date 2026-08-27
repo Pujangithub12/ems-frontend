@@ -8,9 +8,12 @@ interface VendorFieldProps {
   vendorId: number | null;
   /** Fires with the picked vendor's id (or null for "No vendor"). */
   onSelect: (vendorId: number | null) => void;
+  /** Overrides the default "Add vendor" behavior (navigating to the Vendors page) — e.g. to
+   * open VendorFormModal in place instead, so the caller's own form/modal isn't lost. */
+  onAddNew?: () => void;
 }
 
-const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect }) => {
+const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect, onAddNew }) => {
   const vendorsQuery = useOrganizationVendorsQuery();
   const vendors = vendorsQuery.data ?? [];
   const organizationId = useOrganizationId();
@@ -33,7 +36,7 @@ const VendorField: React.FC<VendorFieldProps> = ({ vendorId, onSelect }) => {
       </div>
       <button
         type="button"
-        onClick={() => navigate(`/${organizationId}/vendors`)}
+        onClick={() => (onAddNew ? onAddNew() : navigate(`/${organizationId}/vendors`))}
         className="flex items-center flex-shrink-0 gap-1 px-1 py-1 text-[11px] font-medium whitespace-nowrap text-blue-700 hover:text-blue-800 hover:underline"
       >
         <Plus size={11} /> Add vendor
