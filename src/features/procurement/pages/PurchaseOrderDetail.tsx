@@ -824,7 +824,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                 "Qty") column, plus these optional columns (any order, extra columns are ignored):
               </p>
               <ul className="pl-4 space-y-1 list-disc marker:text-slate-400">
-                <li>Unit</li>
+                <li>Unit of Measure</li>
                 <li>Unit Price</li>
                 <li>Description</li>
               </ul>
@@ -893,7 +893,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Unit</label>
+                  <label className={labelCls}>Unit of Measure</label>
                   <input
                     value={addItemForm.unit}
                     onChange={(e) => setAddItemForm({ ...addItemForm, unit: e.target.value })}

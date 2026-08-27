@@ -276,13 +276,12 @@ const Approvals: React.FC = () => {
     }
   };
 
-  // Types the current user is not a manager/approver for — i.e. types they can
-  // submit their own requests for via the "New Request" button.
-  const creatableTypes = (["leave", "sitevisit", "expense"] as RequestType[]).filter((t) => !canManage[t]);
+  // Everyone — including admins/finance who also approve these — can submit their own
+  // requests, so all three types are always offered via the "New Request" button.
+  const creatableTypes: RequestType[] = ["leave", "sitevisit", "expense"];
   const currentTypeCanManage = tab !== "rejected" && tab !== "all" && canManage[tab];
   const currentTypeLabel = tab === "rejected" || tab === "all" ? "" : TYPE_META[tab].label;
-  const showNewRequestButton =
-    tab === "all" ? creatableTypes.length > 0 : tab !== "rejected" && !currentTypeCanManage;
+  const showNewRequestButton = tab !== "rejected";
 
   const openForm = () => {
     setReqType(tab === "all" || tab === "rejected" ? creatableTypes[0] : tab);

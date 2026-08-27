@@ -50,10 +50,10 @@ export function useCreatePurchaseOrderMutation() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, input }: { projectId: string; input: CreatePurchaseOrderInput }) =>
+    mutationFn: ({ projectId, input }: { projectId: string | null; input: CreatePurchaseOrderInput }) =>
       createPurchaseOrder(projectId, input),
     onSuccess: (_data, { projectId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders(wsId, projectId) });
+      if (projectId) queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders(wsId, projectId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.organizationPurchaseOrders(wsId) });
     },
   });

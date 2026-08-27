@@ -55,15 +55,15 @@ export async function deletePurchaseOrderItem(id: number, itemId: number): Promi
   return res.data.purchaseOrder;
 }
 
-/** POST create a purchase order directly for one project — no Purchase Request involved. */
+/** POST create a purchase order directly — no Purchase Request involved. Pass a projectId to
+ * create it under that project (project-scoped route), or null to create it without one (the
+ * project-less /purchase-orders route, used by the org-wide Purchase Orders page's form). */
 export async function createPurchaseOrder(
-  projectId: string,
+  projectId: string | null,
   input: CreatePurchaseOrderInput,
 ): Promise<PurchaseOrder> {
-  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(
-    `/api/projects/${projectId}/purchase-orders`,
-    input,
-  );
+  const url = projectId ? `/api/projects/${projectId}/purchase-orders` : "/api/purchase-orders";
+  const res = await api.post<{ purchaseOrder: PurchaseOrder }>(url, input);
   return res.data.purchaseOrder;
 }
 

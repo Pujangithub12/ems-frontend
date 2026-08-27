@@ -720,7 +720,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         <div className="flex-1 overflow-auto no-scrollbar">
           <div
             key={paramOrganizationId ?? "default"}
-            className="duration-300 animate-in fade-in slide-in-from-bottom-2"
+            className="h-full duration-300 animate-in fade-in slide-in-from-bottom-2"
           >
             {children}
           </div>
