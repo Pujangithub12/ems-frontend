@@ -1,20 +1,17 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Package, Plus, RefreshCw, Loader2, AlertCircle, X, Trash2 } from "lucide-react";
+import { Package, Plus, RefreshCw, Loader2, AlertCircle, X } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project } from "../../../../types";
 import { getErrorMessage } from "../../../../lib/errors";
-import ItemNameField from "../../../inventory/components/ItemNameField";
 import VendorField from "../../../inventory/components/VendorField";
+import VendorFormModal from "../../../inventory/components/VendorFormModal";
+import { useOrganizationVendorsQuery } from "../../../inventory/hooks/useInventory";
 import { usePurchaseOrdersQuery, useCreatePurchaseOrderMutation } from "../../../procurement/hooks/usePurchaseOrder";
-import { CreatePurchaseOrderItemInput } from "../../../procurement/api/purchaseOrder.api";
 
 interface ProjectProcurementTabProps {
   project: Project;
 }
-
-type ItemRow = { itemId: number | null; itemName: string; quantity: string; unit: string; unitPrice: string };
-const emptyItemRow: ItemRow = { itemId: null, itemName: "", quantity: "1", unit: "", unitPrice: "" };
 
 const PO_STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
   created: { bg: "#f1f5f9", fg: "#475569", label: "Created" },
@@ -27,7 +24,8 @@ const PO_STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }
 /**
  * Project-scoped view of the procurement pipeline v2 (Purchase Orders only —
  * there used to be a Purchase Request + Vendor Selection step ahead of this,
- * removed along with its data; POs are now created directly here). Admin-only,
+ * removed along with its data; POs are now created directly here, vendor only —
+ * line items are added afterward from the detail page's Overview tab). Admin-only,
  * matching the org-wide Purchase Orders page and Vendors page being
  * admin-territory throughout this app.
  */
@@ -51,51 +49,26 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
   // ---- Create Purchase Order form ----
   const [showForm, setShowForm] = useState(false);
   const [vendorId, setVendorId] = useState<number | null>(null);
-  const [items, setItems] = useState<ItemRow[]>([{ ...emptyItemRow }]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [vendorModalOpen, setVendorModalOpen] = useState(false);
   const createMutation = useCreatePurchaseOrderMutation();
+  const vendorsQuery = useOrganizationVendorsQuery();
 
   const openCreateForm = () => {
     setVendorId(null);
-    setItems([{ ...emptyItemRow }]);
     setFormError(null);
     setShowForm(true);
   };
   const closeForm = () => setShowForm(false);
-  const updateItemRow = (index: number, patch: Partial<ItemRow>) =>
-    setItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  const addItemRow = () => setItems((prev) => [...prev, { ...emptyItemRow }]);
-  const removeItemRow = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    const payloadItems: CreatePurchaseOrderItemInput[] = [];
-    for (const row of items) {
-      if (!row.itemName.trim() && !row.itemId) continue;
-      const quantity = parseFloat(row.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        setFormError("Every item needs a valid quantity.");
-        return;
-      }
-      payloadItems.push({
-        itemName: row.itemName.trim(),
-        itemId: row.itemId,
-        quantity,
-        unit: row.unit.trim() || undefined,
-        unitPrice: row.unitPrice ? parseFloat(row.unitPrice) : null,
-      });
-    }
-    if (payloadItems.length === 0) {
-      setFormError("Add at least one item.");
-      return;
-    }
-
     setSubmitting(true);
     try {
-      await createMutation.mutateAsync({ projectId, input: { vendorId, items: payloadItems } });
+      await createMutation.mutateAsync({ projectId, input: { vendorId } });
       closeForm();
     } catch (err) {
       setFormError(getErrorMessage(err, "Failed to create purchase order."));
@@ -236,56 +209,7 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
               {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
               <div>
                 <label className="block mb-1 text-[11px] font-medium text-slate-900">Vendor</label>
-                <VendorField vendorId={vendorId} onSelect={setVendorId} />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-medium text-slate-900">Items</label>
-                  <button type="button" onClick={addItemRow} className="flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:underline">
-                    <Plus size={11} /> Add item
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {items.map((row, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 border rounded-lg border-slate-200">
-                      <div className="flex-[2] min-w-0">
-                        <ItemNameField
-                          itemId={row.itemId}
-                          currentName={row.itemName}
-                          onSelect={(item) => updateItemRow(i, { itemId: item.id, itemName: item.name })}
-                          className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
-                        />
-                      </div>
-                      <input
-                        value={row.quantity}
-                        onChange={(e) => updateItemRow(i, { quantity: e.target.value })}
-                        placeholder="Qty"
-                        type="number"
-                        min="1"
-                        className="w-16 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                      />
-                      <input
-                        value={row.unit}
-                        onChange={(e) => updateItemRow(i, { unit: e.target.value })}
-                        placeholder="Unit"
-                        className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                      />
-                      <input
-                        value={row.unitPrice}
-                        onChange={(e) => updateItemRow(i, { unitPrice: e.target.value })}
-                        placeholder="Unit price"
-                        type="number"
-                        min="0"
-                        className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-                      />
-                      {items.length > 1 && (
-                        <button type="button" onClick={() => removeItemRow(i)} className="p-1.5 text-slate-400 hover:text-red-600">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <VendorField vendorId={vendorId} onSelect={setVendorId} onAddNew={() => setVendorModalOpen(true)} />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeForm} disabled={submitting} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60">
@@ -303,6 +227,17 @@ const ProjectProcurementTab: React.FC<ProjectProcurementTabProps> = ({ project }
             </form>
           </div>
         </div>
+      )}
+
+      {vendorModalOpen && (
+        <VendorFormModal
+          onClose={() => setVendorModalOpen(false)}
+          onSaved={async (vendor) => {
+            await vendorsQuery.refetch();
+            setVendorId(vendor.id);
+            setVendorModalOpen(false);
+          }}
+        />
       )}
     </div>
   );

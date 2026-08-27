@@ -7,10 +7,14 @@ import {
   fetchPurchaseOrderDetail,
   createPurchaseOrder,
   updatePurchaseOrder,
-  decidePurchaseOrderApproval,
+  addPurchaseOrderItem,
+  editPurchaseOrderItem,
+  deletePurchaseOrderItem,
   fetchCostSheet,
   PurchaseOrderInput,
   CreatePurchaseOrderInput,
+  AddPurchaseOrderItemInput,
+  EditPurchaseOrderItemInput,
 } from "../api/purchaseOrder.api";
 
 /** Thin query-hook wrappers around purchaseOrder.api.ts. */
@@ -61,16 +65,22 @@ export function useUpdatePurchaseOrderMutation() {
   });
 }
 
-export function useDecidePurchaseOrderApprovalMutation() {
-  const wsId = useOrganizationId();
-  const queryClient = useQueryClient();
+export function useAddPurchaseOrderItemMutation() {
   return useMutation({
-    mutationFn: ({ id, decision }: { id: number; decision: "approved" | "rejected" }) =>
-      decidePurchaseOrderApproval(id, decision),
-    onSuccess: (_data, { id }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrderDetail(wsId, id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizationPurchaseOrders(wsId) });
-    },
+    mutationFn: ({ id, input }: { id: number; input: AddPurchaseOrderItemInput }) => addPurchaseOrderItem(id, input),
+  });
+}
+
+export function useEditPurchaseOrderItemMutation() {
+  return useMutation({
+    mutationFn: ({ id, itemId, input }: { id: number; itemId: number; input: EditPurchaseOrderItemInput }) =>
+      editPurchaseOrderItem(id, itemId, input),
+  });
+}
+
+export function useDeletePurchaseOrderItemMutation() {
+  return useMutation({
+    mutationFn: ({ id, itemId }: { id: number; itemId: number }) => deletePurchaseOrderItem(id, itemId),
   });
 }
 

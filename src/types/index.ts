@@ -109,7 +109,6 @@ export type CatalogItem = {
   id: number;
   name: string;
   code?: string | null;
-  description?: string | null;
   createdAt: string;
 };
 
@@ -227,7 +226,6 @@ export type InventoryItemDetail = {
 // ---------------------------------------------------------------------------
 
 export type PurchaseOrderStatus = "created" | "sent" | "accepted" | "cancelled" | "completed";
-export type PurchaseOrderApprovalStatus = "pending_approval" | "approved" | "rejected";
 export type PurchaseType = "local" | "international";
 
 export type PurchaseOrderItem = {
@@ -238,7 +236,8 @@ export type PurchaseOrderItem = {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | string | null;
-  notes?: string | null;
+  /** Entered on the Overview tab's "Add Item" form — shown under the item name in the PDF's Product Description cell. */
+  description?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
   hsnCode?: string | null;
 };
@@ -416,9 +415,6 @@ export type PurchaseOrder = {
   currency?: string | null;
   purchaseType: PurchaseType;
   status: PurchaseOrderStatus;
-  approvalStatus: PurchaseOrderApprovalStatus;
-  approvedBy?: { id: number; fullName: string } | null;
-  approvedAt?: string | null;
   createdBy?: { id: number; fullName: string } | null;
   vendor?: Vendor | null;
   vendorId?: number | null;

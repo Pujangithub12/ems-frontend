@@ -13,6 +13,9 @@ interface ItemNameFieldProps {
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
+  /** Overrides the default "Add new item" behavior (navigating to the Items page) — e.g. to
+   * open CatalogItemFormModal in place instead, so the caller's own form/modal isn't lost. */
+  onAddNew?: () => void;
 }
 
 const ItemNameField: React.FC<ItemNameFieldProps> = ({
@@ -22,6 +25,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
   placeholder,
   autoFocus,
   className,
+  onAddNew,
 }) => {
   const itemsQuery = useOrganizationItemCatalogQuery();
   const items = itemsQuery.data ?? [];
@@ -57,7 +61,7 @@ const ItemNameField: React.FC<ItemNameFieldProps> = ({
       </div>
       <button
         type="button"
-        onClick={() => navigate(`/${organizationId}/items`)}
+        onClick={() => (onAddNew ? onAddNew() : navigate(`/${organizationId}/items`))}
         className="flex items-center flex-shrink-0 gap-1 px-1 py-1 text-[11px] font-medium whitespace-nowrap text-blue-700 hover:text-blue-800 hover:underline"
       >
         <Plus size={11} /> Add new item

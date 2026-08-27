@@ -1,11 +1,13 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 import {
   ArrowLeft,
   Loader2,
   AlertCircle,
   X,
   Trash2,
+  Pencil,
   Upload,
   Paperclip,
   ChevronDown,
@@ -26,7 +28,6 @@ import { formatCost, toNumber } from "../../../lib/currency";
 import {
   PurchaseOrder,
   PurchaseOrderStatus,
-  PurchaseOrderApprovalStatus,
   PurchaseType,
   ShipmentTransportMode,
   ShipmentStatus,
@@ -39,8 +40,14 @@ import {
 import {
   usePurchaseOrderDetailQuery,
   useUpdatePurchaseOrderMutation,
+  useAddPurchaseOrderItemMutation,
+  useEditPurchaseOrderItemMutation,
+  useDeletePurchaseOrderItemMutation,
   useCostSheetQuery,
 } from "../hooks/usePurchaseOrder";
+import ItemNameField from "../../inventory/components/ItemNameField";
+import CatalogItemFormModal from "../../inventory/components/CatalogItemFormModal";
+import ConfirmationModal from "../../../components/ConfirmationModal";
 import {
   useCreateShipmentMutation,
   useUpdateShipmentMutation,
@@ -57,7 +64,7 @@ import {
   useUploadGoodsReceiptPhotoMutation,
   useDeleteGoodsReceiptPhotoMutation,
 } from "../hooks/useGoodsReceipt";
-import { useOrganizationWarehousesQuery } from "../../inventory/hooks/useInventory";
+import { useOrganizationWarehousesQuery, useOrganizationItemCatalogQuery } from "../../inventory/hooks/useInventory";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
@@ -71,12 +78,6 @@ const PO_STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; la
   accepted: { bg: "#dcfce7", fg: "#166534", label: "Accepted" },
   completed: { bg: "#dbeafe", fg: "#1e40af", label: "Completed" },
   cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelled" },
-};
-
-const APPROVAL_STATUS_STYLES: Record<PurchaseOrderApprovalStatus, { bg: string; fg: string; label: string }> = {
-  pending_approval: { bg: "#fef9c3", fg: "#854d0e", label: "Pending Approval" },
-  approved: { bg: "#dcfce7", fg: "#166534", label: "Approved" },
-  rejected: { bg: "#fee2e2", fg: "#991b1b", label: "Rejected" },
 };
 
 const PURCHASE_TYPE_STYLES: Record<PurchaseType, { bg: string; fg: string; label: string }> = {
@@ -248,13 +249,9 @@ const PurchaseOrderDetailPage: React.FC = () => {
               </h1>
               <Pill {...PURCHASE_TYPE_STYLES[po.purchaseType]} />
               <Pill {...PO_STATUS_STYLES[po.status]} />
-              <Pill {...APPROVAL_STATUS_STYLES[po.approvalStatus]} />
             </div>
             <p className="mt-1 text-[12px] text-slate-500">
               {po.vendor?.name || "Unknown vendor"} · {po.project?.name || "Unknown project"}
-              {po.approvedBy && po.approvalStatus !== "pending_approval"
-                ? ` · ${po.approvalStatus === "approved" ? "Approved" : "Rejected"} by ${po.approvedBy.fullName}`
-                : ""}
             </p>
           </div>
 
@@ -281,11 +278,9 @@ const PurchaseOrderDetailPage: React.FC = () => {
                     onChange={(e) => changeStatus(e.target.value as PurchaseOrderStatus)}
                     className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
                   >
-                    {(Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[])
-                      .filter((s) => po.approvalStatus === "approved" || s === "created" || s === "cancelled")
-                      .map((s) => (
-                        <option key={s} value={s}>{PO_STATUS_STYLES[s].label}</option>
-                      ))}
+                    {(Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[]).map((s) => (
+                      <option key={s} value={s}>{PO_STATUS_STYLES[s].label}</option>
+                    ))}
                   </select>
                   <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
                 </div>
@@ -294,13 +289,6 @@ const PurchaseOrderDetailPage: React.FC = () => {
             {headerBusy && <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />}
           </div>
         </div>
-
-        {canEditHeader && po.approvalStatus === "pending_approval" && (
-          <p className="text-[11.5px] text-amber-700 -mt-1">
-            Awaiting approval — status can only be "Created" or "Cancelled" until this purchase order is approved
-            on the Purchase Approval tab.
-          </p>
-        )}
       </div>
 
       {/* Tabs & Content */}
@@ -359,8 +347,22 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   currency: po.currency || "",
 });
 
+const emptyAddItemForm = {
+  itemId: null as number | null,
+  itemName: "",
+  quantity: "1",
+  unit: "",
+  unitPrice: "",
+  description: "",
+};
+
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void> }> = ({ po, isAdmin, onChanged }) => {
   const updateMutation = useUpdatePurchaseOrderMutation();
+  const addItemMutation = useAddPurchaseOrderItemMutation();
+  const editItemMutation = useEditPurchaseOrderItemMutation();
+  const deleteItemMutation = useDeletePurchaseOrderItemMutation();
+  const catalogQuery = useOrganizationItemCatalogQuery();
+  const catalogItems = catalogQuery.data ?? [];
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
@@ -368,6 +370,175 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Add Item modal doubles as the Edit modal — editingItemId set means "editing this existing
+  // row" instead of creating a new one.
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [addItemForm, setAddItemForm] = useState(emptyAddItemForm);
+  const [addItemBusy, setAddItemBusy] = useState(false);
+  const [addItemError, setAddItemError] = useState<string | null>(null);
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [deleteItemTarget, setDeleteItemTarget] = useState<PurchaseOrder["items"][number] | null>(null);
+  const [deleteItemBusy, setDeleteItemBusy] = useState(false);
+
+  const openAddItem = () => {
+    setEditingItemId(null);
+    setAddItemForm(emptyAddItemForm);
+    setAddItemError(null);
+    setAddItemOpen(true);
+  };
+
+  const openEditItem = (item: PurchaseOrder["items"][number]) => {
+    setEditingItemId(item.id);
+    setAddItemForm({
+      itemId: item.itemId ?? null,
+      itemName: item.itemName,
+      quantity: String(item.quantity),
+      unit: item.unit || "",
+      unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
+      description: item.description || "",
+    });
+    setAddItemError(null);
+    setAddItemOpen(true);
+  };
+
+  const submitAddItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addItemForm.itemId) {
+      setAddItemError("Select an item.");
+      return;
+    }
+    const quantity = parseFloat(addItemForm.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setAddItemError("Enter a valid quantity.");
+      return;
+    }
+    setAddItemBusy(true);
+    setAddItemError(null);
+    try {
+      const input = {
+        itemName: addItemForm.itemName.trim(),
+        itemId: addItemForm.itemId,
+        quantity,
+        unit: addItemForm.unit.trim() || undefined,
+        unitPrice: addItemForm.unitPrice ? parseFloat(addItemForm.unitPrice) : null,
+        description: addItemForm.description.trim() || null,
+      };
+      if (editingItemId) {
+        await editItemMutation.mutateAsync({ id: po.id, itemId: editingItemId, input });
+      } else {
+        await addItemMutation.mutateAsync({ id: po.id, input });
+      }
+      await onChanged();
+      setAddItemOpen(false);
+    } catch (err) {
+      setAddItemError(getErrorMessage(err, editingItemId ? "Failed to save item." : "Failed to add item."));
+    } finally {
+      setAddItemBusy(false);
+    }
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!deleteItemTarget) return;
+    setDeleteItemBusy(true);
+    try {
+      await deleteItemMutation.mutateAsync({ id: po.id, itemId: deleteItemTarget.id });
+      await onChanged();
+      setDeleteItemTarget(null);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to delete item."));
+    } finally {
+      setDeleteItemBusy(false);
+    }
+  };
+
+  // Bulk import via .xlsx/.csv — parsed entirely client-side, then replayed as
+  // sequential addPurchaseOrderItem calls (same "Upload Sheet" pattern as the
+  // Energy Performance tab's daily-generation import).
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  const findColumn = (header: string[], needle: string, exclude: number[] = []) =>
+    header.findIndex(
+      (h, i) => !exclude.includes(i) && (h || "").toString().toLowerCase().includes(needle),
+    );
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadModalOpen(false);
+    setImporting(true);
+    setImportStatus(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+      const headerRowIdx = rows2d.findIndex((r) => {
+        const cells = r.map((c) => String(c).trim().toLowerCase());
+        return cells.some((c) => c.includes("item")) && cells.some((c) => c.includes("qty") || c.includes("quantity"));
+      });
+      if (headerRowIdx === -1) {
+        setImportStatus("Couldn't find a header row with \"Item\" and \"Quantity\" columns.");
+        return;
+      }
+      const header = rows2d[headerRowIdx].map((c) => String(c));
+      const itemNameCol = findColumn(header, "item");
+      const qtyCol = findColumn(header, "qty");
+      const quantityCol = qtyCol >= 0 ? qtyCol : findColumn(header, "quantity");
+      const unitPriceCol = findColumn(header, "price");
+      const unitCol = findColumn(header, "unit", [unitPriceCol]);
+      const descriptionCol = findColumn(header, "desc");
+
+      let imported = 0;
+      let skipped = 0;
+      for (let i = headerRowIdx + 1; i < rows2d.length; i++) {
+        const r = rows2d[i];
+        const itemName = itemNameCol >= 0 ? String(r[itemNameCol] ?? "").trim() : "";
+        if (!itemName || itemName.toLowerCase() === "total") {
+          skipped += 1;
+          continue;
+        }
+
+        const quantityRaw = quantityCol >= 0 ? r[quantityCol] : "";
+        const quantity =
+          typeof quantityRaw === "number" ? quantityRaw : parseFloat(String(quantityRaw));
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          skipped += 1;
+          continue;
+        }
+
+        const unit = unitCol >= 0 ? String(r[unitCol] ?? "").trim() || undefined : undefined;
+        const unitPriceRaw = unitPriceCol >= 0 ? r[unitPriceCol] : "";
+        const unitPrice =
+          unitPriceRaw !== "" && unitPriceRaw != null && Number.isFinite(Number(unitPriceRaw))
+            ? Number(unitPriceRaw)
+            : null;
+        const description = descriptionCol >= 0 ? String(r[descriptionCol] ?? "").trim() || null : null;
+
+        const match = catalogItems.find((ci) => ci.name.toLowerCase() === itemName.toLowerCase());
+
+        // eslint-disable-next-line no-await-in-loop -- sequential upserts keep per-row error attribution simple
+        await addItemMutation.mutateAsync({
+          id: po.id,
+          input: { itemName, itemId: match?.id ?? null, quantity, unit, unitPrice, description },
+        });
+        imported += 1;
+      }
+
+      await onChanged();
+      setImportStatus(`${imported} item${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.`);
+    } catch (err) {
+      setImportStatus(getErrorMessage(err, "Failed to import the file."));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // Reset the form when navigating to a different PO (not on every refetch, so
   // in-flight edits aren't clobbered right after a successful save).
@@ -426,21 +597,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[13px] font-semibold text-slate-900">Purchase Order Details</h3>
           <div className="flex items-center gap-2">
-            {po.approvalStatus === "approved" ? (
-              <a
-                href={pdfUrl(po.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
-              >
-                <Download size={13} /> Download PDF
-              </a>
-            ) : (
-              <span
-                title="Available once this purchase order is approved"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-400 border border-slate-200 rounded-lg cursor-not-allowed w-fit"
-              >
-                <Download size={13} /> Download PDF
-              </span>
-            )}
+            <a
+              href={pdfUrl(po.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
+            >
+              <Download size={13} /> Download PDF
+            </a>
             {isAdmin && (
               <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -541,7 +703,39 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       </div>
 
       <div className={sectionCardCls}>
-        <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Line Items</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[13px] font-semibold text-slate-900">Line Items</h3>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
+              <button
+                onClick={() => setUploadModalOpen(true)}
+                disabled={importing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+              >
+                {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                Upload Sheet
+              </button>
+              <button onClick={openAddItem} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800">
+                <Plus size={13} /> Add Item
+              </button>
+            </div>
+          )}
+        </div>
+        {importStatus && (
+          <div className="px-3 py-2 mb-3 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded">
+            {importStatus}
+          </div>
+        )}
+        {po.items.length === 0 ? (
+          <p className="py-6 text-[12px] text-center text-slate-400">No items added yet.</p>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>
@@ -552,12 +746,18 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                 <th className="px-3 py-2 font-medium text-left">Unit</th>
                 <th className="px-3 py-2 font-medium text-right">Unit Price</th>
                 <th className="px-3 py-2 font-medium text-right">Line Total</th>
+                {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {po.items.map((item) => (
                 <tr key={item.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-3 py-2 text-slate-700">{item.itemName}</td>
+                  <td className="px-3 py-2 text-slate-700">
+                    <div>{item.itemName}</div>
+                    {item.description && (
+                      <div className="mt-0.5 text-[11px] text-slate-400">{item.description}</div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-slate-600">
                     <input
                       disabled={!isAdmin}
@@ -573,18 +773,188 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   <td className="px-3 py-2 text-right font-medium text-slate-800">
                     {formatCost(item.quantity * toNumber(item.unitPrice))}
                   </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEditItem(item)}
+                          title="Edit"
+                          className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteItemTarget(item)}
+                          title="Delete"
+                          className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={5} className="px-3 py-2 text-right text-[12px] font-semibold text-slate-700">Total</td>
+                <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 text-right text-[12px] font-semibold text-slate-700">Total</td>
                 <td className="px-3 py-2 text-right text-[12px] font-bold text-slate-900">{formatCost(itemsTotal)}</td>
+                {isAdmin && <td className="px-3 py-2" />}
               </tr>
             </tfoot>
           </table>
         </div>
+        )}
       </div>
+
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Upload Line Items</h3>
+              <button onClick={() => setUploadModalOpen(false)} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-[12px] text-slate-600">
+              <p>
+                The file must have a header row with an <span className="font-medium text-slate-800">Item</span>{" "}
+                (or "Item Name") column and a <span className="font-medium text-slate-800">Quantity</span> (or
+                "Qty") column, plus these optional columns (any order, extra columns are ignored):
+              </p>
+              <ul className="pl-4 space-y-1 list-disc marker:text-slate-400">
+                <li>Unit</li>
+                <li>Unit Price</li>
+                <li>Description</li>
+              </ul>
+              <p>
+                Each row's item name is matched against the shared catalog (case-insensitive) — a match is linked
+                automatically, otherwise it's added as free text. A trailing{" "}
+                <span className="font-medium text-slate-800">TOTAL</span> row or rows with no item name are
+                automatically skipped. Accepted formats: .xlsx, .xls, .csv.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setUploadModalOpen(false)}
+                  className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
+                >
+                  <Upload size={14} />
+                  Choose File & Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addItemOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">{editingItemId ? "Edit Item" : "Add Item"}</h3>
+              <button onClick={() => setAddItemOpen(false)} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submitAddItem} className="p-4 space-y-3">
+              {addItemError && (
+                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
+                  {addItemError}
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>Item</label>
+                <ItemNameField
+                  autoFocus
+                  itemId={addItemForm.itemId}
+                  currentName={addItemForm.itemName}
+                  onSelect={(item) => setAddItemForm({ ...addItemForm, itemId: item.id, itemName: item.name })}
+                  onAddNew={() => setCatalogModalOpen(true)}
+                  className={inputCls}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={labelCls}>Quantity</label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={addItemForm.quantity}
+                    onChange={(e) => setAddItemForm({ ...addItemForm, quantity: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Unit</label>
+                  <input
+                    value={addItemForm.unit}
+                    onChange={(e) => setAddItemForm({ ...addItemForm, unit: e.target.value })}
+                    placeholder="e.g. pcs"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Unit Price</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={addItemForm.unitPrice}
+                    onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Description</label>
+                <textarea
+                  rows={2}
+                  value={addItemForm.description}
+                  onChange={(e) => setAddItemForm({ ...addItemForm, description: e.target.value })}
+                  placeholder="Shown under the item name on the PDF (optional)"
+                  className={`${inputCls} resize-none`}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setAddItemOpen(false)} disabled={addItemBusy} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60">
+                  Cancel
+                </button>
+                <button type="submit" disabled={addItemBusy} className={primaryBtnCls}>
+                  {addItemBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {editingItemId ? "Save Changes" : "Add Item"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {catalogModalOpen && (
+        <CatalogItemFormModal
+          onClose={() => setCatalogModalOpen(false)}
+          onSaved={async (item) => {
+            await catalogQuery.refetch();
+            setAddItemForm((prev) => ({ ...prev, itemId: item.id, itemName: item.name }));
+            setCatalogModalOpen(false);
+          }}
+        />
+      )}
+
+      <ConfirmationModal
+        isOpen={deleteItemTarget !== null}
+        onClose={() => setDeleteItemTarget(null)}
+        onConfirm={confirmDeleteItem}
+        isLoading={deleteItemBusy}
+        title="Delete Item"
+        message={`Delete "${deleteItemTarget?.itemName}" from this purchase order? This can't be undone.`}
+      />
 
       <div className={sectionCardCls}>
         <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Status History</h3>
