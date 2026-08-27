@@ -8,7 +8,6 @@ import {
   Loader2,
   AlertCircle,
   Calendar,
-  ShoppingCart,
   Zap,
   Package,
 } from "lucide-react";
@@ -19,7 +18,6 @@ import {
   ProjectScheduleTab,
   ProjectTasksTab,
   ProjectDocumentsTab,
-  ProjectProcurementTab,
   ProjectPerformanceTab,
   ProjectInventoryTab,
   ProjectTeamTab,
@@ -35,7 +33,6 @@ const tabs = [
   { id: "schedule", label: "Schedule", icon: Calendar },
   { id: "tasks", label: "Task", icon: CheckSquare },
   { id: "documents", label: "Documents", icon: FolderOpen },
-  { id: "procurement", label: "Procurement", icon: ShoppingCart },
   { id: "inventory", label: "Inventory", icon: Package },
   { id: "performance", label: "Energy Performance", icon: Zap },
   { id: "team", label: "Team", icon: Users },
@@ -111,8 +108,6 @@ const ProjectDetails: React.FC = () => {
         return <ProjectTasksTab project={project} onTaskUpdate={loadProject} />;
       case "documents":
         return <ProjectDocumentsTab projectId={String(project.id)} />;
-      case "procurement":
-        return <ProjectProcurementTab project={project} />;
       case "inventory":
         return <ProjectInventoryTab projectId={String(project.id)} />;
       case "performance":

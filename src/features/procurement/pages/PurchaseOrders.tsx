@@ -141,15 +141,10 @@ const CreatePurchaseOrderModal: React.FC<{ onClose: () => void; onCreated: () =>
     e.preventDefault();
     setFormError(null);
 
-    if (projectId === "") {
-      setFormError("Select a project.");
-      return;
-    }
-
     setSubmitting(true);
     try {
       await createMutation.mutateAsync({
-        projectId: String(projectId),
+        projectId: projectId === "" ? null : String(projectId),
         input: { vendorId },
       });
       onCreated();
@@ -184,7 +179,7 @@ const CreatePurchaseOrderModal: React.FC<{ onClose: () => void; onCreated: () =>
                 onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : "")}
                 className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
               >
-                <option value="">Select project</option>
+                <option value="">No project</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -228,7 +223,7 @@ const CreatePurchaseOrderModal: React.FC<{ onClose: () => void; onCreated: () =>
 
 /**
  * Purchase Orders (procurement pipeline v2, step 3) — a single org-wide table.
- * Purchase Orders are created directly here (project + vendor picked up front, no
+ * Purchase Orders are created directly here (project is optional, vendor picked up front, no
  * Purchase Request involved) — line items are added afterward from the detail page's
  * Overview tab. Creation is restricted to admin/finance/super_admin
  * (see roleMiddleware on the create route); there is no approval step.
