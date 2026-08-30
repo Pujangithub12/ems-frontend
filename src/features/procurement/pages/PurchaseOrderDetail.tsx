@@ -69,6 +69,7 @@ import { useOrganizationWarehousesQuery, useOrganizationItemCatalogQuery } from 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
 const pdfUrl = (id: number) => `${API_BASE}/api/purchase-orders/${id}/pdf`;
+const grnPdfUrl = (id: number) => `${API_BASE}/api/goods-receipts/${id}/pdf`;
 
 // ---- Status pill styling (kept local to this file, matching the rest of this feature) ----
 
@@ -906,6 +907,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     value={addItemForm.unitPrice}
                     onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
                     className={inputCls}
@@ -1752,31 +1754,39 @@ const GoodsReceiptTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged
                 <span className="text-[13px] font-semibold text-slate-900">{gr.grnNumber || `GRN #${gr.id}`}</span>
                 <Pill {...GRN_STATUS_STYLES[gr.status]} />
               </div>
-              {isAdmin && gr.status === "pending_inspection" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={busy}
-                    onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "accepted" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
-                  >
-                    <Check size={12} /> Accept
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "partially_accepted" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-60"
-                  >
-                    Partially Accept
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "rejected" }))}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
-                  >
-                    <XCircle size={12} /> Reject
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <a
+                  href={grnPdfUrl(gr.id)}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50"
+                >
+                  <Download size={12} /> Download PDF
+                </a>
+                {isAdmin && gr.status === "pending_inspection" && (
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "accepted" }))}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      <Check size={12} /> Accept
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "partially_accepted" }))}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-60"
+                    >
+                      Partially Accept
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => runAction(() => updateStatusMutation.mutateAsync({ id: gr.id, status: "rejected" }))}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
+                    >
+                      <XCircle size={12} /> Reject
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {isAdmin && gr.status === "pending_inspection" && (
