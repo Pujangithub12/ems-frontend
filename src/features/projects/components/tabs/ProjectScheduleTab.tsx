@@ -878,7 +878,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         align: "left",
         render: (t) => {
           const isSubtask = t.wbs.includes(".");
-          const label = `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${escapeHtml(t.text)}</span>`;
+          const label = `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span>`;
           const addBtn = editMode
             ? `<button type="button" class="gantt-row-add-btn" data-row-add-id="${t.id}" title="Add task below">+</button>`
             : "";
