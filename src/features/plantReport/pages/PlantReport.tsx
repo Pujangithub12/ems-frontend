@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   Factory,
   Users as UsersIcon,
@@ -6,13 +7,14 @@ import {
   Save,
   Table as TableIcon,
   Pencil,
-  Layers,
   SlidersHorizontal,
   Plus,
   Trash2,
   X,
   Check,
+  Upload,
   LineChart as LineChartIcon,
+  ChevronDown,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -51,19 +53,15 @@ import type {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-/** Fixed-order categorical palette (validated for colorblind-safe adjacent
- * contrast) — a field's color comes from its stable index in the org's full
- * numeric-field list, never from selection order, so toggling one series off
- * never repaints the others. */
 const CHART_COLORS = [
-  "#2a78d6", // blue
-  "#eb6834", // orange
-  "#1baf7a", // aqua
-  "#eda100", // yellow
-  "#e87ba4", // magenta
-  "#008300", // green
-  "#4a3aa7", // violet
-  "#e34948", // red
+  "#2a78d6", 
+  "#eb6834", 
+  "#1baf7a", 
+  "#eda100", 
+  "#e87ba4", 
+  "#008300", 
+  "#4a3aa7", 
+  "#e34948", 
 ];
 
 const FIELD_DATA_TYPES: { value: PlantReportFieldDataType; label: string }[] = [
@@ -270,7 +268,6 @@ const CustomFieldRow: React.FC<{
     </div>
   );
 };
-
 /** Admin-only modal for defining the org's extra Plant Report columns —
  * name + data type. Values themselves live per-report (see the "Custom
  * Fields" SectionCard in DailyEntryTab); this only manages the schema. */
@@ -672,27 +669,106 @@ const DailyEntryDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ op
     </Drawer>
   );
 };
+/** Multi-select dropdown for choosing */
+const FieldMultiSelect: React.FC<{
+  options: { id: number; name: string; color: string }[];
+  selectedIds: number[];
+  onToggle: (id: number) => void;
+}> = ({ options, selectedIds, onToggle }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-/** Multi-line chart over the currently-loaded month's reports, plotting
- * whichever numeric custom fields the user selects — x-axis is date, one
- * line per selected field. A field's color comes from its stable index in
- * the org's full numeric-field list (not selection order), so toggling one
- * field on/off never repaints the others; see CHART_COLORS. */
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  const summary =
+    selectedIds.length === 0
+      ? "Select fields"
+      : selectedIds.length === 1
+        ? options.find((o) => o.id === selectedIds[0])?.name ?? "1 selected"
+        : `${selectedIds.length} fields selected`;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 bg-white hover:bg-slate-50 transition-colors"
+      >
+        <span className="flex -space-x-1">
+          {selectedIds.slice(0, 3).map((id) => {
+            const opt = options.find((o) => o.id === id);
+            if (!opt) return null;
+            return (
+              <span
+                key={id}
+                className="w-2.5 h-2.5 rounded-full ring-2 ring-white flex-shrink-0"
+                style={{ backgroundColor: opt.color }}
+              />
+            );
+          })}
+        </span>
+        {summary}
+        <ChevronDown size={13} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-20 mt-1.5 w-64 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1.5">
+          {options.map((opt) => {
+            const active = selectedIds.includes(opt.id);
+            return (
+              <label
+                key={opt.id}
+                className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer text-[13px] text-slate-700 hover:bg-slate-50"
+              >
+                <input type="checkbox" checked={active} onChange={() => onToggle(opt.id)} className="flex-shrink-0" />
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: opt.color }} />
+                <span className="truncate">{opt.name}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Multi-line chart  */
 const PlantReportChart: React.FC<{
   reports: PlantDailyReport[];
   fields: PlantReportCustomField[];
 }> = ({ reports, fields }) => {
-  const numberFields = useMemo(() => fields.filter((f) => f.dataType === "number"), [fields]);
+  // Full numeric-field list — used only to derive each field's stable
+
+  const allNumberFields = useMemo(() => fields.filter((f) => f.dataType === "number"), [fields]);
+
+  const numberFields = useMemo(
+    () =>
+      allNumberFields.filter((f) =>
+        reports.some((r) => typeof r.customValues?.[String(f.id)] === "number"),
+      ),
+    [allNumberFields, reports],
+  );
+
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  // Default to the first few numeric fields once they load, so the chart
-  // isn't blank the first time an org has data — but never fight the user's
-  // own selection afterward (only fires while nothing is selected yet).
   useEffect(() => {
     if (selectedIds.length === 0 && numberFields.length > 0) {
       setSelectedIds(numberFields.slice(0, 3).map((f) => f.id));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numberFields]);
 
   const toggleField = (id: number) => {
@@ -716,37 +792,19 @@ const PlantReportChart: React.FC<{
 
   if (numberFields.length === 0) return null;
 
+  const dropdownOptions = numberFields.map((f) => ({
+    id: f.id,
+    name: f.name,
+    color: CHART_COLORS[allNumberFields.findIndex((nf) => nf.id === f.id) % CHART_COLORS.length],
+  }));
+
   return (
     <div className="p-4 mb-4 bg-white border rounded-xl shadow-md border-slate-200">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500">
           <LineChartIcon size={13} /> Trend Chart
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {numberFields.map((f) => {
-            const colorIndex = numberFields.findIndex((nf) => nf.id === f.id) % CHART_COLORS.length;
-            const color = CHART_COLORS[colorIndex];
-            const active = selectedIds.includes(f.id);
-            return (
-              <button
-                key={f.id}
-                onClick={() => toggleField(f.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-medium border transition-colors ${
-                  active
-                    ? "border-transparent text-white"
-                    : "border-slate-200 text-slate-500 bg-white hover:bg-slate-50"
-                }`}
-                style={active ? { backgroundColor: color } : undefined}
-              >
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: active ? "#fff" : color }}
-                />
-                {f.name}
-              </button>
-            );
-          })}
-        </div>
+        <FieldMultiSelect options={dropdownOptions} selectedIds={selectedIds} onToggle={toggleField} />
       </div>
 
       {selectedIds.length === 0 ? (
@@ -778,7 +836,7 @@ const PlantReportChart: React.FC<{
               {numberFields
                 .filter((f) => selectedIds.includes(f.id))
                 .map((f) => {
-                  const colorIndex = numberFields.findIndex((nf) => nf.id === f.id) % CHART_COLORS.length;
+                  const colorIndex = allNumberFields.findIndex((nf) => nf.id === f.id) % CHART_COLORS.length;
                   return (
                     <Line
                       key={f.id}
@@ -799,7 +857,6 @@ const PlantReportChart: React.FC<{
     </div>
   );
 };
-
 const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) => {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -817,7 +874,135 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
     month: "long",
     year: "numeric",
   });
-  const totalsLabel = projectFilter === "all" ? "All Projects" : "This Project";
+
+  // there's no fixed set of expected columns — any header whose text
+  // matches a custom field's name (case-insensitive) is imported 
+  
+  const dim = useMemo(() => new Date(year, month, 0).getDate(), [year, month]);
+  const dayDateStr = (day: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const prefillMutation = usePlantReportPrefill();
+  const createMutation = useCreatePlantReport();
+  const updateMutation = useUpdatePlantReport();
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (projectFilter === "all") {
+      setImportStatus("Select a specific project before uploading.");
+      return;
+    }
+    const projectId = projectFilter;
+    setUploadModalOpen(false);
+    setImporting(true);
+    setImportStatus(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+
+      const normalize = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+      const headerRowIdx = rows2d.findIndex((r) => r.some((c) => normalize(String(c)) === "day"));
+      if (headerRowIdx === -1) {
+        setImportStatus('Couldn\'t find a header row with a "Day" column.');
+        return;
+      }
+      const header = rows2d[headerRowIdx].map((c) => String(c));
+
+      // Match each header cell (left to right) against this org's custom
+      // field names — a field can only be claimed by one column, so two
+      // columns sharing the same header text (e.g. two "Average" columns)
+      // land on two distinct fields sharing that name, in column order.
+      let dayColIdx = -1;
+      const usedFieldIds = new Set<number>();
+      const colFieldMap: { colIdx: number; field: PlantReportCustomField }[] = [];
+      const ignoredColumns: string[] = [];
+      header.forEach((raw, idx) => {
+        const h = normalize(raw);
+        if (!h) return;
+        if (h === "day" && dayColIdx === -1) {
+          dayColIdx = idx;
+          return;
+        }
+        const match = fields.find((f) => normalize(f.name) === h && !usedFieldIds.has(f.id));
+        if (match) {
+          usedFieldIds.add(match.id);
+          colFieldMap.push({ colIdx: idx, field: match });
+        } else {
+          ignoredColumns.push(raw.replace(/\s+/g, " ").trim());
+        }
+      });
+
+      if (dayColIdx === -1) {
+        setImportStatus('Couldn\'t find a header row with a "Day" column.');
+        return;
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      for (let i = headerRowIdx + 1; i < rows2d.length; i++) {
+        const r = rows2d[i];
+        const dayRaw = r[dayColIdx];
+        const day = typeof dayRaw === "number" ? dayRaw : parseInt(String(dayRaw), 10);
+        if (!Number.isInteger(day) || day < 1 || day > dim) break; // stops at TOTAL row / end of data
+
+        const newValues: Record<string, PlantReportCustomValue> = {};
+        let matchedAny = false;
+        for (const { colIdx, field } of colFieldMap) {
+          const raw = r[colIdx];
+          if (raw === "" || raw === undefined || raw === null) continue;
+          matchedAny = true;
+          newValues[String(field.id)] = field.dataType === "boolean" ? Boolean(raw) : (raw as PlantReportCustomValue);
+        }
+        if (!matchedAny) {
+          skipped += 1;
+          continue;
+        }
+
+        const date = dayDateStr(day);
+        const prefill = await prefillMutation.mutateAsync({ date, projectId });
+        if (prefill.exists) {
+      
+          const payload: SavePlantReportPayload = {
+            date,
+            projectId,
+            staffUserIds: prefill.report.staff.map((s) => s.id),
+            customValues: { ...prefill.report.customValues, ...newValues },
+          };
+          
+          await updateMutation.mutateAsync({ id: prefill.report.id, payload });
+        } else {
+          const payload: SavePlantReportPayload = {
+            date,
+            projectId,
+            staffUserIds: [],
+            customValues: newValues,
+          };
+          
+          await createMutation.mutateAsync(payload);
+        }
+        imported += 1;
+      }
+
+      let msg = `${imported} day${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.`;
+      if (ignoredColumns.length > 0) {
+        msg += ` ${ignoredColumns.length} column${ignoredColumns.length === 1 ? "" : "s"} ignored (no matching field): ${ignoredColumns.join(", ")}.`;
+      }
+      setImportStatus(msg);
+    } catch (err) {
+      setImportStatus(getErrorMessage(err, "Failed to import the file."));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <div className="px-6 py-5">
@@ -860,13 +1045,100 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
           ))}
         </select>
         <span className="ml-2 text-[13px] font-medium text-slate-500">{monthLabel}</span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={handleFileSelected}
+        />
+        <button
+          onClick={() => setUploadModalOpen(true)}
+          disabled={importing}
+          title={projectFilter === "all" ? "Select a specific project before uploading" : undefined}
+          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+        >
+          {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          Upload Sheet
+        </button>
         <button
           onClick={onAddEntry}
-          className="flex items-center gap-1.5 px-4 py-2 ml-auto text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
         >
           <Plus size={14} /> Add Daily Entry
         </button>
       </div>
+
+      {importStatus && (
+        <div className="px-3 py-2 mb-4 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded">
+          {importStatus}
+        </div>
+      )}
+
+      {/* Upload Sheet modal — explains the expected column layout before the native file picker opens. */}
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="text-[14px] font-semibold text-slate-900">Upload Plant Report Sheet</h3>
+              <button
+                onClick={() => setUploadModalOpen(false)}
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-[12px] text-slate-600">
+              {projectFilter === "all" ? (
+                <p className="text-red-600">Select a specific project (not "All Projects") before uploading.</p>
+              ) : (
+                <>
+                  <p>
+                    The file must have a header row with a <span className="font-medium text-slate-800">Day</span>{" "}
+                    column (1, 2, 3…). No other column is required — any column whose header text matches one of
+                    this organization's field names below (case-insensitive) will be imported under that field;
+                    everything else is ignored:
+                  </p>
+                  {fields.length > 0 ? (
+                    <ul className="pl-4 space-y-1 list-disc marker:text-slate-400">
+                      {fields.map((f) => (
+                        <li key={f.id}>{f.name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="italic text-slate-400">
+                      No custom fields defined yet — add some via "Custom Fields" first, then upload.
+                    </p>
+                  )}
+                  <p>
+                    Each row's <span className="font-medium text-slate-800">Day</span> is matched against{" "}
+                    <span className="font-medium text-slate-800">{monthLabel}</span> — make sure that's the right
+                    month before uploading. Existing days keep any values not covered by the sheet. A trailing{" "}
+                    <span className="font-medium text-slate-800">Total</span> row (or anything after the daily rows)
+                    is automatically ignored. Accepted formats: .xlsx, .xls, .csv.
+                  </p>
+                </>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setUploadModalOpen(false)}
+                  className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={projectFilter === "all"}
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-50"
+                >
+                  <Upload size={14} />
+                  Choose File & Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isError && (
         <ErrorBanner message={getErrorMessage(error, "Failed to load report.")} className="mb-4" />
@@ -885,26 +1157,6 @@ const MonthlyReportTab: React.FC<{ onAddEntry: () => void }> = ({ onAddEntry }) 
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold text-slate-500">
-            <Layers size={13} /> {totalsLabel} Totals — {monthLabel}
-          </div>
-          <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4 lg:grid-cols-8">
-            {[
-              ["Days Logged", data.summary.daysLogged],
-              ...data.summary.customFieldTotals.map(
-                (t) => [`${t.name} (Total)`, t.sum != null ? t.sum : "—"] as [string, string | number],
-              ),
-            ].map(([label, value]) => (
-              <div
-                key={label as string}
-                className="p-3 transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
-              >
-                <div className="text-[11px] text-slate-500">{label}</div>
-                <div className="text-[16px] font-semibold text-slate-900">{value}</div>
-              </div>
-            ))}
-          </div>
-
           <PlantReportChart reports={data.reports} fields={fields} />
 
           <div className="overflow-x-auto bg-white border rounded-xl shadow-md border-slate-200">
