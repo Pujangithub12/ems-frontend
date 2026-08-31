@@ -291,6 +291,13 @@ export type Insurance = {
   claimStatus?: string | null;
 };
 
+export type LetterOfCredit = {
+  id: number;
+  lcNumber?: string | null;
+  lcCharge?: number | string | null;
+  lcCommission?: number | string | null;
+};
+
 export type CustomsDocumentType =
   | "bill_of_lading"
   | "commercial_invoice"
@@ -345,6 +352,7 @@ export type Shipment = {
   localTaxCost?: number | string | null;
   insurance?: Insurance | null;
   customs?: Customs | null;
+  letterOfCredit?: LetterOfCredit | null;
 };
 
 export type GoodsReceiptStatus = "pending_inspection" | "accepted" | "partially_accepted" | "rejected";
@@ -431,6 +439,85 @@ export type PurchaseOrder = {
 
 export type PurchaseOrderDetail = {
   purchaseOrder: PurchaseOrder;
+};
+
+export type PurchaseOrderPaymentEntry = {
+  id: number;
+  amount: number;
+  paidDate: string;
+  reference?: string | null;
+  notes?: string | null;
+};
+
+export type FinancePurchaseOrderRow = {
+  /** "po" rows are derived from a real PurchaseOrder; "manual" rows were entered by hand on the
+   * Finance page and have no PO behind them. Determines which id field is set and which
+   * endpoints (PO vs manual-record) edits should call. */
+  source: "po" | "manual";
+  poId: number | null;
+  manualRecordId: number | null;
+  poNumber?: string | null;
+  vendor?: { id: number; name: string } | null;
+  /** Vendor name for display — always populated, even for manual rows with no linked Vendor (vendor is then null). */
+  vendorName?: string | null;
+  itemNames: string[];
+  itemValue: number;
+  paymentTerms?: string | null;
+  amountPaid: number;
+  paidDate?: string | null;
+  outstandingBalance: number;
+  payments: PurchaseOrderPaymentEntry[];
+};
+
+export type VendorFinanceSummary = {
+  vendor: { id: number; name: string };
+  totals: {
+    totalProcurement: number;
+    totalAmountPaid: number;
+    totalOutstandingBalance: number;
+  };
+  rows: FinancePurchaseOrderRow[];
+};
+
+export type ItemCostReportRow = {
+  poId: number;
+  poNumber?: string | null;
+  itemName: string;
+  majorCost: number;
+  freight: number;
+  lcNumber?: string | null;
+  lcCharge: number;
+  lcCommission: number;
+  vat: number;
+};
+
+export type FinanceCostBreakdownRow = {
+  itemId: number | null;
+  itemName: string;
+  majorCost: number;
+  freight: number;
+  lcNumber?: string | null;
+  lcCharge: number;
+  lcCommission: number;
+  vat: number;
+  /** % of `vat` that's refundable. */
+  refundableMarginPercent: number;
+  /** vat * refundableMarginPercent / 100 — computed server-side. */
+  refundableAmount: number;
+  /** How much of the refundable amount has actually been refunded so far. */
+  refundedAmount: number;
+  /** refundableAmount - refundedAmount — computed server-side. */
+  toBeRefunded: number;
+  remarks?: string | null;
+};
+
+export type FinanceCostBreakdown = {
+  source: "po" | "manual";
+  poId?: number | null;
+  manualRecordId?: number | null;
+  poNumber?: string | null;
+  vendorName?: string | null;
+  rows: FinanceCostBreakdownRow[];
 };
 
 export type ReportKpi = {

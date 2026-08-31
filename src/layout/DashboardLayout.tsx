@@ -29,6 +29,7 @@ import {
   BellOff,
   Factory,
   Tag,
+  Wallet,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -302,6 +303,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "proforma-invoices",
     },
     {
+      path: `${prefix}/finance`,
+      label: "Finance",
+      icon: Wallet,
+      id: "finance",
+    },
+    {
       path: `${prefix}/tasks`,
       label: "Tasks",
       icon: CheckSquare,
@@ -381,6 +388,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     vendors: "Suppliers and vendors across all your projects",
     items: "Shared item catalog across all your projects",
     "proforma-invoices": "Proforma invoices across all your purchase orders",
+    finance: "Payments, balances and cost tracking across all your purchase orders",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
@@ -425,16 +433,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="h-1.5" />
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
-              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
+              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items" || it.id === "finance") return null;
               if (it.id === "purchase-orders") {
                 // The whole Procurement dropdown (Purchase Orders, Proforma Invoices, Vendors,
-                // Items) is available to admin/super_admin/finance (see RequireProcurementAccess
-                // in App.tsx) — finance reviews the Purchase Approval tab and needs the same
-                // vendor/item/proforma-invoice context admin has while doing so.
+                // Items, Finance) is available to admin/super_admin/finance (see
+                // RequireProcurementAccess in App.tsx).
                 if (!isAdmin && !isFinance) return null;
                 const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                 const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                 const itemsItem = navItems.find((n) => n.id === "items")!;
+                const financeItem = navItems.find((n) => n.id === "finance")!;
                 return (
                   <SidebarDropdown
                     key="purchase"
@@ -445,6 +453,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                       { to: vendorsItem.path, label: "Vendors" },
                       { to: itemsItem.path, label: "Items" },
+                      { to: financeItem.path, label: "Finance" },
                     ]}
                   />
                 );
@@ -500,17 +509,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="h-1.5" />
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
-                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items") return null;
+                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items" || it.id === "finance") return null;
                   if (it.id === "purchase-orders") {
                     // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
-                    // Vendors, Items) is available to admin/super_admin/finance (see
-                    // RequireProcurementAccess in App.tsx) — finance reviews the Purchase
-                    // Approval tab and needs the same vendor/item/proforma-invoice context
-                    // admin has while doing so.
+                    // Vendors, Items, Finance) is available to admin/super_admin/finance (see
+                    // RequireProcurementAccess in App.tsx).
                     if (!isAdmin && !isFinance) return null;
                     const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                     const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
                     const itemsItem = navItems.find((n) => n.id === "items")!;
+                    const financeItem = navItems.find((n) => n.id === "finance")!;
                     return (
                       <SidebarDropdown
                         key="purchase"
@@ -521,6 +529,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                           { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                           { to: vendorsItem.path, label: "Vendors" },
                           { to: itemsItem.path, label: "Items" },
+                          { to: financeItem.path, label: "Finance" },
                         ]}
                         onNavigate={() => setIsMobileMenuOpen(false)}
                       />

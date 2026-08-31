@@ -1051,6 +1051,29 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_grid_data .gantt_tree_content {
           padding-right: 22px;
         }
+        /* Sized against .gantt_cell above (not .gantt_tree_content, which is
+           shrink-to-fit) so the task-name tooltip fires anywhere in the
+           column's real box — the WBS number, the padding after a short
+           name, everywhere — not just directly over the visible text
+           letters. Purely a hover/title target: no fill, no border. Explicit
+           z-index:0 (lowest) so it never intercepts hover/clicks meant for
+           .gantt-row-add-btn (z-index:1) or the expand/collapse arrow
+           (.gantt_tree_icon, promoted to z-index:1 below) — both of which
+           it geometrically overlaps, since it spans the cell's full box. */
+        .gantt-task-tooltip-area {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+        }
+        /* Promoted above .gantt-task-tooltip-area (see there) purely so the
+           expand/collapse arrow — which dhtmlx renders to the left of this
+           column's own content, inside the same cell — stays clickable
+           through the tooltip overlay. position:relative with no offsets
+           has zero effect on its layout/geometry, only paint/hit-test order. */
+        .gantt_tree_icon {
+          position: relative;
+          z-index: 1;
+        }
 
         .gantt-row-menu-btn {
           display: inline-flex;
