@@ -1,5 +1,5 @@
 import api from "../../../api/axios";
-import { Shipment, ShipmentTransportMode, ShipmentStatus, Insurance, Customs, CustomsDocumentType } from "../../../types";
+import { Shipment, ShipmentTransportMode, ShipmentStatus, Insurance, Customs, CustomsDocumentType, LetterOfCredit } from "../../../types";
 
 export interface ShipmentInput {
   shipmentNo?: string;
@@ -66,6 +66,21 @@ export async function createInsurance(shipmentId: number, input: InsuranceInput)
 export async function updateInsurance(id: number, input: Partial<InsuranceInput>): Promise<Insurance> {
   const res = await api.put<{ insurance: Insurance }>(`/api/insurance/${id}`, input);
   return res.data.insurance;
+}
+
+export interface LetterOfCreditInput {
+  lcNumber?: string;
+  lcCharge?: number;
+  lcCommission?: number;
+}
+
+/** PUT create-or-update the (single, per-shipment) letter of credit ("only if applicable"). */
+export async function saveLetterOfCredit(shipmentId: number, input: LetterOfCreditInput): Promise<LetterOfCredit> {
+  const res = await api.put<{ letterOfCredit: LetterOfCredit }>(
+    `/api/shipments/${shipmentId}/letter-of-credit`,
+    input,
+  );
+  return res.data.letterOfCredit;
 }
 
 /** POST add customs to a shipment (international purchases). */

@@ -878,11 +878,17 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         align: "left",
         render: (t) => {
           const isSubtask = t.wbs.includes(".");
-          const label = `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span>`;
+          const fullName = escapeHtml(t.text);
+          // Absolutely-positioned overlay spanning the *entire* grid cell (not just the
+          // shrink-to-fit text span) — see the .gantt-task-tooltip-area CSS comment for why
+          // this is needed to make hovering anywhere in the box show the tooltip, not just
+          // directly over the visible letters.
+          const tooltipArea = `<span class="gantt-task-tooltip-area" title="${fullName}"></span>`;
+          const label = `<span class="gantt-wbs-label${isSubtask ? " gantt-wbs-label-sub" : ""}">${escapeHtml(t.wbs)}</span><span class="gantt-task-text">${fullName}</span>`;
           const addBtn = editMode
             ? `<button type="button" class="gantt-row-add-btn" data-row-add-id="${t.id}" title="Add task below">+</button>`
             : "";
-          return `${label}${addBtn}`;
+          return `${tooltipArea}${label}${addBtn}`;
         },
       },
       // Shown by default, same as before, but now toggleable via the "+"

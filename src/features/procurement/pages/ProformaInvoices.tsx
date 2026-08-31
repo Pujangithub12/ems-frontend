@@ -17,6 +17,7 @@ import {
   Clock,
   CheckCircle2,
   Ban,
+  ChevronRight,
 } from "lucide-react";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { useAuth } from "../../../context/AuthProvider";
@@ -96,6 +97,7 @@ const ProformaInvoicesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<ProformaInvoiceStatus | "">("");
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -417,101 +419,149 @@ const ProformaInvoicesPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-4">
-              {filtered.map((pi: ProformaInvoice) => (
-                <div key={pi.id} className={sectionCardCls}>
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <FileText size={14} className="text-slate-400" />
-                      <span className="text-[13px] font-semibold text-slate-900">{pi.piNumber || `PI #${pi.id}`}</span>
-                      <Pill {...PI_STATUS_STYLES[pi.status]} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {pi.filePath ? (
-                        <a href={fileUrl(pi.filePath)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline">
-                          <Paperclip size={11} /> {pi.fileName || "View file"}
-                        </a>
-                      ) : isAdmin ? (
-                        <label className="flex items-center gap-1 text-[11px] font-medium text-blue-700 cursor-pointer hover:underline">
-                          <Upload size={11} /> Upload PDF
-                          <input
-                            type="file"
-                            accept="application/pdf"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = "";
-                              if (!file) return;
-                              setRowBusyId(pi.id);
-                              await runRowAction(() => uploadFileMutation.mutateAsync({ id: pi.id, file }));
-                            }}
-                          />
-                        </label>
-                      ) : null}
-                      {isAdmin && pi.status === "waiting" && (
-                        <>
-                          <button
-                            disabled={rowBusyId === pi.id}
-                            onClick={() => {
-                              setRowBusyId(pi.id);
-                              runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "approved" }));
-                            }}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
+            <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                      <th className="w-8 px-3 py-2" />
+                      <th className="px-3 py-2 font-medium text-left">PI Number</th>
+                      <th className="px-3 py-2 font-medium text-left">Purchase Order</th>
+                      <th className="px-3 py-2 font-medium text-left">Status</th>
+                      <th className="px-3 py-2 font-medium text-left">PI Date</th>
+                      <th className="px-3 py-2 font-medium text-left">Currency</th>
+                      <th className="px-3 py-2 font-medium text-right">Exchange Rate</th>
+                      <th className="px-3 py-2 font-medium text-left">Validity</th>
+                      <th className="px-3 py-2 font-medium text-left">File</th>
+                      {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((pi: ProformaInvoice) => {
+                      const isExpanded = expandedId === pi.id;
+                      return (
+                        <React.Fragment key={pi.id}>
+                          <tr
+                            onClick={() => setExpandedId(isExpanded ? null : pi.id)}
+                            className="border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer"
                           >
-                            <Check size={12} /> Approve
-                          </button>
-                          <button
-                            disabled={rowBusyId === pi.id}
-                            onClick={() => {
-                              setRowBusyId(pi.id);
-                              runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "rejected" }));
-                            }}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
-                          >
-                            <XCircle size={12} /> Reject
-                          </button>
-                        </>
-                      )}
-                      {rowBusyId === pi.id && <Loader2 className="w-3.5 h-3.5 text-blue-900 animate-spin" />}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => pi.purchaseOrder?.id && navigate(`/${organizationId}/purchase-orders/${pi.purchaseOrder.id}`)}
-                    className="text-[11px] text-slate-500 hover:text-blue-900 hover:underline mb-3"
-                  >
-                    For {pi.purchaseOrder?.poNumber || `PO #${pi.purchaseOrder?.id ?? "--"}`} · {pi.purchaseOrder?.vendor?.name || "Unknown vendor"} · {pi.purchaseOrder?.project?.name || "Unknown project"}
-                  </button>
-                  <div className="grid grid-cols-2 gap-2 mb-3 sm:grid-cols-4 text-[12px]">
-                    <div><span className="text-slate-400">PI Date:</span> <span className="text-slate-700">{formatDate(pi.piDate)}</span></div>
-                    <div><span className="text-slate-400">Currency:</span> <span className="text-slate-700">{pi.currency}</span></div>
-                    <div><span className="text-slate-400">Exchange Rate:</span> <span className="text-slate-700">{toNumber(pi.exchangeRate)}</span></div>
-                    <div><span className="text-slate-400">Validity:</span> <span className="text-slate-700">{formatDate(pi.validityDate)}</span></div>
-                    {pi.paymentTerms && <div className="sm:col-span-4"><span className="text-slate-400">Payment Terms:</span> <span className="text-slate-700">{pi.paymentTerms}</span></div>}
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[12px]">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                          <th className="px-3 py-2 font-medium text-left">Item</th>
-                          <th className="px-3 py-2 font-medium text-right">Quantity</th>
-                          <th className="px-3 py-2 font-medium text-left">Unit</th>
-                          <th className="px-3 py-2 font-medium text-right">Unit Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pi.items.map((item) => (
-                          <tr key={item.id} className="border-b border-slate-100 last:border-0">
-                            <td className="px-3 py-2 text-slate-700">{item.itemName}</td>
-                            <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
-                            <td className="px-3 py-2 text-slate-600">{item.unit || "--"}</td>
-                            <td className="px-3 py-2 text-right text-slate-600">{formatCost(item.unitPrice)}</td>
+                            <td className="px-3 py-2 text-slate-400">
+                              <ChevronRight size={14} className={`transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                            </td>
+                            <td className="px-3 py-2 font-medium text-slate-800">{pi.piNumber || `PI #${pi.id}`}</td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => pi.purchaseOrder?.id && navigate(`/${organizationId}/purchase-orders/${pi.purchaseOrder.id}`)}
+                                className="text-left text-blue-900 hover:underline"
+                              >
+                                {pi.purchaseOrder?.poNumber || `PO #${pi.purchaseOrder?.id ?? "--"}`}
+                              </button>
+                              <div className="text-[11px] text-slate-400">
+                                {pi.purchaseOrder?.vendor?.name || "Unknown vendor"} · {pi.purchaseOrder?.project?.name || "Unknown project"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2"><Pill {...PI_STATUS_STYLES[pi.status]} /></td>
+                            <td className="px-3 py-2 text-slate-600">{formatDate(pi.piDate)}</td>
+                            <td className="px-3 py-2 text-slate-600">{pi.currency}</td>
+                            <td className="px-3 py-2 text-right text-slate-600">{toNumber(pi.exchangeRate)}</td>
+                            <td className="px-3 py-2 text-slate-600">{formatDate(pi.validityDate)}</td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              {pi.filePath ? (
+                                <a href={fileUrl(pi.filePath)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline">
+                                  <Paperclip size={11} /> {pi.fileName || "View file"}
+                                </a>
+                              ) : isAdmin ? (
+                                <label className="flex items-center gap-1 text-[11px] font-medium text-blue-700 cursor-pointer hover:underline">
+                                  <Upload size={11} /> Upload PDF
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (!file) return;
+                                      setRowBusyId(pi.id);
+                                      await runRowAction(() => uploadFileMutation.mutateAsync({ id: pi.id, file }));
+                                    }}
+                                  />
+                                </label>
+                              ) : (
+                                <span className="text-slate-300">--</span>
+                              )}
+                            </td>
+                            {isAdmin && (
+                              <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {pi.status === "waiting" && (
+                                    <>
+                                      <button
+                                        disabled={rowBusyId === pi.id}
+                                        onClick={() => {
+                                          setRowBusyId(pi.id);
+                                          runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "approved" }));
+                                        }}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
+                                      >
+                                        <Check size={12} /> Approve
+                                      </button>
+                                      <button
+                                        disabled={rowBusyId === pi.id}
+                                        onClick={() => {
+                                          setRowBusyId(pi.id);
+                                          runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "rejected" }));
+                                        }}
+                                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
+                                      >
+                                        <XCircle size={12} /> Reject
+                                      </button>
+                                    </>
+                                  )}
+                                  {rowBusyId === pi.id && <Loader2 className="w-3.5 h-3.5 text-blue-900 animate-spin" />}
+                                </div>
+                              </td>
+                            )}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
+                          {isExpanded && (
+                            <tr className="border-b border-slate-100 last:border-0 bg-slate-50/60">
+                              <td />
+                              <td colSpan={isAdmin ? 8 : 7} className="px-3 py-3">
+                                {pi.paymentTerms && (
+                                  <p className="mb-2 text-[12px] text-slate-600">
+                                    <span className="text-slate-400">Payment Terms:</span> {pi.paymentTerms}
+                                  </p>
+                                )}
+                                <div className="overflow-hidden bg-white border rounded-lg border-slate-200">
+                                  <table className="w-full text-[12px]">
+                                    <thead>
+                                      <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                                        <th className="px-3 py-2 font-medium text-left">Item</th>
+                                        <th className="px-3 py-2 font-medium text-right">Quantity</th>
+                                        <th className="px-3 py-2 font-medium text-left">Unit</th>
+                                        <th className="px-3 py-2 font-medium text-right">Unit Price</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {pi.items.map((item) => (
+                                        <tr key={item.id} className="border-b border-slate-100 last:border-0">
+                                          <td className="px-3 py-2 text-slate-700">{item.itemName}</td>
+                                          <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
+                                          <td className="px-3 py-2 text-slate-600">{item.unit || "--"}</td>
+                                          <td className="px-3 py-2 text-right text-slate-600">{formatCost(item.unitPrice)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

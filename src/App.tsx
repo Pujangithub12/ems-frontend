@@ -25,6 +25,10 @@ const PurchaseOrderDetail = lazy(() => import("./features/procurement/pages/Purc
 const ProformaInvoices = lazy(() => import("./features/procurement/pages/ProformaInvoices"));
 const Vendors = lazy(() => import("./features/procurement/pages/Vendors"));
 const Items = lazy(() => import("./features/procurement/pages/Items"));
+const Finance = lazy(() => import("./features/procurement/pages/Finance"));
+const VendorFinance = lazy(() => import("./features/procurement/pages/VendorFinance"));
+const ItemCostReport = lazy(() => import("./features/procurement/pages/ItemCostReport"));
+const FinanceCostBreakdown = lazy(() => import("./features/procurement/pages/FinanceCostBreakdown"));
 const Users = lazy(() => import("./features/users/pages/Users"));
 const ProjectPage = lazy(() => import("./features/projects/pages/Projects"));
 const ProjectDetails = lazy(() => import("./features/projects/pages/ProjectDetails"));
@@ -217,6 +221,38 @@ function App() {
               element={
                 <RequireProcurementAccess>
                   <Items />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/finance"
+              element={
+                <RequireProcurementAccess>
+                  <Finance />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/finance/vendors/:vendorId"
+              element={
+                <RequireProcurementAccess>
+                  <VendorFinance />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/finance/items"
+              element={
+                <RequireProcurementAccess>
+                  <ItemCostReport />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/finance/records/:source/:id"
+              element={
+                <RequireProcurementAccess>
+                  <FinanceCostBreakdown />
                 </RequireProcurementAccess>
               }
             />

@@ -11,6 +11,7 @@ import {
   Check,
   Upload,
   Trash2,
+  Download,
 } from "lucide-react";
 import { useAuth } from "../../../../context/AuthProvider";
 import { Project, MonthlyPerformance, GenerationSummaryBucket } from "../../../../types";
@@ -475,6 +476,59 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
     }
   };
 
+  // Exports exactly what's currently on screen — the daily grid for the selected period, and
+  // the 12-month financial/generation summary table — as two sheets in one .xlsx download.
+  const exportToExcel = () => {
+    const rawNum = (value: number | string | null | undefined) => (value == null || value === "" ? "" : toNumber(value));
+
+    const dailySheetData = [
+      ["Date", "Check Meter Initial", "Check Meter Final", "Check Meter Diff", "Main Meter Initial", "Main Meter Final", "Main Meter Diff"],
+      ...dailyEntries.map((d) => [
+        dateLabel(d.date),
+        rawNum(d.checkMeterInitial),
+        rawNum(d.checkMeterFinal),
+        rawNum(d.checkMeterDifference),
+        rawNum(d.mainMeterInitial),
+        rawNum(d.mainMeterFinal),
+        rawNum(d.mainMeterDifference),
+      ]),
+      [],
+      ["Total (Main Meter)", "", "", "", "", "", dailyTotal],
+    ];
+
+    const monthlySheetData = [
+      ["Month", "Contract Energy", "Actual Generation", "Income Received", "Monthly Expenditure", "Spare Part Purchase"],
+      ...monthRows.map((r) => {
+        const row = r.bsMonth ? rowsByMonth.get(r.bsMonth) : undefined;
+        return [
+          r.label,
+          rawNum(row?.contractEnergy),
+          rawNum(r.generation),
+          rawNum(row?.incomeReceived),
+          rawNum(row?.monthlyExpenditure),
+          rawNum(row?.sparePartPurchase),
+        ];
+      }),
+      [
+        "Total",
+        totals.contractEnergy,
+        totals.actualGeneration,
+        totals.incomeReceived,
+        totals.monthlyExpenditure,
+        totals.sparePartPurchase,
+      ],
+    ];
+
+    const sanitizeSheetName = (name: string) => name.replace(/[:\\/?*[\]]/g, " ").slice(0, 31);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailySheetData), sanitizeSheetName(`Daily - ${periodLabel}`));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monthlySheetData), sanitizeSheetName(`Monthly Summary - ${year}`));
+
+    const fileName = `${project.name || "Project"} Energy Performance`.replace(/[\\/:*?"<>|]/g, " ");
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
+  };
+
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -583,6 +637,14 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
       <div className="flex items-center justify-between">
         <h3 className="text-[13px] font-semibold text-slate-900">Daily Generation Entry</h3>
         <div className="flex items-center gap-2">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+            title="Download the daily entries and monthly summary as an Excel file"
+          >
+            <Download size={14} />
+            Export
+          </button>
           {isAdmin && selectedDates.size > 0 && (
             <button
               onClick={() => setDeleteTarget(Array.from(selectedDates))}

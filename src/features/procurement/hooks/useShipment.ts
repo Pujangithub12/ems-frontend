@@ -4,12 +4,14 @@ import {
   updateShipment,
   createInsurance,
   updateInsurance,
+  saveLetterOfCredit,
   createCustoms,
   updateCustoms,
   uploadCustomsDocument,
   deleteCustomsDocument,
   ShipmentInput,
   InsuranceInput,
+  LetterOfCreditInput,
   CustomsInput,
 } from "../api/shipment.api";
 import { CustomsDocumentType } from "../../../types";
@@ -38,6 +40,13 @@ export function useCreateInsuranceMutation() {
 export function useUpdateInsuranceMutation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: Partial<InsuranceInput> }) => updateInsurance(id, input),
+  });
+}
+
+export function useSaveLetterOfCreditMutation() {
+  return useMutation({
+    mutationFn: ({ shipmentId, input }: { shipmentId: number; input: LetterOfCreditInput }) =>
+      saveLetterOfCredit(shipmentId, input),
   });
 }
 

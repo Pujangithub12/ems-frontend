@@ -36,6 +36,7 @@ import {
   Shipment,
   Insurance,
   Customs,
+  LetterOfCredit,
 } from "../../../types";
 import {
   usePurchaseOrderDetailQuery,
@@ -53,6 +54,7 @@ import {
   useUpdateShipmentMutation,
   useCreateInsuranceMutation,
   useUpdateInsuranceMutation,
+  useSaveLetterOfCreditMutation,
   useCreateCustomsMutation,
   useUpdateCustomsMutation,
   useUploadCustomsDocumentMutation,
@@ -1230,6 +1232,7 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       {shipment && (
         <>
           <InsuranceBlock shipment={shipment} isAdmin={isAdmin} onChanged={onChanged} />
+          <LetterOfCreditBlock shipment={shipment} isAdmin={isAdmin} onChanged={onChanged} />
           <CustomsBlock shipment={shipment} isAdmin={isAdmin} onChanged={onChanged} />
         </>
       )}
@@ -1321,6 +1324,82 @@ const InsuranceBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged
         <div>
           <label className={labelCls}>Claim Status</label>
           <input disabled={!isAdmin} value={form.claimStatus} onChange={(e) => setForm({ ...form, claimStatus: e.target.value })} className={inputCls} placeholder="Optional" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type LetterOfCreditForm = { lcNumber: string; lcCharge: string; lcCommission: string };
+const emptyLetterOfCreditForm: LetterOfCreditForm = { lcNumber: "", lcCharge: "", lcCommission: "" };
+const letterOfCreditFormFromEntity = (lc: LetterOfCredit): LetterOfCreditForm => ({
+  lcNumber: lc.lcNumber || "",
+  lcCharge: lc.lcCharge !== null && lc.lcCharge !== undefined ? String(lc.lcCharge) : "",
+  lcCommission: lc.lcCommission !== null && lc.lcCommission !== undefined ? String(lc.lcCommission) : "",
+});
+
+const LetterOfCreditBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged: () => Promise<void> }> = ({ shipment, isAdmin, onChanged }) => {
+  const saveMutation = useSaveLetterOfCreditMutation();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const letterOfCredit = shipment.letterOfCredit;
+  const [form, setForm] = useState<LetterOfCreditForm>(
+    letterOfCredit ? letterOfCreditFormFromEntity(letterOfCredit) : emptyLetterOfCreditForm,
+  );
+
+  useEffect(() => {
+    setForm(letterOfCredit ? letterOfCreditFormFromEntity(letterOfCredit) : emptyLetterOfCreditForm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [letterOfCredit?.id]);
+
+  const handleSave = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await saveMutation.mutateAsync({
+        shipmentId: shipment.id,
+        input: {
+          lcNumber: form.lcNumber.trim() || undefined,
+          lcCharge: numOrUndef(form.lcCharge),
+          lcCommission: numOrUndef(form.lcCommission),
+        },
+      });
+      await onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to save letter of credit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!letterOfCredit && !isAdmin) return null;
+
+  return (
+    <div className={sectionCardCls}>
+      {error && <div className="mb-3 px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
+          <FileCheck size={14} className="text-slate-400" /> Letter of Credit
+        </h3>
+        {isAdmin && (
+          <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {letterOfCredit ? "Save Changes" : "Add Letter of Credit"}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div>
+          <label className={labelCls}>LC Number</label>
+          <input disabled={!isAdmin} value={form.lcNumber} onChange={(e) => setForm({ ...form, lcNumber: e.target.value })} className={inputCls} placeholder="Optional" />
+        </div>
+        <div>
+          <label className={labelCls}>LC Charge</label>
+          <input type="number" disabled={!isAdmin} value={form.lcCharge} onChange={(e) => setForm({ ...form, lcCharge: e.target.value })} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>LC Commission</label>
+          <input type="number" disabled={!isAdmin} value={form.lcCommission} onChange={(e) => setForm({ ...form, lcCommission: e.target.value })} className={inputCls} />
         </div>
       </div>
     </div>
