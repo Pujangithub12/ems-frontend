@@ -66,6 +66,74 @@ const COLUMN_DATA_TYPES: { value: PlantReportColumnDataType; label: string }[] =
 
 const CHART_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
+// ---- Flexible date parsing — accept dates typed/pasted in nearly any common
+// format and normalize to "YYYY-MM-DD" for storage. ----
+
+const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+function normalizeYear(y: number): number {
+  if (y < 100) return y < 70 ? 2000 + y : 1900 + y;
+  return y;
+}
+
+function toIsoIfValid(year: number, month: number, day: number): string | null {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Parses a date typed/pasted in nearly any common format — "18-Sep-2026",
+ * "18/09/2026", "2026-09-18", "18 Sep 26", "September 18, 2026" — into a
+ * "YYYY-MM-DD" string, or null if it can't be understood. Ambiguous numeric
+ * day/month pairs are read as DD/MM (day-first), matching this org's paper
+ * forms and Excel exports rather than the US MM/DD convention. */
+function parseFlexibleDate(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return toIsoIfValid(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  const parts = raw.replace(/,/g, " ").split(/[\s\-/.]+/).filter(Boolean);
+  if (parts.length === 3) {
+    const monthIdx = parts.findIndex((p) => /^[a-zA-Z]/.test(p) && MONTH_NAMES.includes(p.slice(0, 3).toLowerCase()));
+    if (monthIdx !== -1) {
+      const month = MONTH_NAMES.indexOf(parts[monthIdx].slice(0, 3).toLowerCase()) + 1;
+      const rest = parts.filter((_, i) => i !== monthIdx).map(Number);
+      if (rest.length === 2 && rest.every((n) => Number.isFinite(n))) {
+        const [a, b] = rest;
+        const day = a > 31 ? b : a;
+        const year = normalizeYear(a > 31 ? a : b);
+        return toIsoIfValid(year, month, day);
+      }
+    }
+  }
+
+  const numeric = raw.match(/^(\d{1,4})[\-/.](\d{1,2})[\-/.](\d{1,4})$/);
+  if (numeric) {
+    const [, p1, p2, p3] = numeric;
+    if (p1.length === 4) return toIsoIfValid(Number(p1), Number(p2), Number(p3));
+    return toIsoIfValid(normalizeYear(Number(p3)), Number(p2), Number(p1));
+  }
+
+  const fallback = new Date(raw);
+  if (!Number.isNaN(fallback.getTime())) {
+    return toIsoIfValid(fallback.getFullYear(), fallback.getMonth() + 1, fallback.getDate());
+  }
+
+  return null;
+}
+
+/** Formats a stored "YYYY-MM-DD" value for display, e.g. "18 Sep 2026". */
+function formatDateDisplay(value: string): string {
+  const parsed = parseFlexibleDate(value);
+  const d = new Date(`${parsed ?? value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 // ---- Add / rename table modal ----
 
 const TableNameModal: React.FC<{
@@ -316,12 +384,30 @@ const Cell: React.FC<{
   column: PlantReportColumn;
   value: PlantReportCellValue;
   onCommit: (value: PlantReportCellValue) => void;
-}> = ({ column, value, onCommit }) => {
+  editable: boolean;
+}> = ({ column, value, onCommit, editable }) => {
   const [draft, setDraft] = useState<string>(value == null ? "" : String(value));
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    setDraft(value == null ? "" : String(value));
-  }, [value]);
+    if (!focused) setDraft(value == null ? "" : String(value));
+  }, [value, focused]);
+
+  if (!editable) {
+    const display =
+      column.dataType === "boolean"
+        ? value
+          ? "Yes"
+          : "No"
+        : column.dataType === "date"
+          ? value == null
+            ? ""
+            : formatDateDisplay(String(value))
+          : value == null
+            ? ""
+            : String(value);
+    return <span className="block px-1.5 py-1 text-[12.5px] text-slate-700 truncate">{display || "—"}</span>;
+  }
 
   if (column.dataType === "boolean") {
     return (
@@ -335,13 +421,27 @@ const Cell: React.FC<{
   }
 
   if (column.dataType === "date") {
+    const shownValue = focused ? draft : value == null ? "" : formatDateDisplay(String(value));
+    const isInvalidDraft = focused && draft.trim() !== "" && parseFlexibleDate(draft) === null;
     return (
       <input
-        type="date"
-        value={draft}
+        type="text"
+        value={shownValue}
+        placeholder="e.g. 18-Sep-2026"
+        onFocus={() => {
+          setFocused(true);
+          setDraft(value == null ? "" : String(value));
+        }}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => onCommit(draft || null)}
-        className="w-full px-1.5 py-1 text-[12.5px] bg-transparent outline-none focus:bg-white rounded"
+        onBlur={() => {
+          setFocused(false);
+          const parsed = draft.trim() === "" ? null : parseFlexibleDate(draft);
+          onCommit(parsed);
+        }}
+        title={isInvalidDraft ? "Couldn't understand that date — try formats like 18-Sep-2026, 18/09/2026, or 2026-09-18" : undefined}
+        className={`w-full px-1.5 py-1 text-[12.5px] bg-transparent outline-none focus:bg-white rounded ${
+          isInvalidDraft ? "text-red-600" : ""
+        }`}
       />
     );
   }
@@ -381,7 +481,7 @@ function inferColumnType(values: unknown[]): PlantReportColumnDataType {
   const sample = values.filter((v) => v !== null && v !== undefined && String(v).trim() !== "").slice(0, 50);
   if (sample.length === 0) return "text";
   if (sample.every((v) => typeof v === "number" || (typeof v === "string" && Number.isFinite(Number(v))))) return "number";
-  if (sample.every((v) => !Number.isNaN(new Date(String(v)).getTime()))) return "date";
+  if (sample.every((v) => parseFlexibleDate(String(v)) !== null)) return "date";
   return "text";
 }
 
@@ -603,8 +703,19 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
         return;
       }
       const columns = headers.map((name) => ({ name, dataType: inferColumnType(rows.map((r) => r[name])) }));
+      const normalizedRows = rows.map((row) => {
+        const out: Record<string, PlantReportCellValue> = {};
+        for (const col of columns) {
+          const raw = row[col.name];
+          out[col.name] =
+            col.dataType === "date" && raw != null && String(raw).trim() !== ""
+              ? parseFlexibleDate(String(raw))
+              : (raw as PlantReportCellValue);
+        }
+        return out;
+      });
       setPreviewError(null);
-      setPending({ fileName: file.name, columns, rows: rows as Record<string, PlantReportCellValue>[] });
+      setPending({ fileName: file.name, columns, rows: normalizedRows });
     } catch (err) {
       setMessage({ kind: "error", text: getErrorMessage(err, "Failed to read that file.") });
     }
@@ -653,7 +764,18 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
           existingColumnNames={existingColumnNames}
           requireDateColumn={requireDateColumn}
           onChangeColumnType={(name, dataType) =>
-            setPending((p) => (p ? { ...p, columns: p.columns.map((c) => (c.name === name ? { ...c, dataType } : c)) } : p))
+            setPending((p) => {
+              if (!p) return p;
+              const columns = p.columns.map((c) => (c.name === name ? { ...c, dataType } : c));
+              const rows =
+                dataType === "date"
+                  ? p.rows.map((r) => {
+                      const raw = r[name];
+                      return { ...r, [name]: raw == null || String(raw).trim() === "" ? null : parseFlexibleDate(String(raw)) };
+                    })
+                  : p.rows;
+              return { ...p, columns, rows };
+            })
           }
           onConfirm={handleConfirm}
           onCancel={() => setPending(null)}
@@ -808,6 +930,10 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<PlantReportColumn | null>(null);
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<PlantReportRow | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [dateColumnId, setDateColumnId] = useState<number | "">("");
@@ -851,6 +977,28 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
     );
   };
 
+  const toggleRowSelected = (id: number, checked: boolean) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    setIsBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedRowIds).map((id) => deleteRowMutation.mutateAsync({ id, tableId })));
+      setSelectedRowIds(new Set());
+      setConfirmBulkDelete(false);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to delete selected rows."));
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="px-6 py-5">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -886,12 +1034,45 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setEditMode((v) => !v)}
+            title={editMode ? "Lock table from edits" : "Enable editing cells directly in the table"}
+            className={`flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium rounded-lg border transition-colors ${
+              editMode ? "bg-blue-900 text-white border-blue-900 hover:bg-blue-800" : "text-slate-600 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            <Pencil size={13} />
+            {editMode ? "Editing" : "Edit"}
+          </button>
           <ExportSheetButton tableName={tableName} columns={columns} rows={rows} />
           <UploadSheetButton tableId={tableId} existingColumns={columns} requireDateColumn={isDefaultTable} />
         </div>
       </div>
 
       {actionError && <ErrorBanner message={actionError} onDismiss={() => setActionError(null)} className="mb-3" />}
+
+      {selectedRowIds.size > 0 && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 mb-3 border rounded-lg bg-blue-50/60 border-blue-200">
+          <span className="text-[12.5px] font-medium text-blue-900">
+            {selectedRowIds.size} row{selectedRowIds.size === 1 ? "" : "s"} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedRowIds(new Set())}
+              className="px-2.5 py-1 text-[12px] font-medium rounded-md text-slate-600 hover:bg-slate-200/60"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+            >
+              <Trash2 size={12} />
+              Delete selected
+            </button>
+          </div>
+        </div>
+      )}
 
       {granularity !== "daily" ? (
         dateColumn ? (
@@ -919,6 +1100,19 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/60">
+                <th className="w-8 px-2 py-2.5 border-r border-slate-100">
+                  {rows.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.size === rows.length}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedRowIds.size > 0 && selectedRowIds.size < rows.length;
+                      }}
+                      onChange={(e) => setSelectedRowIds(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
+                      className="w-3.5 h-3.5 rounded accent-blue-800"
+                    />
+                  )}
+                </th>
                 {columns.map((col) => (
                   <th key={col.id} className="py-2.5 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
                     <div className="flex items-center gap-1.5">
@@ -944,20 +1138,42 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 1} className="py-8 text-[12.5px] text-center text-slate-400">
+                  <td colSpan={columns.length + 2} className="py-8 text-[12.5px] text-center text-slate-400">
                     No rows yet — add one below.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                  <tr
+                    key={row.id}
+                    className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/60 ${
+                      selectedRowIds.has(row.id) ? "bg-blue-50/40" : ""
+                    }`}
+                  >
+                    <td className="px-2 py-1 border-r border-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(row.id)}
+                        onChange={(e) => toggleRowSelected(row.id, e.target.checked)}
+                        className="w-3.5 h-3.5 rounded accent-blue-800"
+                      />
+                    </td>
                     {columns.map((col) => (
                       <td key={col.id} className="px-2 py-1 border-r border-slate-50 last:border-r-0">
-                        <Cell column={col} value={row.values[String(col.id)] ?? null} onCommit={(v) => commitCell(row, col, v)} />
+                        <Cell
+                          column={col}
+                          value={row.values[String(col.id)] ?? null}
+                          onCommit={(v) => commitCell(row, col, v)}
+                          editable={editMode}
+                        />
                       </td>
                     ))}
-                    <td className="px-2 py-1 text-right">
-                      <button onClick={() => setConfirmDeleteRow(row)} className="p-1 rounded text-slate-300 hover:text-red-600 hover:bg-red-50">
+                    <td className="px-2 py-1 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setConfirmDeleteRow(row)}
+                        title="Delete row"
+                        className="p-1 rounded text-slate-300 hover:text-red-600 hover:bg-red-50"
+                      >
                         <Trash2 size={12} />
                       </button>
                     </td>
@@ -988,7 +1204,6 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
           onClose={() => setEditingColumn(null)}
         />
       )}
-
       <ConfirmationModal
         isOpen={!!confirmDeleteRow}
         onClose={() => setConfirmDeleteRow(null)}
@@ -1002,9 +1217,20 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
         confirmText="Delete"
         isLoading={deleteRowMutation.isPending}
       />
+
+      <ConfirmationModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDelete}
+        title="Delete Rows"
+        message={`Delete ${selectedRowIds.size} selected row${selectedRowIds.size === 1 ? "" : "s"}? This can't be undone.`}
+        confirmText="Delete"
+        isLoading={isBulkDeleting}
+      />
     </div>
   );
 };
+
 // ---- Charts tab — pick any table + numeric column(s) to plot as a line or bar chart ----
 
 const formatXValue = (value: PlantReportCellValue, dataType: PlantReportColumnDataType): string => {
