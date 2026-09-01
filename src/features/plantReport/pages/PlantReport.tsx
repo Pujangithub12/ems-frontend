@@ -584,41 +584,55 @@ async function parseSheetFile(
   return { headers, rows, dateColumnNames };
 }
 
-/** Infers a column's data type from a sample of its parsed cell values —
- * "number" if every non-empty value parses as one, "date" if every one
- * parses as a valid date, otherwise "text". */
-function inferColumnType(values: unknown[]): PlantReportColumnDataType {
-  const sample = values.filter((v) => v !== null && v !== undefined && String(v).trim() !== "").slice(0, 50);
-  if (sample.length === 0) return "text";
-  if (sample.every((v) => typeof v === "number" || (typeof v === "string" && Number.isFinite(Number(v))))) return "number";
-  if (sample.every((v) => toIsoDateValue(v) !== null)) return "date";
-  return "text";
+/** Coerces one parsed spreadsheet cell value to match an *existing* column's
+ * data type — import never creates columns, so every value that survives
+ * gets forced into the shape its target column already declared, the same
+ * way a manually-typed cell edit would. */
+function coerceToColumnType(raw: unknown, dataType: PlantReportColumnDataType): PlantReportCellValue {
+  if (raw == null || String(raw).trim() === "") return null;
+  switch (dataType) {
+    case "date":
+      return toIsoDateValue(raw);
+    case "number": {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      return Number.isFinite(n) ? n : null;
+    }
+    case "boolean":
+      return typeof raw === "boolean" ? raw : /^(true|yes|1)$/i.test(String(raw).trim());
+    case "text":
+    default:
+      return String(raw).trim();
+  }
 }
 
 type PendingImport = {
   fileName: string;
-  columns: { name: string; dataType: PlantReportColumnDataType }[];
+  /** Columns from the file that matched an existing column by name — these
+   * are the only ones that will actually be imported. */
+  matchedColumns: { id: number; name: string; dataType: PlantReportColumnDataType }[];
+  /** Header text from the file with no matching existing column — shown as
+   * a warning; their data is simply not imported. */
+  unmatchedHeaders: string[];
+  /** Keyed by column id (string), matching PlantReportRow.values. */
   rows: Record<string, PlantReportCellValue>[];
 };
 
 const PREVIEW_ROW_LIMIT = 15;
 
 /** Shown after a file is parsed, before anything is actually uploaded — lets
- * the user see exactly what columns/rows will be created and back out. */
+ * the user see exactly which existing columns will be filled (and which of
+ * the file's headers have no match and will be skipped) and back out.
+ * Import never creates columns — add them manually first if a header should
+ * have one. */
 const ImportPreviewModal: React.FC<{
   pending: PendingImport;
-  existingColumnNames: Set<string>;
-  requireDateColumn: boolean;
-  onChangeColumnType: (name: string, dataType: PlantReportColumnDataType) => void;
   onConfirm: () => void;
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
-}> = ({ pending, existingColumnNames, requireDateColumn, onChangeColumnType, onConfirm, onCancel, isSubmitting, error }) => {
+}> = ({ pending, onConfirm, onCancel, isSubmitting, error }) => {
   const previewRows = pending.rows.slice(0, PREVIEW_ROW_LIMIT);
-  const newColumnCount = pending.columns.filter((c) => !existingColumnNames.has(c.name.trim().toLowerCase())).length;
-  const hasDateColumn = pending.columns.some((c) => c.dataType === "date");
-  const missingRequiredDate = requireDateColumn && !hasDateColumn;
+  const nothingToImport = pending.matchedColumns.length === 0;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -635,60 +649,50 @@ const ImportPreviewModal: React.FC<{
 
         <div className="p-4">
           <p className="mb-3 text-[12.5px] text-slate-600">
-            {pending.rows.length} row{pending.rows.length === 1 ? "" : "s"} · {pending.columns.length} column{pending.columns.length === 1 ? "" : "s"}
-            {newColumnCount > 0 ? ` (${newColumnCount} new)` : ""}
+            {pending.rows.length} row{pending.rows.length === 1 ? "" : "s"} · {pending.matchedColumns.length} matched column
+            {pending.matchedColumns.length === 1 ? "" : "s"}
             {pending.rows.length > PREVIEW_ROW_LIMIT ? ` — showing first ${PREVIEW_ROW_LIMIT}` : ""}
           </p>
 
-          <div className="overflow-x-auto border rounded-lg border-slate-200 max-h-80">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0">
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  {pending.columns.map((col) => {
-                    const isNew = !existingColumnNames.has(col.name.trim().toLowerCase());
-                    return (
-                      <th key={col.name} className="py-2 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
+          {nothingToImport ? (
+            <div className="flex flex-col items-center gap-1.5 py-10 text-center border border-dashed rounded-lg border-slate-200">
+              <p className="text-[12.5px] font-medium text-slate-600">None of this file's columns match a column in this table.</p>
+              <p className="text-[12px] text-slate-400">Add matching columns first, or check the header names in your file.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto border rounded-lg border-slate-200 max-h-80">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0">
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    {pending.matchedColumns.map((col) => (
+                      <th key={col.id} className="py-2 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
                         <div className="flex items-center gap-1.5 normal-case">
                           <span className="font-semibold text-slate-700">{col.name}</span>
-                          <select
-                            value={col.dataType}
-                            onChange={(e) => onChangeColumnType(col.name, e.target.value as PlantReportColumnDataType)}
-                            className="text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 outline-none"
-                          >
-                            {COLUMN_DATA_TYPES.map((t) => (
-                              <option key={t.value} value={t.value}>
-                                {t.label}
-                              </option>
-                            ))}
-                          </select>
-                          {isNew && (
-                            <span className="text-[9px] font-semibold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                              new
-                            </span>
-                          )}
+                          <span className="text-[9px] font-semibold text-slate-400">({col.dataType})</span>
                         </div>
                       </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row, i) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0">
-                    {pending.columns.map((col) => (
-                      <td key={col.name} className="px-3 py-1.5 text-[12px] text-slate-600 whitespace-nowrap border-r border-slate-50 last:border-r-0">
-                        {row[col.name] == null ? <span className="text-slate-300">—</span> : String(row[col.name])}
-                      </td>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {previewRows.map((row, i) => (
+                    <tr key={i} className="border-b border-slate-100 last:border-0">
+                      {pending.matchedColumns.map((col) => (
+                        <td key={col.id} className="px-3 py-1.5 text-[12px] text-slate-600 whitespace-nowrap border-r border-slate-50 last:border-r-0">
+                          {row[String(col.id)] == null ? <span className="text-slate-300">—</span> : String(row[String(col.id)])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-          {missingRequiredDate && (
+          {pending.unmatchedHeaders.length > 0 && (
             <p className="mt-2 text-[11.5px] text-amber-600">
-              This table requires a Date column. Mark one of the columns above as "Date" (or rename/reformat one first) to continue.
+              No matching column for: {pending.unmatchedHeaders.join(", ")} — that data will be skipped. Add columns with these exact
+              names first if you want them imported.
             </p>
           )}
           {error && <p className="mt-2 text-[11.5px] text-red-600">{error}</p>}
@@ -703,8 +707,8 @@ const ImportPreviewModal: React.FC<{
             </button>
             <button
               onClick={onConfirm}
-              disabled={isSubmitting || missingRequiredDate}
-              title={missingRequiredDate ? "Mark a column as Date first" : undefined}
+              disabled={isSubmitting || nothingToImport}
+              title={nothingToImport ? "No matched columns to import" : undefined}
               className="flex items-center justify-center flex-1 gap-1.5 px-3 py-2 text-[12.5px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
@@ -721,10 +725,9 @@ const ImportPreviewModal: React.FC<{
  * explains what the file needs to look like so an upload isn't a guessing game. */
 const FileFormatInfoModal: React.FC<{
   inputId: string;
-  requireDateColumn: boolean;
   onFileChosen: (file: File | undefined) => void;
   onClose: () => void;
-}> = ({ inputId, requireDateColumn, onFileChosen, onClose }) => (
+}> = ({ inputId, onFileChosen, onClose }) => (
   <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
     <div className="w-full max-w-md overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/60">
@@ -762,8 +765,8 @@ const FileFormatInfoModal: React.FC<{
           <li>.csv, .xlsx or .xls</li>
           <li>The first row must be column headers — one header per column, no blank/merged header cells</li>
           <li>Every row after that is one entry</li>
-          <li>A header matching an existing column name (case-insensitive) fills that column; any other header creates a new column automatically</li>
-          {requireDateColumn && <li className="text-amber-600">This table requires a Date column — your file must include one</li>}
+          <li>A header must exactly match an existing column's name (case-insensitive) to be imported — this never creates new columns, so add a matching column first if one doesn't exist yet</li>
+          <li>Any header with no matching column is skipped — you'll see which ones in the preview</li>
           <li>You'll see a preview before anything is actually uploaded</li>
         </ul>
         <label
@@ -788,11 +791,7 @@ const FileFormatInfoModal: React.FC<{
   </div>
 );
 
-const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantReportColumn[]; requireDateColumn: boolean }> = ({
-  tableId,
-  existingColumns,
-  requireDateColumn,
-}) => {
+const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantReportColumn[] }> = ({ tableId, existingColumns }) => {
   const importMutation = useImportPlantReportSheet();
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [formatInfoOpen, setFormatInfoOpen] = useState(false);
@@ -800,33 +799,40 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
   const [previewError, setPreviewError] = useState<string | null>(null);
   const inputId = `plant-report-upload-${tableId}`;
 
-  const existingColumnNames = useMemo(() => new Set(existingColumns.map((c) => c.name.trim().toLowerCase())), [existingColumns]);
-
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     setMessage(null);
     setFormatInfoOpen(false);
     try {
-      const { headers, rows, dateColumnNames } = await parseSheetFile(file);
+      const { headers, rows } = await parseSheetFile(file);
       if (headers.length === 0) {
         setMessage({ kind: "error", text: "Couldn't find a header row in that file." });
         return;
       }
-      const columns = headers.map((name) => ({
-        name,
-        dataType: dateColumnNames.has(name) ? ("date" as const) : inferColumnType(rows.map((r) => r[name])),
-      }));
+
+      const matchedColumns: { id: number; name: string; dataType: PlantReportColumnDataType }[] = [];
+      const unmatchedHeaders: string[] = [];
+      const headerToColumn = new Map<string, PlantReportColumn>();
+      for (const h of headers) {
+        const existing = existingColumns.find((c) => c.name.trim().toLowerCase() === h.trim().toLowerCase());
+        if (existing) {
+          matchedColumns.push({ id: existing.id, name: existing.name, dataType: existing.dataType });
+          headerToColumn.set(h, existing);
+        } else {
+          unmatchedHeaders.push(h);
+        }
+      }
+
       const normalizedRows = rows.map((row) => {
         const out: Record<string, PlantReportCellValue> = {};
-        for (const col of columns) {
-          const raw = row[col.name];
-          out[col.name] =
-            col.dataType === "date" && raw != null && String(raw).trim() !== "" ? toIsoDateValue(raw) : (raw as PlantReportCellValue);
+        for (const [header, column] of headerToColumn) {
+          out[String(column.id)] = coerceToColumnType(row[header], column.dataType);
         }
         return out;
       });
+
       setPreviewError(null);
-      setPending({ fileName: file.name, columns, rows: normalizedRows });
+      setPending({ fileName: file.name, matchedColumns, unmatchedHeaders, rows: normalizedRows });
     } catch (err) {
       setMessage({ kind: "error", text: getErrorMessage(err, "Failed to read that file.") });
     }
@@ -836,11 +842,11 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
     if (!pending) return;
     setPreviewError(null);
     try {
-      const result = await importMutation.mutateAsync({ tableId, payload: { columns: pending.columns, rows: pending.rows } });
+      const result = await importMutation.mutateAsync({ tableId, payload: { rows: pending.rows } });
       setPending(null);
       setMessage({
         kind: "success",
-        text: `Imported ${result.rowsCreated} row${result.rowsCreated === 1 ? "" : "s"}${result.columnsCreated > 0 ? ` and added ${result.columnsCreated} new column${result.columnsCreated === 1 ? "" : "s"}` : ""}.`,
+        text: `Imported ${result.rowsCreated} row${result.rowsCreated === 1 ? "" : "s"}.`,
       });
     } catch (err) {
       setPreviewError(getErrorMessage(err, "Failed to import that file."));
@@ -860,34 +866,11 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
         <p className={`text-[11.5px] ${message.kind === "success" ? "text-emerald-600" : "text-red-600"}`}>{message.text}</p>
       )}
 
-      {formatInfoOpen && (
-        <FileFormatInfoModal
-          inputId={inputId}
-          requireDateColumn={requireDateColumn}
-          onFileChosen={handleFile}
-          onClose={() => setFormatInfoOpen(false)}
-        />
-      )}
+      {formatInfoOpen && <FileFormatInfoModal inputId={inputId} onFileChosen={handleFile} onClose={() => setFormatInfoOpen(false)} />}
 
       {pending && (
         <ImportPreviewModal
           pending={pending}
-          existingColumnNames={existingColumnNames}
-          requireDateColumn={requireDateColumn}
-          onChangeColumnType={(name, dataType) =>
-            setPending((p) => {
-              if (!p) return p;
-              const columns = p.columns.map((c) => (c.name === name ? { ...c, dataType } : c));
-              const rows =
-                dataType === "date"
-                  ? p.rows.map((r) => {
-                      const raw = r[name];
-                      return { ...r, [name]: raw == null || String(raw).trim() === "" ? null : toIsoDateValue(raw) };
-                    })
-                  : p.rows;
-              return { ...p, columns, rows };
-            })
-          }
           onConfirm={handleConfirm}
           onCancel={() => setPending(null)}
           isSubmitting={importMutation.isPending}
@@ -1156,7 +1139,7 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
             {editMode ? "Editing" : "Edit"}
           </button>
           <ExportSheetButton tableName={tableName} columns={columns} rows={rows} />
-          <UploadSheetButton tableId={tableId} existingColumns={columns} requireDateColumn={isDefaultTable} />
+          <UploadSheetButton tableId={tableId} existingColumns={columns} />
         </div>
       </div>
 

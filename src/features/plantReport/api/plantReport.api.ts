@@ -99,15 +99,17 @@ export async function deletePlantReportRow(id: number): Promise<void> {
   await api.delete(`/api/plant-report-rows/${id}`);
 }
 
+/** Rows keyed by column id (string) — the spreadsheet is matched to this
+ * table's *existing* columns by header name entirely client-side; import
+ * never creates columns, so there's nothing to send but rows. */
 export type ImportSheetPayload = {
-  columns: { name: string; dataType: PlantReportColumnDataType }[];
   rows: Record<string, PlantReportCellValue>[];
 };
-export type ImportSheetResult = { columnsCreated: number; rowsCreated: number };
+export type ImportSheetResult = { rowsCreated: number };
 
-/** POST /api/plant-report-tables/:id/import — bulk-creates any missing
- * columns (matched to existing ones by name, case-insensitively) and
- * appends every row, from a spreadsheet parsed client-side. */
+/** POST /api/plant-report-tables/:id/import — appends every row from a
+ * spreadsheet parsed client-side, filling only columns that already exist
+ * on this table (matched by header name); it never creates new columns. */
 export async function importPlantReportSheet(tableId: number, payload: ImportSheetPayload): Promise<ImportSheetResult> {
   const res = await api.post(`/api/plant-report-tables/${tableId}/import`, payload);
   return res.data;
