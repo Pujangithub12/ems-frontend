@@ -126,6 +126,45 @@ function parseFlexibleDate(input: string): string | null {
   return null;
 }
 
+/** Converts an Excel date *serial number* (days since the 1899-12-30 epoch —
+ * Excel's famous fake-1900-leap-year bug baked in) into a "YYYY-MM-DD"
+ * string, using pure UTC arithmetic. Deliberately not XLSX's own `cellDates`
+ * conversion: tested against a real exported report, that option round-trips
+ * through the *local machine's* timezone and landed on the wrong calendar
+ * day (in Nepal, UTC+5:45) — this direct math is timezone-independent. */
+function excelSerialToIso(serial: number): string | null {
+  if (!Number.isFinite(serial)) return null;
+  const EXCEL_EPOCH_UTC_MS = Date.UTC(1899, 11, 30);
+  const d = new Date(EXCEL_EPOCH_UTC_MS + Math.round(serial) * 86400000);
+  if (Number.isNaN(d.getTime())) return null;
+  return toIsoIfValid(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+
+/** Converts an arbitrary parsed-spreadsheet cell value (a JS `Date`, a raw
+ * Excel date serial number, or free text) into a "YYYY-MM-DD" string, or
+ * null. Without this, a date cell round-trips as a bare serial number, which
+ * `parseFlexibleDate` can't make sense of as a string — the column ends up
+ * empty (the backend rejects anything that isn't already "YYYY-MM-DD") or
+ * shows the serial number mashed together with other text. */
+function toIsoDateValue(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) return null;
+    return toIsoIfValid(raw.getUTCFullYear(), raw.getUTCMonth() + 1, raw.getUTCDate());
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) return excelSerialToIso(raw);
+  return parseFlexibleDate(String(raw));
+}
+
+/** Rounds away Excel/XLSX floating-point noise from arithmetic (e.g.
+ * 92.00000000000001 or 0.29999999999999993) without touching legitimate
+ * decimals — Excel's numbers are IEEE-754 doubles same as JS, so this noise
+ * shows up on plain numeric columns too, not just computed ones. */
+function cleanExcelNumber(v: unknown): unknown {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v * 1e9) / 1e9;
+  return v;
+}
+
 /** Formats a stored "YYYY-MM-DD" value for display, e.g. "18 Sep 2026". */
 function formatDateDisplay(value: string): string {
   const parsed = parseFlexibleDate(value);
@@ -462,16 +501,87 @@ const Cell: React.FC<{
 // ---- Upload Sheet — parse a CSV/Excel file client-side, then bulk-import it ----
 
 /** Reads a CSV or Excel file's first sheet into a header row + row objects
- * keyed by header, regardless of how many columns it has. */
-async function parseSheetFile(file: File): Promise<{ headers: string[]; rows: Record<string, unknown>[] }> {
+ * keyed by header, plus which headers Excel itself formatted as dates.
+ *
+ * This reads cells directly off the sheet (via `!ref`/`encode_cell`) rather
+ * than through XLSX's `sheet_to_json`, for two reasons found by testing
+ * against a real exported report:
+ *  - Row keys must be exactly the *trimmed* header text (matching `headers`
+ *    and, later, a table's existing column names) — a header cell with
+ *    stray whitespace ("Date ") would otherwise make row keys diverge from
+ *    the column name and break name-based matching on a repeat upload.
+ *  - Detecting "this numeric column is actually a date" needs each cell's
+ *    Excel number-format code (`.z`, via `cellNF: true`) checked with
+ *    `XLSX.SSF.is_date` — inferring it from the bare numeric value alone
+ *    can't tell a date serial from a plain number. XLSX's own `cellDates`
+ *    option looked like the built-in way to do this, but it round-trips
+ *    dates through the *local machine's* timezone and was verified (against
+ *    this exact file, in Nepal's UTC+5:45) to land on the wrong calendar
+ *    day; converting the serial ourselves with pure UTC math, elsewhere in
+ *    this file, does not have that problem.
+ *  - For plain numeric cells, Excel's own formatted display text (`.w`) is
+ *    used instead of the raw stored double — e.g. Excel shows "853" for a
+ *    computed value stored as 852.830188679245. Importing the raw double
+ *    surfaced as "random" extra decimals the user never saw in Excel.
+ */
+async function parseSheetFile(
+  file: File,
+): Promise<{ headers: string[]; rows: Record<string, unknown>[]; dateColumnNames: Set<string> }> {
   const isCsv = file.name.toLowerCase().endsWith(".csv");
   const data = isCsv ? await file.text() : await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: isCsv ? "string" : "array" });
+  const workbook = XLSX.read(data, { type: isCsv ? "string" : "array", cellNF: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
-  const headerRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
-  const headers = ((headerRows[0] as unknown as string[]) ?? []).map((h) => String(h ?? "").trim()).filter(Boolean);
-  return { headers, rows };
+  if (!sheet["!ref"]) return { headers: [], rows: [], dateColumnNames: new Set() };
+
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  type SheetCell = { t?: string; v?: unknown; w?: string; z?: string };
+  const cellAt = (r: number, c: number): SheetCell | undefined => sheet[XLSX.utils.encode_cell({ r, c })];
+
+  const headerEntries: { name: string; index: number }[] = [];
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = cellAt(range.s.r, c);
+    const name = String(cell?.v ?? cell?.w ?? "").trim();
+    if (name) headerEntries.push({ name, index: c });
+  }
+  const headers = headerEntries.map((e) => e.name);
+
+  const dateColumnNames = new Set<string>();
+  for (const { name, index } of headerEntries) {
+    let sampled = 0;
+    let dateLike = 0;
+    for (let r = range.s.r + 1; r <= range.e.r && sampled < 50; r++) {
+      const cell = cellAt(r, index);
+      if (!cell || cell.v == null || cell.v === "") continue;
+      sampled++;
+      if (cell.t === "n" && XLSX.SSF.is_date(cell.z || "")) dateLike++;
+    }
+    if (sampled > 0 && dateLike === sampled) dateColumnNames.add(name);
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    const row: Record<string, unknown> = {};
+    let hasValue = false;
+    for (const { name, index } of headerEntries) {
+      const cell = cellAt(r, index);
+      if (!cell || cell.v == null || cell.v === "") {
+        row[name] = null;
+        continue;
+      }
+      hasValue = true;
+      if (dateColumnNames.has(name) && cell.t === "n") {
+        row[name] = excelSerialToIso(cell.v as number);
+      } else if (cell.t === "n") {
+        const displayed = cell.w != null ? Number(String(cell.w).replace(/[^0-9.-]/g, "")) : NaN;
+        row[name] = Number.isFinite(displayed) ? displayed : cleanExcelNumber(cell.v);
+      } else {
+        row[name] = cell.v;
+      }
+    }
+    if (hasValue) rows.push(row);
+  }
+
+  return { headers, rows, dateColumnNames };
 }
 
 /** Infers a column's data type from a sample of its parsed cell values —
@@ -481,7 +591,7 @@ function inferColumnType(values: unknown[]): PlantReportColumnDataType {
   const sample = values.filter((v) => v !== null && v !== undefined && String(v).trim() !== "").slice(0, 50);
   if (sample.length === 0) return "text";
   if (sample.every((v) => typeof v === "number" || (typeof v === "string" && Number.isFinite(Number(v))))) return "number";
-  if (sample.every((v) => parseFlexibleDate(String(v)) !== null)) return "date";
+  if (sample.every((v) => toIsoDateValue(v) !== null)) return "date";
   return "text";
 }
 
@@ -697,20 +807,21 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
     setMessage(null);
     setFormatInfoOpen(false);
     try {
-      const { headers, rows } = await parseSheetFile(file);
+      const { headers, rows, dateColumnNames } = await parseSheetFile(file);
       if (headers.length === 0) {
         setMessage({ kind: "error", text: "Couldn't find a header row in that file." });
         return;
       }
-      const columns = headers.map((name) => ({ name, dataType: inferColumnType(rows.map((r) => r[name])) }));
+      const columns = headers.map((name) => ({
+        name,
+        dataType: dateColumnNames.has(name) ? ("date" as const) : inferColumnType(rows.map((r) => r[name])),
+      }));
       const normalizedRows = rows.map((row) => {
         const out: Record<string, PlantReportCellValue> = {};
         for (const col of columns) {
           const raw = row[col.name];
           out[col.name] =
-            col.dataType === "date" && raw != null && String(raw).trim() !== ""
-              ? parseFlexibleDate(String(raw))
-              : (raw as PlantReportCellValue);
+            col.dataType === "date" && raw != null && String(raw).trim() !== "" ? toIsoDateValue(raw) : (raw as PlantReportCellValue);
         }
         return out;
       });
@@ -771,7 +882,7 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
                 dataType === "date"
                   ? p.rows.map((r) => {
                       const raw = r[name];
-                      return { ...r, [name]: raw == null || String(raw).trim() === "" ? null : parseFlexibleDate(String(raw)) };
+                      return { ...r, [name]: raw == null || String(raw).trim() === "" ? null : toIsoDateValue(raw) };
                     })
                   : p.rows;
               return { ...p, columns, rows };
