@@ -2,111 +2,155 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
-  getPlantReportsForMonth,
-  getPlantReportPrefill,
-  createPlantReport,
-  updatePlantReport,
-  deletePlantReport,
-  getPlantReportFields,
-  createPlantReportField,
-  updatePlantReportField,
-  deletePlantReportField,
-  SavePlantReportPayload,
-  SavePlantReportFieldPayload,
+  fetchPlantReportTables,
+  fetchPlantReportTableDetail,
+  createPlantReportTable,
+  updatePlantReportTable,
+  deletePlantReportTable,
+  createPlantReportColumn,
+  updatePlantReportColumn,
+  deletePlantReportColumn,
+  createPlantReportRow,
+  updatePlantReportRow,
+  deletePlantReportRow,
+  importPlantReportSheet,
+  SavePlantReportTablePayload,
+  SavePlantReportColumnPayload,
+  SavePlantReportRowPayload,
+  ImportSheetPayload,
 } from "../api/plantReport.api";
 
-export function usePlantReportsForMonth(year: number, month: number, projectId?: number | null) {
+export function usePlantReportTables(projectId: number | null) {
   const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.plantReports(wsId, year, month, projectId),
-    queryFn: () => getPlantReportsForMonth(year, month, projectId),
-    enabled: Number.isFinite(wsId),
+    queryKey: queryKeys.plantReportTables(wsId, projectId ?? -1),
+    queryFn: () => fetchPlantReportTables(projectId as number),
+    enabled: Number.isFinite(wsId) && !!projectId,
   });
 }
 
-/** On-demand fetch (not a stable query) — the entry form calls this itself
- * whenever the chosen date/project changes, same pattern as useSubtasksFetch. */
-export function usePlantReportPrefill() {
-  return useMutation({
-    mutationFn: ({ date, projectId }: { date: string; projectId: number | null }) =>
-      getPlantReportPrefill(date, projectId),
-  });
-}
-
-export function useCreatePlantReport() {
-  const wsId = useOrganizationId();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: SavePlantReportPayload) => createPlantReport(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
-    },
-  });
-}
-
-export function useUpdatePlantReport() {
-  const wsId = useOrganizationId();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: SavePlantReportPayload }) =>
-      updatePlantReport(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
-    },
-  });
-}
-
-export function useDeletePlantReport() {
-  const wsId = useOrganizationId();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => deletePlantReport(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
-    },
-  });
-}
-
-export function usePlantReportFields() {
+export function usePlantReportTableDetail(tableId: number | null) {
   const wsId = useOrganizationId();
   return useQuery({
-    queryKey: queryKeys.plantReportFields(wsId),
-    queryFn: () => getPlantReportFields(),
-    enabled: Number.isFinite(wsId),
+    queryKey: queryKeys.plantReportTableDetail(wsId, tableId ?? -1),
+    queryFn: () => fetchPlantReportTableDetail(tableId as number),
+    enabled: Number.isFinite(wsId) && !!tableId,
   });
 }
 
-export function useCreatePlantReportField() {
+export function useCreatePlantReportTable() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: SavePlantReportFieldPayload) => createPlantReportField(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
+    mutationFn: ({ projectId, payload }: { projectId: number; payload: SavePlantReportTablePayload }) =>
+      createPlantReportTable(projectId, payload),
+    onSuccess: (_data, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTables(wsId, projectId) });
     },
   });
 }
 
-export function useUpdatePlantReportField() {
+export function useUpdatePlantReportTable() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: SavePlantReportFieldPayload }) =>
-      updatePlantReportField(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
+    mutationFn: ({ id, payload }: { id: number; projectId: number; payload: SavePlantReportTablePayload }) =>
+      updatePlantReportTable(id, payload),
+    onSuccess: (_data, { projectId, id }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTables(wsId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, id) });
     },
   });
 }
 
-export function useDeletePlantReportField() {
+export function useDeletePlantReportTable() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => deletePlantReportField(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportFields(wsId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.all(wsId) });
+    mutationFn: ({ id }: { id: number; projectId: number }) => deletePlantReportTable(id),
+    onSuccess: (_data, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTables(wsId, projectId) });
+    },
+  });
+}
+
+export function useCreatePlantReportColumn() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tableId, payload }: { tableId: number; payload: SavePlantReportColumnPayload }) =>
+      createPlantReportColumn(tableId, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useUpdatePlantReportColumn() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; tableId: number; payload: SavePlantReportColumnPayload }) =>
+      updatePlantReportColumn(id, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useDeletePlantReportColumn() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; tableId: number }) => deletePlantReportColumn(id),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useCreatePlantReportRow() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tableId, payload }: { tableId: number; payload: SavePlantReportRowPayload }) =>
+      createPlantReportRow(tableId, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useUpdatePlantReportRow() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; tableId: number; payload: SavePlantReportRowPayload }) =>
+      updatePlantReportRow(id, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useDeletePlantReportRow() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; tableId: number }) => deletePlantReportRow(id),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function useImportPlantReportSheet() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tableId, payload }: { tableId: number; payload: ImportSheetPayload }) => importPlantReportSheet(tableId, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
     },
   });
 }
