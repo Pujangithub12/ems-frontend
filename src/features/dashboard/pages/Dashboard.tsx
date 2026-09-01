@@ -5,6 +5,7 @@ import { Project } from "../../../types";
 import { flattenProjectTasks } from "../../tasks/utils/taskUtils";
 import { getErrorMessage } from "../../../lib/errors";
 import ErrorBanner from "../../../components/ErrorBanner";
+import StatCard from "../../../components/StatCard";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { useUsers } from "../../users/hooks/useUsers";
 import { useTasks } from "../../tasks/hooks/useTasks";
@@ -325,66 +326,66 @@ const Dashboard: React.FC = () => {
       label: "My Tasks",
       value: dashboardData?.total ?? 0,
       sub: "assigned",
+      accent: "#64748b",
       icon: SquarePen,
       iconBg: "bg-slate-100",
       iconText: "text-slate-600",
-      valueText: "text-slate-900",
       onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "Due Today",
       value: dueTodayCount,
       sub: "tasks",
+      accent: "#2563eb",
       icon: CalendarDays,
       iconBg: "bg-blue-50",
       iconText: "text-blue-700",
-      valueText: "text-slate-900",
       onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "Overdue",
       value: overdueCount,
       sub: "tasks",
+      accent: "#dc2626",
       icon: AlertTriangle,
       iconBg: "bg-red-50",
       iconText: "text-red-700",
-      valueText: "text-red-600",
       onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "High Priority",
       value: dashboardData?.highPriorityTasks.length ?? 0,
       sub: "tasks",
+      accent: "#ea580c",
       icon: Flag,
       iconBg: "bg-red-50",
       iconText: "text-red-700",
-      valueText: "text-slate-900",
       onClick: () => navigate(`/${organization?.id}/tasks`),
     },
     {
       label: "To Approve",
       value: dashboardData?.pendingLeaveRequests ?? 0,
       sub: "requests",
+      accent: "#d97706",
       icon: Clock,
       iconBg: "bg-amber-50",
       iconText: "text-amber-700",
-      valueText: "text-slate-900",
       onClick: () => navigate(`/${organization?.id}/approvals`),
     },
     {
       label: "Done This Week",
       value: doneThisWeekCount,
       sub: "tasks",
+      accent: "#059669",
       icon: CheckCircle2,
       iconBg: "bg-emerald-50",
       iconText: "text-emerald-700",
-      valueText: "text-emerald-600",
       onClick: () => navigate(`/${organization?.id}/tasks`),
     },
   ];
 
   return (
-    <div className="w-full min-h-full px-6 py-6 bg-white lg:px-8 lg:py-8">
+    <div className="w-full min-h-full px-6 py-6 bg-[#F7F8FA] lg:px-8 lg:py-8">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
@@ -416,22 +417,17 @@ const Dashboard: React.FC = () => {
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-3 lg:grid-cols-6">
         {kpis.map((item) => (
-          <button
+          <StatCard
             key={item.label}
+            accent={item.accent}
+            label={item.label}
+            value={dashboardLoading ? "…" : item.value}
+            sub={item.sub}
+            icon={item.icon}
+            iconBg={item.iconBg}
+            iconText={item.iconText}
             onClick={item.onClick}
-            className="p-4 text-left transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
-          >
-            <div className="flex items-start justify-between">
-              <span className="text-[12px] font-medium text-slate-500">{item.label}</span>
-              <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ring-1 ring-black/5 ${item.iconBg}`}>
-                <item.icon className={`w-4 h-4 ${item.iconText}`} />
-              </div>
-            </div>
-            <div className={`mt-3 text-[26px] font-bold leading-none tracking-tight ${item.valueText}`}>
-              {dashboardLoading ? "…" : item.value}
-            </div>
-            <div className="mt-1.5 text-slate-400 text-[12px]">{item.sub}</div>
-          </button>
+          />
         ))}
       </div>
 

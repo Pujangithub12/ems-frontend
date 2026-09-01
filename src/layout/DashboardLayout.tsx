@@ -16,7 +16,6 @@ import {
   LogOut,
   Menu,
   X,
-  BarChart3,
   ChevronDown,
   ChevronRight,
   Settings,
@@ -28,6 +27,7 @@ import {
   FileText,
   BellOff,
   Factory,
+  ClipboardList,
   Tag,
   Wallet,
 } from "lucide-react";
@@ -334,16 +334,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
 
   const reports = [
     {
-      path: `${prefix}/reports`,
-      label: "Reports",
-      icon: BarChart3,
-      id: "reports",
-    },
-    {
       path: `${prefix}/plant-report`,
       label: "Plant Report",
       icon: Factory,
       id: "plant-report",
+    },
+    {
+      path: `${prefix}/site-activities`,
+      label: "Site Activities",
+      icon: ClipboardList,
+      id: "site-activities",
     },
   ];
 
@@ -383,6 +383,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     documents: "Browse and manage organization files",
     inventory: "Stock items across all your projects",
     "plant-report": "Daily boiler/plant operations log and monthly summary",
+    "site-activities": "Daily site progress report — work activities, equipment, manpower and photos",
     procurement: "Purchase requests across all your projects",
     "purchase-orders": "Purchase orders across all your projects",
     vendors: "Suppliers and vendors across all your projects",
@@ -393,7 +394,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     approvals: "Review and approve requests",
-    reports: "Inventory & procurement analytics",
     users: "Manage people and permissions",
     settings: "Organization configuration and preferences",
   };
