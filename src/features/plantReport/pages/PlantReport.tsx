@@ -1005,83 +1005,6 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
     </div>
   );
 };
-/** Multi-select dropdown for choosing */
-const FieldMultiSelect: React.FC<{
-  options: { id: number; name: string; color: string }[];
-  selectedIds: number[];
-  onToggle: (id: number) => void;
-}> = ({ options, selectedIds, onToggle }) => {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open]);
-
-  const summary =
-    selectedIds.length === 0
-      ? "Select fields"
-      : selectedIds.length === 1
-        ? options.find((o) => o.id === selectedIds[0])?.name ?? "1 selected"
-        : `${selectedIds.length} fields selected`;
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 bg-white hover:bg-slate-50 transition-colors"
-      >
-        <span className="flex -space-x-1">
-          {selectedIds.slice(0, 3).map((id) => {
-            const opt = options.find((o) => o.id === id);
-            if (!opt) return null;
-            return (
-              <span
-                key={id}
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-white flex-shrink-0"
-                style={{ backgroundColor: opt.color }}
-              />
-            );
-          })}
-        </span>
-        {summary}
-        <ChevronDown size={13} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 z-20 mt-1.5 w-64 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1.5">
-          {options.map((opt) => {
-            const active = selectedIds.includes(opt.id);
-            return (
-              <label
-                key={opt.id}
-                className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer text-[13px] text-slate-700 hover:bg-slate-50"
-              >
-                <input type="checkbox" checked={active} onChange={() => onToggle(opt.id)} className="flex-shrink-0" />
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: opt.color }} />
-                <span className="truncate">{opt.name}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ---- Charts tab — pick any table + numeric column(s) to plot as a line or bar chart ----
 
 const formatXValue = (value: PlantReportCellValue, dataType: PlantReportColumnDataType): string => {
@@ -1119,12 +1042,6 @@ const ColumnMultiSelect: React.FC<{
       : selectedOptions.length <= 2
         ? selectedOptions.map((o) => o.name).join(", ")
         : `${selectedOptions.length} columns selected`;
-
-  const dropdownOptions = numberFields.map((f) => ({
-    id: f.id,
-    name: f.name,
-    color: CHART_COLORS[allNumberFields.findIndex((nf) => nf.id === f.id) % CHART_COLORS.length],
-  }));
 
   return (
     <div ref={containerRef} className="relative">
