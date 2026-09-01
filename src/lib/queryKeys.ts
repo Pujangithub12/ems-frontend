@@ -98,6 +98,15 @@ export const queryKeys = {
   plantReportTableDetail: (wsId: number, tableId: number) =>
     [...queryKeys.all(wsId), "plantReportTableDetail", tableId] as const,
 
+  /** Parent key for all Site Activities queries on one project — invalidate
+   * this (not the more specific keys below) after any save/delete so both
+   * the single-day report and any open Weekly Summary range refetch. */
+  siteActivityAll: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "siteActivity", projectId] as const,
+  siteActivityReport: (wsId: number, projectId: number, date: string) =>
+    [...queryKeys.siteActivityAll(wsId, projectId), "byDate", date] as const,
+  siteActivityReportsRange: (wsId: number, projectId: number, from: string, to: string) =>
+    [...queryKeys.siteActivityAll(wsId, projectId), "range", from, to] as const,
+
   // Unauthenticated — no organization context yet.
   invite: (token: string) => ["invite", token] as const,
 

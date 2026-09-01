@@ -34,11 +34,11 @@ const ProjectPage = lazy(() => import("./features/projects/pages/Projects"));
 const ProjectDetails = lazy(() => import("./features/projects/pages/ProjectDetails"));
 const CalendarPage = lazy(() => import("./features/calendar/pages/Calendar"));
 const Approvals = lazy(() => import("./features/approvals/pages/Approvals"));
-const Reports = lazy(() => import("./features/reports/pages/Reports"));
 const Settings = lazy(() => import("./features/settings/pages/Settings"));
 const Profile = lazy(() => import("./features/users/pages/Profile"));
 const TasksPage = lazy(() => import("./features/tasks/pages/Tasks"));
 const PlantReport = lazy(() => import("./features/plantReport/pages/PlantReport"));
+const SiteActivities = lazy(() => import("./features/siteActivities/pages/SiteActivities"));
 
 /** Minimal, layout-agnostic loading state for a lazy route chunk still
  * downloading — intentionally plain since it can appear both inside
@@ -258,11 +258,11 @@ function App() {
             />
             <Route path="/:organizationId/task" element={<TasksPage />} />
             <Route path="/:organizationId/plant-report" element={<PlantReport />} />
+            <Route path="/:organizationId/site-activities" element={<SiteActivities />} />
             <Route path="/:organizationId/users" element={<Users />} />
             <Route path="/:organizationId/calendar" element={<CalendarPage />} />
             <Route path="/:organizationId/approvals" element={<Approvals />} />
             <Route path="/:organizationId/leaverequests" element={<LeaveRequestsRedirect />} />
-            <Route path="/:organizationId/reports" element={<Reports />} />
             <Route path="/:organizationId/settings" element={<Settings />} />
             <Route path="/:organizationId/profile" element={<Profile />} />
           </Route>
