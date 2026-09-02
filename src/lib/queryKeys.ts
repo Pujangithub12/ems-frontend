@@ -102,6 +102,7 @@ export const queryKeys = {
    * this (not the more specific keys below) after any save/delete so both
    * the single-day report and any open Weekly Summary range refetch. */
   siteActivityAll: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "siteActivity", projectId] as const,
+  siteActivityOptions: (wsId: number, kind: string) => [...queryKeys.all(wsId), "siteActivityOptions", kind] as const,
   siteActivityReport: (wsId: number, projectId: number, date: string) =>
     [...queryKeys.siteActivityAll(wsId, projectId), "byDate", date] as const,
   siteActivityReportsRange: (wsId: number, projectId: number, from: string, to: string) =>

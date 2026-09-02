@@ -259,6 +259,8 @@ export type ProformaInvoiceItem = {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | string | null;
+  hsnCode?: string | null;
+  taxable: boolean;
 };
 
 export type ProformaInvoice = {
@@ -272,6 +274,19 @@ export type ProformaInvoice = {
   fileName?: string | null;
   filePath?: string | null;
   status: ProformaInvoiceStatus;
+  taxPercent?: number | string | null;
+  customerPan?: string | null;
+  vendorPan?: string | null;
+  bankBeneficiaryName?: string | null;
+  bankAccountNumber?: string | null;
+  bankName?: string | null;
+  bankSwiftCode?: string | null;
+  bankAddress?: string | null;
+  deliveryTerms?: string | null;
+  placeOfLoading?: string | null;
+  placeOfDischarge?: string | null;
+  modeOfShipment?: string | null;
+  notes?: string | null;
   items: ProformaInvoiceItem[];
   /** Only present when fetched from the org-wide Proforma Invoices list (not when embedded in PurchaseOrder.proformaInvoices). */
   purchaseOrder?: { id: number; poNumber?: string | null; vendor?: Vendor | null; project?: { id: number; name: string } | null } | null;
@@ -467,6 +482,7 @@ export type FinancePurchaseOrderRow = {
   paidDate?: string | null;
   outstandingBalance: number;
   payments: PurchaseOrderPaymentEntry[];
+  currency: string;
 };
 
 export type VendorFinanceSummary = {
@@ -500,11 +516,10 @@ export type FinanceCostBreakdownRow = {
   lcCharge: number;
   lcCommission: number;
   vat: number;
-  /** % of `vat` that's refundable. */
-  refundableMarginPercent: number;
-  /** vat * refundableMarginPercent / 100 — computed server-side. */
+  /** Always 0 — retained alongside refundedAmount/toBeRefunded now that the per-row Refundable
+   * Margin % this was computed from has been removed. */
   refundableAmount: number;
-  /** How much of the refundable amount has actually been refunded so far. */
+  /** How much VAT has actually been refunded so far. */
   refundedAmount: number;
   /** refundableAmount - refundedAmount — computed server-side. */
   toBeRefunded: number;

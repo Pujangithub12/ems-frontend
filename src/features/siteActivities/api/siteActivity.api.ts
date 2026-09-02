@@ -24,12 +24,15 @@ export type SiteActivityEquipment = {
   quantity: number;
   workingHours: number | null;
   condition: SiteActivityEquipmentCondition;
+  remarks: string | null;
 };
 
 export type SiteActivityManpower = {
   id: number;
   role: string;
   headcount: number;
+  names: string | null;
+  remarks: string | null;
 };
 
 export type SiteActivityPhoto = {
@@ -81,6 +84,10 @@ export type SiteActivityReport = {
   projectId: number;
   reportDate: string;
   location: string | null;
+  reportDateBs: string | null;
+  preparedBy: string | null;
+  remarks: string | null;
+  signedBy: string | null;
   status: SiteActivityReportStatus;
   createdBy: { id: number; name: string } | null;
   createdAt: string;
@@ -109,11 +116,14 @@ export type SaveSiteActivityEquipmentPayload = {
   quantity?: number;
   workingHours?: number | null;
   condition?: SiteActivityEquipmentCondition;
+  remarks?: string | null;
 };
 
 export type SaveSiteActivityManpowerPayload = {
   role: string;
   headcount?: number;
+  names?: string | null;
+  remarks?: string | null;
 };
 
 export type SaveSiteActivityWeatherPayload = {
@@ -150,6 +160,10 @@ export type SaveSiteActivityInstructionPayload = {
 export type SaveSiteActivityReportPayload = {
   reportDate: string;
   location?: string | null;
+  reportDateBs?: string | null;
+  preparedBy?: string | null;
+  remarks?: string | null;
+  signedBy?: string | null;
   status?: SiteActivityReportStatus;
   activities: SaveSiteActivityItemPayload[];
   equipment: SaveSiteActivityEquipmentPayload[];
@@ -159,6 +173,24 @@ export type SaveSiteActivityReportPayload = {
   safety: SaveSiteActivitySafetyPayload[];
   instructions: SaveSiteActivityInstructionPayload[];
 };
+
+export type SiteActivityOptionKind = "activity" | "equipment" | "material";
+
+/** GET /api/site-activity-options?kind=... — the org's reusable predefined-options
+ * vocabulary backing the Work Activities / Equipment / Materials tables' dropdowns.
+ * Grows automatically as new values are saved — see saveSiteActivityReport. */
+export async function fetchSiteActivityOptions(kind: SiteActivityOptionKind): Promise<string[]> {
+  const res = await api.get("/api/site-activity-options", { params: { kind } });
+  return res.data.options ?? [];
+}
+
+/** POST /api/site-activity-options — explicitly add a new option (the "+" popup
+ * next to a select-only predefined-options dropdown). Returns the full updated
+ * list for that kind so the new entry can be selected immediately. */
+export async function addSiteActivityOption(kind: SiteActivityOptionKind, name: string): Promise<string[]> {
+  const res = await api.post("/api/site-activity-options", { kind, name });
+  return res.data.options ?? [];
+}
 
 /** GET /api/site-activity-reports?projectId&date — null if no report has
  * been filled in for that project+date yet. */

@@ -17,7 +17,6 @@ type RowForm = {
   lcCharge: string;
   lcCommission: string;
   vat: string;
-  refundableMarginPercent: string;
   refundedAmount: string;
   remarks: string;
 };
@@ -30,18 +29,16 @@ const toForm = (row: FinanceCostBreakdownRow): RowForm => ({
   lcCharge: String(row.lcCharge),
   lcCommission: String(row.lcCommission),
   vat: String(row.vat),
-  refundableMarginPercent: String(row.refundableMarginPercent),
   refundedAmount: String(row.refundedAmount),
   remarks: row.remarks || "",
 });
 
 /** Live preview of Refundable Amount/To Be Refunded while editing, mirroring the backend's
- * refundFields() formula — falls back to 0 for anything not yet a valid number. */
+ * refundFields() formula — Refundable Amount is always 0 now that the per-row Refundable Margin
+ * % it used to be computed from has been removed. */
 const previewRefund = (form: RowForm) => {
-  const vat = parseFloat(form.vat) || 0;
-  const marginPercent = parseFloat(form.refundableMarginPercent) || 0;
   const refunded = parseFloat(form.refundedAmount) || 0;
-  const refundableAmount = vat * (marginPercent / 100);
+  const refundableAmount = 0;
   return { refundableAmount, toBeRefunded: refundableAmount - refunded };
 };
 
@@ -141,12 +138,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
       }
       parsed[label] = n;
     }
-    const marginPercent = parseFloat(form.refundableMarginPercent);
-    if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 100) {
-      setRowError("Enter a valid Refundable Margin between 0 and 100.");
-      return;
-    }
-
     const input: EditCostBreakdownRowInput = {
       itemName: form.itemName.trim(),
       majorCost: parsed["Major Cost"]!,
@@ -155,7 +146,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
       lcCharge: parsed["LC Charge"]!,
       lcCommission: parsed["LC Commission"]!,
       vat: parsed["VAT"]!,
-      refundableMarginPercent: marginPercent,
       refundedAmount: parsed["Refunded"]!,
       remarks: form.remarks.trim() || null,
     };
@@ -220,7 +210,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
                     <th className="px-3 py-2 font-semibold text-right">LC Charge</th>
                     <th className="px-3 py-2 font-semibold text-right">LC Commission</th>
                     <th className="px-3 py-2 font-semibold text-right">VAT</th>
-                    <th className="px-3 py-2 font-semibold text-right">Refundable Margin</th>
                     <th className="px-3 py-2 font-semibold text-right">Refundable Amount</th>
                     <th className="px-3 py-2 font-semibold text-right">Refunded</th>
                     <th className="px-3 py-2 font-semibold text-right">To Be Refunded</th>
@@ -257,17 +246,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
                           </td>
                           <td className="px-3 py-2">
                             <input type="number" min="0" step="any" value={form.vat} onChange={(e) => setForm({ ...form, vat: e.target.value })} className={`${inputCls} text-right`} />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="any"
-                              value={form.refundableMarginPercent}
-                              onChange={(e) => setForm({ ...form, refundableMarginPercent: e.target.value })}
-                              className={`${inputCls} text-right`}
-                            />
                           </td>
                           <td className="px-3 py-2 text-right text-slate-500">{formatCost(preview.refundableAmount)}</td>
                           <td className="px-3 py-2">
@@ -317,7 +295,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
                         <td className="px-3 py-2 text-right text-slate-600">{formatCost(r.lcCharge)}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatCost(r.lcCommission)}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatCost(r.vat)}</td>
-                        <td className="px-3 py-2 text-right text-slate-600">{r.refundableMarginPercent}%</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatCost(r.refundableAmount)}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatCost(r.refundedAmount)}</td>
                         <td className={`px-3 py-2 text-right font-medium ${r.toBeRefunded > 0 ? "text-amber-700" : "text-emerald-700"}`}>
