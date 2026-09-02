@@ -9,6 +9,8 @@ import {
 import { SaveFinanceManualRecordInput } from "../api/finance.api";
 import { getErrorMessage } from "../../../lib/errors";
 
+const CURRENCY_OPTIONS = ["NPR", "INR", "USD", "RMB"] as const;
+
 type ManualRecordForm = {
   vendorId: string; // "" = no linked vendor, freeform vendorName below
   vendorName: string;
@@ -16,6 +18,7 @@ type ManualRecordForm = {
   referenceNumber: string;
   itemValue: string;
   paymentTerms: string;
+  currency: string;
 };
 
 const toForm = (row: FinancePurchaseOrderRow | null): ManualRecordForm => ({
@@ -25,6 +28,7 @@ const toForm = (row: FinancePurchaseOrderRow | null): ManualRecordForm => ({
   referenceNumber: row?.poNumber || "",
   itemValue: row ? String(row.itemValue) : "",
   paymentTerms: row?.paymentTerms || "",
+  currency: row?.currency || "NPR",
 });
 
 /**
@@ -76,6 +80,7 @@ const ManualRecordModal: React.FC<{
       itemValue,
       paymentTerms: form.paymentTerms.trim() || null,
       vendorId: form.vendorId ? Number(form.vendorId) : null,
+      currency: form.currency,
     };
 
     setSubmitting(true);
@@ -155,6 +160,18 @@ const ManualRecordModal: React.FC<{
               />
             </div>
             <div>
+              <label className="block mb-1 text-[11px] font-medium text-slate-900">Currency</label>
+              <select
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-400"
+              >
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
               <label className="block mb-1 text-[11px] font-medium text-slate-900">Item Value</label>
               <input
                 type="number"

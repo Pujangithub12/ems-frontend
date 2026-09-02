@@ -196,7 +196,10 @@ const FinancePage: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">{formatCost(r.itemValue)}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">
+                          {formatCost(r.itemValue)}
+                          {r.currency && r.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{r.currency}</span>}
+                        </td>
                         <td className="px-3 py-2 text-slate-600">{r.paymentTerms || "--"}</td>
                         <td className="px-3 py-2 text-right text-slate-700">{formatCost(r.amountPaid)}</td>
                         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>

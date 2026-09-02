@@ -7,6 +7,8 @@ export interface ProformaInvoiceItemInput {
   quantity?: number;
   unit?: string;
   unitPrice?: number;
+  hsnCode?: string;
+  taxable?: boolean;
 }
 
 export interface ProformaInvoiceInput {
@@ -16,6 +18,19 @@ export interface ProformaInvoiceInput {
   exchangeRate?: number;
   paymentTerms?: string;
   validityDate?: string;
+  taxPercent?: number;
+  customerPan?: string;
+  vendorPan?: string;
+  bankBeneficiaryName?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  bankSwiftCode?: string;
+  bankAddress?: string;
+  deliveryTerms?: string;
+  placeOfLoading?: string;
+  placeOfDischarge?: string;
+  modeOfShipment?: string;
+  notes?: string;
   items?: ProformaInvoiceItemInput[];
 }
 

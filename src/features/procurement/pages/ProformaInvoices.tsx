@@ -18,17 +18,20 @@ import {
   CheckCircle2,
   Ban,
   ChevronRight,
+  Download,
+  Pencil,
 } from "lucide-react";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { formatCost, toNumber } from "../../../lib/currency";
 import { ProformaInvoice, ProformaInvoiceStatus } from "../../../types";
-import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
+import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useUpdateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
 import { useOrganizationPurchaseOrdersQuery } from "../hooks/usePurchaseOrder";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
+const pdfUrl = (id: number) => `${API_BASE}/api/proforma-invoices/${id}/pdf`;
 
 const PI_STATUS_STYLES: Record<ProformaInvoiceStatus, { bg: string; fg: string; label: string }> = {
   waiting: { bg: "#fef9c3", fg: "#854d0e", label: "Waiting" },
@@ -66,8 +69,8 @@ const numOrUndef = (s: string): number | undefined => {
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "--";
 
-type PiItemRow = { itemName: string; quantity: string; unit: string; unitPrice: string };
-const emptyPiItemRow: PiItemRow = { itemName: "", quantity: "1", unit: "", unitPrice: "" };
+type PiItemRow = { itemName: string; quantity: string; unit: string; unitPrice: string; hsnCode: string; taxable: boolean };
+const emptyPiItemRow: PiItemRow = { itemName: "", quantity: "1", unit: "", unitPrice: "", hsnCode: "", taxable: true };
 
 /**
  * Proforma Invoices — org-wide list across every purchase order, moved out of
@@ -86,6 +89,7 @@ const ProformaInvoicesPage: React.FC = () => {
   const piQuery = useAllProformaInvoicesQuery();
   const poQuery = useOrganizationPurchaseOrdersQuery();
   const createMutation = useCreateProformaInvoiceMutation();
+  const updateMutation = useUpdateProformaInvoiceMutation();
   const changeStatusMutation = useChangeProformaInvoiceStatusMutation();
   const uploadFileMutation = useUploadProformaInvoiceFileMutation();
 
@@ -141,8 +145,9 @@ const ProformaInvoicesPage: React.FC = () => {
     [proformaInvoices],
   );
 
-  // ---- Add PI form ----
+  // ---- Add/Edit PI form ----
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [targetPoId, setTargetPoId] = useState<number | "">("");
   const [piNumber, setPiNumber] = useState("");
   const [piDate, setPiDate] = useState("");
@@ -150,11 +155,25 @@ const ProformaInvoicesPage: React.FC = () => {
   const [exchangeRate, setExchangeRate] = useState("1");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [validityDate, setValidityDate] = useState("");
+  const [taxPercent, setTaxPercent] = useState("13");
+  const [customerPan, setCustomerPan] = useState("");
+  const [vendorPan, setVendorPan] = useState("");
+  const [bankBeneficiaryName, setBankBeneficiaryName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankSwiftCode, setBankSwiftCode] = useState("");
+  const [bankAddress, setBankAddress] = useState("");
+  const [deliveryTerms, setDeliveryTerms] = useState("");
+  const [placeOfLoading, setPlaceOfLoading] = useState("");
+  const [placeOfDischarge, setPlaceOfDischarge] = useState("");
+  const [modeOfShipment, setModeOfShipment] = useState("");
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<PiItemRow[]>([{ ...emptyPiItemRow }]);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const resetForm = () => {
+    setEditingId(null);
     setTargetPoId("");
     setPiNumber("");
     setPiDate("");
@@ -162,6 +181,19 @@ const ProformaInvoicesPage: React.FC = () => {
     setExchangeRate("1");
     setPaymentTerms("");
     setValidityDate("");
+    setTaxPercent("13");
+    setCustomerPan("");
+    setVendorPan("");
+    setBankBeneficiaryName("");
+    setBankAccountNumber("");
+    setBankName("");
+    setBankSwiftCode("");
+    setBankAddress("");
+    setDeliveryTerms("");
+    setPlaceOfLoading("");
+    setPlaceOfDischarge("");
+    setModeOfShipment("");
+    setNotes("");
     setItems([{ ...emptyPiItemRow }]);
     setFormError(null);
   };
@@ -171,9 +203,49 @@ const ProformaInvoicesPage: React.FC = () => {
   const addItemRow = () => setItems((prev) => [...prev, { ...emptyPiItemRow }]);
   const removeItemRow = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
 
+  const toDateInputValue = (value?: string | null) => (value ? value.slice(0, 10) : "");
+
+  const startEdit = (pi: ProformaInvoice) => {
+    setEditingId(pi.id);
+    setTargetPoId(pi.purchaseOrder?.id ?? "");
+    setPiNumber(pi.piNumber ?? "");
+    setPiDate(toDateInputValue(pi.piDate));
+    setCurrency(pi.currency ?? "NPR");
+    setExchangeRate(String(toNumber(pi.exchangeRate) ?? 1));
+    setPaymentTerms(pi.paymentTerms ?? "");
+    setValidityDate(toDateInputValue(pi.validityDate));
+    setTaxPercent(pi.taxPercent != null ? String(toNumber(pi.taxPercent)) : "13");
+    setCustomerPan(pi.customerPan ?? "");
+    setVendorPan(pi.vendorPan ?? "");
+    setBankBeneficiaryName(pi.bankBeneficiaryName ?? "");
+    setBankAccountNumber(pi.bankAccountNumber ?? "");
+    setBankName(pi.bankName ?? "");
+    setBankSwiftCode(pi.bankSwiftCode ?? "");
+    setBankAddress(pi.bankAddress ?? "");
+    setDeliveryTerms(pi.deliveryTerms ?? "");
+    setPlaceOfLoading(pi.placeOfLoading ?? "");
+    setPlaceOfDischarge(pi.placeOfDischarge ?? "");
+    setModeOfShipment(pi.modeOfShipment ?? "");
+    setNotes(pi.notes ?? "");
+    setItems(
+      pi.items.length > 0
+        ? pi.items.map((item) => ({
+            itemName: item.itemName,
+            quantity: String(item.quantity),
+            unit: item.unit ?? "",
+            unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
+            hsnCode: item.hsnCode ?? "",
+            taxable: item.taxable,
+          }))
+        : [{ ...emptyPiItemRow }],
+    );
+    setFormError(null);
+    setShowForm(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetPoId) {
+    if (!editingId && !targetPoId) {
       setFormError("Select a purchase order.");
       return;
     }
@@ -190,32 +262,50 @@ const ProformaInvoicesPage: React.FC = () => {
         quantity,
         unit: row.unit.trim() || undefined,
         unitPrice: numOrUndef(row.unitPrice),
+        hsnCode: row.hsnCode.trim() || undefined,
+        taxable: row.taxable,
       });
     }
     if (payloadItems.length === 0) {
       setFormError("Add at least one item.");
       return;
     }
+    const input = {
+      piNumber: piNumber.trim() || undefined,
+      piDate: piDate || undefined,
+      currency: currency.trim() || "NPR",
+      exchangeRate: numOrUndef(exchangeRate) ?? 1,
+      paymentTerms: paymentTerms.trim() || undefined,
+      validityDate: validityDate || undefined,
+      taxPercent: numOrUndef(taxPercent),
+      customerPan: customerPan.trim() || undefined,
+      vendorPan: vendorPan.trim() || undefined,
+      bankBeneficiaryName: bankBeneficiaryName.trim() || undefined,
+      bankAccountNumber: bankAccountNumber.trim() || undefined,
+      bankName: bankName.trim() || undefined,
+      bankSwiftCode: bankSwiftCode.trim() || undefined,
+      bankAddress: bankAddress.trim() || undefined,
+      deliveryTerms: deliveryTerms.trim() || undefined,
+      placeOfLoading: placeOfLoading.trim() || undefined,
+      placeOfDischarge: placeOfDischarge.trim() || undefined,
+      modeOfShipment: modeOfShipment.trim() || undefined,
+      notes: notes.trim() || undefined,
+      items: payloadItems,
+    };
+
     setSubmitting(true);
     setFormError(null);
     try {
-      await createMutation.mutateAsync({
-        purchaseOrderId: targetPoId,
-        input: {
-          piNumber: piNumber.trim() || undefined,
-          piDate: piDate || undefined,
-          currency: currency.trim() || "NPR",
-          exchangeRate: numOrUndef(exchangeRate) ?? 1,
-          paymentTerms: paymentTerms.trim() || undefined,
-          validityDate: validityDate || undefined,
-          items: payloadItems,
-        },
-      });
+      if (editingId) {
+        await updateMutation.mutateAsync({ id: editingId, input });
+      } else {
+        await createMutation.mutateAsync({ purchaseOrderId: targetPoId as number, input });
+      }
       await piQuery.refetch();
       resetForm();
       setShowForm(false);
     } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to create proforma invoice."));
+      setFormError(getErrorMessage(err, editingId ? "Failed to update proforma invoice." : "Failed to create proforma invoice."));
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +375,17 @@ const ProformaInvoicesPage: React.FC = () => {
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
               </button>
               {isAdmin && (
-                <button onClick={() => setShowForm((s) => !s)} className={primaryBtnCls}>
+                <button
+                  onClick={() => {
+                    if (showForm) {
+                      resetForm();
+                      setShowForm(false);
+                    } else {
+                      setShowForm(true);
+                    }
+                  }}
+                  className={primaryBtnCls}
+                >
                   <Plus size={14} /> {showForm ? "Cancel" : "New Proforma Invoice"}
                 </button>
               )}
@@ -301,7 +401,9 @@ const ProformaInvoicesPage: React.FC = () => {
 
           {isAdmin && showForm && (
             <div className={sectionCardCls}>
-              <h3 className="text-[13px] font-semibold text-slate-900 mb-3">Add Proforma Invoice</h3>
+              <h3 className="text-[13px] font-semibold text-slate-900 mb-3">
+                {editingId ? `Edit Proforma Invoice${piNumber ? ` — ${piNumber}` : ""}` : "Add Proforma Invoice"}
+              </h3>
               <form onSubmit={handleSubmit} className="space-y-3">
                 {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
                 <div>
@@ -309,7 +411,8 @@ const ProformaInvoicesPage: React.FC = () => {
                   <select
                     value={targetPoId}
                     onChange={(e) => setTargetPoId(e.target.value ? Number(e.target.value) : "")}
-                    className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400"
+                    disabled={!!editingId}
+                    className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     <option value="">Select a purchase order…</option>
                     {purchaseOrders.map((po) => (
@@ -344,6 +447,18 @@ const ProformaInvoicesPage: React.FC = () => {
                     <label className={labelCls}>Validity Date</label>
                     <input type="date" value={validityDate} onChange={(e) => setValidityDate(e.target.value)} className={inputCls} />
                   </div>
+                  <div>
+                    <label className={labelCls}>VAT %</label>
+                    <input type="number" step="0.01" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Customer PAN No.</label>
+                    <input value={customerPan} onChange={(e) => setCustomerPan(e.target.value)} className={inputCls} placeholder="Optional" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Vendor PAN No.</label>
+                    <input value={vendorPan} onChange={(e) => setVendorPan(e.target.value)} className={inputCls} placeholder="Optional" />
+                  </div>
                 </div>
 
                 <div>
@@ -356,6 +471,12 @@ const ProformaInvoicesPage: React.FC = () => {
                   <div className="space-y-2">
                     {items.map((row, i) => (
                       <div key={i} className="flex items-center gap-2 p-2 border rounded-lg border-slate-200">
+                        <input
+                          value={row.hsnCode}
+                          onChange={(e) => updateItemRow(i, { hsnCode: e.target.value })}
+                          placeholder="HS Code"
+                          className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                        />
                         <input
                           value={row.itemName}
                           onChange={(e) => updateItemRow(i, { itemName: e.target.value })}
@@ -384,6 +505,14 @@ const ProformaInvoicesPage: React.FC = () => {
                           min="0"
                           className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
+                        <label className="flex items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={row.taxable}
+                            onChange={(e) => updateItemRow(i, { taxable: e.target.checked })}
+                          />
+                          Taxable
+                        </label>
                         {items.length > 1 && (
                           <button type="button" onClick={() => removeItemRow(i)} className="p-1.5 text-slate-400 hover:text-red-600">
                             <Trash2 size={14} />
@@ -394,10 +523,45 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                    <p className="text-[11px] font-semibold text-slate-900">Bank Details</p>
+                    <input value={bankBeneficiaryName} onChange={(e) => setBankBeneficiaryName(e.target.value)} className={inputCls} placeholder="Beneficiary's Name" />
+                    <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={inputCls} placeholder="A/C No." />
+                    <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="Bank Name" />
+                    <input value={bankSwiftCode} onChange={(e) => setBankSwiftCode(e.target.value)} className={inputCls} placeholder="SWIFT Code" />
+                    <input value={bankAddress} onChange={(e) => setBankAddress(e.target.value)} className={inputCls} placeholder="Bank Address" />
+                  </div>
+                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                    <p className="text-[11px] font-semibold text-slate-900">Terms of Delivery</p>
+                    <input value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} className={inputCls} placeholder="Delivery Terms (e.g. DAP Parsa Nepal, Incoterms 2020)" />
+                    <input value={placeOfLoading} onChange={(e) => setPlaceOfLoading(e.target.value)} className={inputCls} placeholder="Place of Loading" />
+                    <input value={placeOfDischarge} onChange={(e) => setPlaceOfDischarge(e.target.value)} className={inputCls} placeholder="Place of Discharge" />
+                    <input value={modeOfShipment} onChange={(e) => setModeOfShipment(e.target.value)} className={inputCls} placeholder="Mode & Duration of Shipment" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={labelCls}>Notes</label>
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} rows={2} placeholder="Optional" />
+                </div>
+
                 <div className="flex justify-end gap-2 pt-1">
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetForm();
+                        setShowForm(false);
+                      }}
+                      className="px-4 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
                   <button type="submit" disabled={submitting} className={primaryBtnCls}>
                     {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    Create Proforma Invoice
+                    {editingId ? "Save Changes" : "Create Proforma Invoice"}
                   </button>
                 </div>
               </form>
@@ -433,6 +597,7 @@ const ProformaInvoicesPage: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-right">Exchange Rate</th>
                       <th className="px-3 py-2 font-medium text-left">Validity</th>
                       <th className="px-3 py-2 font-medium text-left">File</th>
+                      <th className="px-3 py-2 font-medium text-left">PDF</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
                     </tr>
                   </thead>
@@ -490,9 +655,25 @@ const ProformaInvoicesPage: React.FC = () => {
                                 <span className="text-slate-300">--</span>
                               )}
                             </td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              <a
+                                href={pdfUrl(pi.id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
+                              >
+                                <Download size={11} /> Download PDF
+                              </a>
+                            </td>
                             {isAdmin && (
                               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => startEdit(pi)}
+                                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 border rounded-lg border-slate-200 hover:bg-slate-50"
+                                  >
+                                    <Pencil size={12} /> Edit
+                                  </button>
                                   {pi.status === "waiting" && (
                                     <>
                                       <button
@@ -525,7 +706,7 @@ const ProformaInvoicesPage: React.FC = () => {
                           {isExpanded && (
                             <tr className="border-b border-slate-100 last:border-0 bg-slate-50/60">
                               <td />
-                              <td colSpan={isAdmin ? 8 : 7} className="px-3 py-3">
+                              <td colSpan={isAdmin ? 9 : 8} className="px-3 py-3">
                                 {pi.paymentTerms && (
                                   <p className="mb-2 text-[12px] text-slate-600">
                                     <span className="text-slate-400">Payment Terms:</span> {pi.paymentTerms}
@@ -535,19 +716,23 @@ const ProformaInvoicesPage: React.FC = () => {
                                   <table className="w-full text-[12px]">
                                     <thead>
                                       <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                                        <th className="px-3 py-2 font-medium text-left">HS Code</th>
                                         <th className="px-3 py-2 font-medium text-left">Item</th>
                                         <th className="px-3 py-2 font-medium text-right">Quantity</th>
                                         <th className="px-3 py-2 font-medium text-left">Unit</th>
                                         <th className="px-3 py-2 font-medium text-right">Unit Price</th>
+                                        <th className="px-3 py-2 font-medium text-left">Taxable</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {pi.items.map((item) => (
                                         <tr key={item.id} className="border-b border-slate-100 last:border-0">
+                                          <td className="px-3 py-2 text-slate-600">{item.hsnCode || "--"}</td>
                                           <td className="px-3 py-2 text-slate-700">{item.itemName}</td>
                                           <td className="px-3 py-2 text-right text-slate-600">{item.quantity}</td>
                                           <td className="px-3 py-2 text-slate-600">{item.unit || "--"}</td>
                                           <td className="px-3 py-2 text-right text-slate-600">{formatCost(item.unitPrice)}</td>
+                                          <td className="px-3 py-2 text-slate-600">{item.taxable ? "Yes" : "No"}</td>
                                         </tr>
                                       ))}
                                     </tbody>

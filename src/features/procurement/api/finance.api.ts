@@ -45,6 +45,8 @@ export interface SaveFinanceManualRecordInput {
   itemValue: number;
   paymentTerms?: string | null;
   vendorId?: number | null;
+  /** "NPR" | "INR" | "USD" | "RMB" — falls back to "NPR" when unset. */
+  currency?: string;
 }
 
 /** POST a freeform Finance ledger row that isn't tied to any real Purchase Order. */
@@ -92,7 +94,6 @@ export interface EditCostBreakdownRowInput {
   lcCharge: number;
   lcCommission: number;
   vat: number;
-  refundableMarginPercent: number;
   refundedAmount: number;
   remarks?: string | null;
 }
