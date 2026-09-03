@@ -4,6 +4,7 @@ import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchAllProformaInvoices,
   createProformaInvoice,
+  createStandaloneProformaInvoice,
   updateProformaInvoice,
   deleteProformaInvoice,
   changeProformaInvoiceStatus,
@@ -27,6 +28,12 @@ export function useCreateProformaInvoiceMutation() {
   return useMutation({
     mutationFn: ({ purchaseOrderId, input }: { purchaseOrderId: number; input: ProformaInvoiceInput }) =>
       createProformaInvoice(purchaseOrderId, input),
+  });
+}
+
+export function useCreateStandaloneProformaInvoiceMutation() {
+  return useMutation({
+    mutationFn: (input: ProformaInvoiceInput) => createStandaloneProformaInvoice(input),
   });
 }
 

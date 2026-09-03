@@ -69,9 +69,14 @@ const PaymentHistoryModal: React.FC<{
                 <div key={p.id} className="flex items-start justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-[13px] font-semibold text-slate-900">{formatCost(p.amount)}</span>
+                      <span className="text-[13px] font-semibold text-slate-900">{formatCost(p.amount, row.currency)}</span>
                       <span className="text-[11px] text-slate-500">{formatDate(p.paidDate)}</span>
                     </div>
+                    {p.exchangeRate != null && (
+                      <p className="text-[11px] text-slate-500">
+                        @ {p.exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} = {formatCost(p.amount * p.exchangeRate, "NPR")}
+                      </p>
+                    )}
                     {p.reference && <p className="text-[11px] text-slate-500 truncate">Ref: {p.reference}</p>}
                     {p.notes && <p className="text-[11px] text-slate-400 truncate">{p.notes}</p>}
                   </div>
@@ -92,7 +97,7 @@ const PaymentHistoryModal: React.FC<{
 
           <div className="flex items-center justify-between pt-3 mt-3 text-[12px] border-t border-slate-100">
             <span className="text-slate-500">Total Paid</span>
-            <span className="font-semibold text-slate-900">{formatCost(row.amountPaid)}</span>
+            <span className="font-semibold text-slate-900">{formatCost(row.amountPaid, row.currency)}</span>
           </div>
         </div>
       </div>

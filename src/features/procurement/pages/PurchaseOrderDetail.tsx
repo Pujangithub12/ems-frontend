@@ -106,6 +106,33 @@ const labelCls = "block mb-1 text-[11px] font-medium text-slate-900";
 const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors";
 const sectionCardCls = "p-4 bg-white border rounded-xl shadow-md border-slate-200";
 
+/** At the end of a field's text, ArrowRight moves focus to the next field in the same
+ * [data-arrow-row] group (ArrowLeft does the same at the start, moving back) — mirrors the
+ * same handler on the Site Activities and Proforma Invoices pages. Only wired onto plain text
+ * inputs (no `type` attribute) since `.selectionStart`/`.setSelectionRange` throw on
+ * `type="number"`/`"date"` inputs in Chrome. */
+const handleRowArrowNav = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const input = e.currentTarget;
+  if (input.selectionStart !== input.selectionEnd) return; // a range is selected — let the browser collapse it first
+  const atStart = input.selectionStart === 0;
+  const atEnd = input.selectionStart === input.value.length;
+  if (!((e.key === "ArrowLeft" && atStart) || (e.key === "ArrowRight" && atEnd))) return;
+
+  const row = input.closest<HTMLElement>("[data-arrow-row]");
+  if (!row) return;
+  const fields = Array.from(row.querySelectorAll<HTMLInputElement>("input[type='text'], input:not([type])")).filter((el) => !el.disabled);
+  const idx = fields.indexOf(input);
+  if (idx === -1) return;
+  const next = fields[e.key === "ArrowRight" ? idx + 1 : idx - 1];
+  if (next) {
+    e.preventDefault();
+    next.focus();
+    const pos = e.key === "ArrowRight" ? 0 : next.value.length;
+    next.setSelectionRange(pos, pos);
+  }
+};
+
 const numOrUndef = (s: string): number | undefined => {
   if (s.trim() === "") return undefined;
   const n = parseFloat(s);
@@ -614,13 +641,14 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             )}
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className={labelCls}>PO Number</label>
             <input
               disabled={!isAdmin}
               value={form.poNumber}
               onChange={(e) => setForm({ ...form, poNumber: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               className={inputCls}
             />
           </div>
@@ -630,6 +658,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.paymentTerms}
               onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               className={inputCls}
             />
           </div>
@@ -639,6 +668,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.incoterms}
               onChange={(e) => setForm({ ...form, incoterms: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               placeholder="e.g. FOB, CIF"
               className={inputCls}
             />
@@ -659,6 +689,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.deliveryPeriod}
               onChange={(e) => setForm({ ...form, deliveryPeriod: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               placeholder="e.g. Within 6 weeks of submission of PO."
               className={inputCls}
             />
@@ -669,6 +700,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.finalDestination}
               onChange={(e) => setForm({ ...form, finalDestination: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               className={inputCls}
             />
           </div>
@@ -678,6 +710,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.customerContactPerson}
               onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
               className={inputCls}
             />
@@ -688,6 +721,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               disabled={!isAdmin}
               value={form.currency}
               onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               placeholder="e.g. Indian Rupees — used in the PDF's Amount in Words line"
               className={inputCls}
             />
@@ -1108,10 +1142,10 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const fieldsDisabled = !isAdmin;
 
   const shipmentFields = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <div>
         <label className={labelCls}>Shipment No</label>
-        <input disabled={fieldsDisabled} value={form.shipmentNo} onChange={(e) => setForm({ ...form, shipmentNo: e.target.value })} className={inputCls} placeholder="Optional" />
+        <input disabled={fieldsDisabled} value={form.shipmentNo} onChange={(e) => setForm({ ...form, shipmentNo: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
       </div>
       <div>
         <label className={labelCls}>Transport Mode</label>
@@ -1148,19 +1182,19 @@ const ShipmentTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       </div>
       <div>
         <label className={labelCls}>Transport Company</label>
-        <input disabled={fieldsDisabled} value={form.transportCompany} onChange={(e) => setForm({ ...form, transportCompany: e.target.value })} className={inputCls} placeholder="Optional" />
+        <input disabled={fieldsDisabled} value={form.transportCompany} onChange={(e) => setForm({ ...form, transportCompany: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
       </div>
       <div>
         <label className={labelCls}>Container No</label>
-        <input disabled={fieldsDisabled} value={form.containerNo} onChange={(e) => setForm({ ...form, containerNo: e.target.value })} className={inputCls} placeholder="Optional" />
+        <input disabled={fieldsDisabled} value={form.containerNo} onChange={(e) => setForm({ ...form, containerNo: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
       </div>
       <div>
         <label className={labelCls}>Vehicle No</label>
-        <input disabled={fieldsDisabled} value={form.vehicleNo} onChange={(e) => setForm({ ...form, vehicleNo: e.target.value })} className={inputCls} placeholder="Optional" />
+        <input disabled={fieldsDisabled} value={form.vehicleNo} onChange={(e) => setForm({ ...form, vehicleNo: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
       </div>
       <div>
         <label className={labelCls}>Tracking No</label>
-        <input disabled={fieldsDisabled} value={form.trackingNo} onChange={(e) => setForm({ ...form, trackingNo: e.target.value })} className={inputCls} placeholder="Optional" />
+        <input disabled={fieldsDisabled} value={form.trackingNo} onChange={(e) => setForm({ ...form, trackingNo: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
       </div>
       <div>
         <label className={labelCls}>ETD</label>
@@ -1304,14 +1338,14 @@ const InsuranceBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <label className={labelCls}>Insurance Company</label>
-          <input disabled={!isAdmin} value={form.insuranceCompany} onChange={(e) => setForm({ ...form, insuranceCompany: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.insuranceCompany} onChange={(e) => setForm({ ...form, insuranceCompany: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Policy Number</label>
-          <input disabled={!isAdmin} value={form.policyNumber} onChange={(e) => setForm({ ...form, policyNumber: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.policyNumber} onChange={(e) => setForm({ ...form, policyNumber: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Coverage</label>
@@ -1323,7 +1357,7 @@ const InsuranceBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged
         </div>
         <div>
           <label className={labelCls}>Claim Status</label>
-          <input disabled={!isAdmin} value={form.claimStatus} onChange={(e) => setForm({ ...form, claimStatus: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.claimStatus} onChange={(e) => setForm({ ...form, claimStatus: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
       </div>
     </div>
@@ -1388,10 +1422,10 @@ const LetterOfCreditBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onCh
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <label className={labelCls}>LC Number</label>
-          <input disabled={!isAdmin} value={form.lcNumber} onChange={(e) => setForm({ ...form, lcNumber: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.lcNumber} onChange={(e) => setForm({ ...form, lcNumber: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>LC Charge</label>
@@ -1527,26 +1561,26 @@ const CustomsBlock: React.FC<{ shipment: Shipment; isAdmin: boolean; onChanged: 
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <label className={labelCls}>Declaration Number</label>
-          <input disabled={!isAdmin} value={form.customDeclarationNumber} onChange={(e) => setForm({ ...form, customDeclarationNumber: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.customDeclarationNumber} onChange={(e) => setForm({ ...form, customDeclarationNumber: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Bill of Entry</label>
-          <input disabled={!isAdmin} value={form.billOfEntry} onChange={(e) => setForm({ ...form, billOfEntry: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.billOfEntry} onChange={(e) => setForm({ ...form, billOfEntry: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>HS Code</label>
-          <input disabled={!isAdmin} value={form.hsCode} onChange={(e) => setForm({ ...form, hsCode: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.hsCode} onChange={(e) => setForm({ ...form, hsCode: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Clearing Agent</label>
-          <input disabled={!isAdmin} value={form.clearingAgent} onChange={(e) => setForm({ ...form, clearingAgent: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.clearingAgent} onChange={(e) => setForm({ ...form, clearingAgent: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Port</label>
-          <input disabled={!isAdmin} value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} className={inputCls} placeholder="Optional" />
+          <input disabled={!isAdmin} value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
         </div>
         <div>
           <label className={labelCls}>Import Duty</label>

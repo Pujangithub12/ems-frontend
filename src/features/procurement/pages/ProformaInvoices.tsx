@@ -26,8 +26,9 @@ import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { formatCost, toNumber } from "../../../lib/currency";
 import { ProformaInvoice, ProformaInvoiceStatus } from "../../../types";
-import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useUpdateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
+import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useCreateStandaloneProformaInvoiceMutation, useUpdateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
 import { useOrganizationPurchaseOrdersQuery } from "../hooks/usePurchaseOrder";
+import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
@@ -60,6 +61,33 @@ const labelCls = "block mb-1 text-[11px] font-medium text-slate-900";
 const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors";
 const sectionCardCls = "p-4 bg-white border rounded-xl shadow-md border-slate-200";
 
+/** At the end of a field's text, ArrowRight moves focus to the next field in the same
+ * [data-arrow-row] group (ArrowLeft does the same at the start, moving back) — mirrors the
+ * Site Activities page's handleRowArrowNav. Only wired onto plain text inputs (no `type`
+ * attribute) since `.selectionStart`/`.setSelectionRange` throw on `type="number"`/`"date"`
+ * inputs in Chrome. */
+const handleRowArrowNav = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const input = e.currentTarget;
+  if (input.selectionStart !== input.selectionEnd) return; // a range is selected — let the browser collapse it first
+  const atStart = input.selectionStart === 0;
+  const atEnd = input.selectionStart === input.value.length;
+  if (!((e.key === "ArrowLeft" && atStart) || (e.key === "ArrowRight" && atEnd))) return;
+
+  const row = input.closest<HTMLElement>("[data-arrow-row]");
+  if (!row) return;
+  const fields = Array.from(row.querySelectorAll<HTMLInputElement>("input[type='text'], input:not([type])")).filter((el) => !el.disabled);
+  const idx = fields.indexOf(input);
+  if (idx === -1) return;
+  const next = fields[e.key === "ArrowRight" ? idx + 1 : idx - 1];
+  if (next) {
+    e.preventDefault();
+    next.focus();
+    const pos = e.key === "ArrowRight" ? 0 : next.value.length;
+    next.setSelectionRange(pos, pos);
+  }
+};
+
 const numOrUndef = (s: string): number | undefined => {
   if (s.trim() === "") return undefined;
   const n = parseFloat(s);
@@ -88,13 +116,16 @@ const ProformaInvoicesPage: React.FC = () => {
 
   const piQuery = useAllProformaInvoicesQuery();
   const poQuery = useOrganizationPurchaseOrdersQuery();
+  const vendorsQuery = useOrganizationVendorsQuery();
   const createMutation = useCreateProformaInvoiceMutation();
+  const createStandaloneMutation = useCreateStandaloneProformaInvoiceMutation();
   const updateMutation = useUpdateProformaInvoiceMutation();
   const changeStatusMutation = useChangeProformaInvoiceStatusMutation();
   const uploadFileMutation = useUploadProformaInvoiceFileMutation();
 
   const proformaInvoices = piQuery.data ?? [];
   const purchaseOrders = poQuery.data ?? [];
+  const vendors = vendorsQuery.data ?? [];
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -129,7 +160,7 @@ const ProformaInvoicesPage: React.FC = () => {
       return (
         (pi.piNumber || "").toLowerCase().includes(q) ||
         (pi.purchaseOrder?.poNumber || "").toLowerCase().includes(q) ||
-        (pi.purchaseOrder?.vendor?.name || "").toLowerCase().includes(q) ||
+        (pi.purchaseOrder?.vendor?.name || pi.vendor?.name || pi.vendorName || "").toLowerCase().includes(q) ||
         (pi.purchaseOrder?.project?.name || "").toLowerCase().includes(q)
       );
     });
@@ -158,6 +189,14 @@ const ProformaInvoicesPage: React.FC = () => {
   const [taxPercent, setTaxPercent] = useState("13");
   const [customerPan, setCustomerPan] = useState("");
   const [vendorPan, setVendorPan] = useState("");
+  // Only used for a standalone (no purchase order) PI — the PO-backed path pulls vendor info
+  // from the purchase order itself.
+  const [vendorId, setVendorId] = useState<number | "">("");
+  const [vendorName, setVendorName] = useState("");
+  const [vendorContactPerson, setVendorContactPerson] = useState("");
+  const [vendorAddress, setVendorAddress] = useState("");
+  const [vendorContact, setVendorContact] = useState("");
+  const [vendorEmail, setVendorEmail] = useState("");
   const [bankBeneficiaryName, setBankBeneficiaryName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankName, setBankName] = useState("");
@@ -184,6 +223,12 @@ const ProformaInvoicesPage: React.FC = () => {
     setTaxPercent("13");
     setCustomerPan("");
     setVendorPan("");
+    setVendorId("");
+    setVendorName("");
+    setVendorContactPerson("");
+    setVendorAddress("");
+    setVendorContact("");
+    setVendorEmail("");
     setBankBeneficiaryName("");
     setBankAccountNumber("");
     setBankName("");
@@ -217,6 +262,12 @@ const ProformaInvoicesPage: React.FC = () => {
     setTaxPercent(pi.taxPercent != null ? String(toNumber(pi.taxPercent)) : "13");
     setCustomerPan(pi.customerPan ?? "");
     setVendorPan(pi.vendorPan ?? "");
+    setVendorId(pi.vendorId ?? "");
+    setVendorName(pi.vendorName ?? "");
+    setVendorContactPerson(pi.vendorContactPerson ?? "");
+    setVendorAddress(pi.vendorAddress ?? "");
+    setVendorContact(pi.vendorContact ?? "");
+    setVendorEmail(pi.vendorEmail ?? "");
     setBankBeneficiaryName(pi.bankBeneficiaryName ?? "");
     setBankAccountNumber(pi.bankAccountNumber ?? "");
     setBankName(pi.bankName ?? "");
@@ -245,8 +296,8 @@ const ProformaInvoicesPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingId && !targetPoId) {
-      setFormError("Select a purchase order.");
+    if (!editingId && !targetPoId && !vendorId && !vendorName.trim()) {
+      setFormError("Select a purchase order, or select/enter a vendor for a standalone PI.");
       return;
     }
     const payloadItems = [];
@@ -280,6 +331,16 @@ const ProformaInvoicesPage: React.FC = () => {
       taxPercent: numOrUndef(taxPercent),
       customerPan: customerPan.trim() || undefined,
       vendorPan: vendorPan.trim() || undefined,
+      ...(!targetPoId
+        ? {
+            vendorId: vendorId || null,
+            vendorName: vendorName.trim() || undefined,
+            vendorContactPerson: vendorContactPerson.trim() || undefined,
+            vendorAddress: vendorAddress.trim() || undefined,
+            vendorContact: vendorContact.trim() || undefined,
+            vendorEmail: vendorEmail.trim() || undefined,
+          }
+        : {}),
       bankBeneficiaryName: bankBeneficiaryName.trim() || undefined,
       bankAccountNumber: bankAccountNumber.trim() || undefined,
       bankName: bankName.trim() || undefined,
@@ -298,8 +359,10 @@ const ProformaInvoicesPage: React.FC = () => {
     try {
       if (editingId) {
         await updateMutation.mutateAsync({ id: editingId, input });
-      } else {
+      } else if (targetPoId) {
         await createMutation.mutateAsync({ purchaseOrderId: targetPoId as number, input });
+      } else {
+        await createStandaloneMutation.mutateAsync(input);
       }
       await piQuery.refetch();
       resetForm();
@@ -414,18 +477,57 @@ const ProformaInvoicesPage: React.FC = () => {
                     disabled={!!editingId}
                     className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
-                    <option value="">Select a purchase order…</option>
+                    <option value="">No purchase order (standalone PI)</option>
                     {purchaseOrders.map((po) => (
                       <option key={po.id} value={po.id}>
                         {po.poNumber || `PO #${po.id}`} — {po.vendor?.name || "Unknown vendor"} ({po.project?.name || "Unknown project"})
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {targetPoId
+                      ? "Vendor details for the VENDOR box come from the selected purchase order."
+                      : "No purchase order selected — pick or enter a vendor below for the VENDOR box."}
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+                {!targetPoId && (
+                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                    <p className="text-[11px] font-semibold text-slate-900">Vendor (standalone PI)</p>
+                    <select
+                      value={vendorId}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : "";
+                        setVendorId(id);
+                        const v = vendors.find((x) => x.id === id);
+                        if (v) {
+                          setVendorName(v.name ?? "");
+                          setVendorContactPerson(v.contactPerson ?? "");
+                          setVendorAddress(v.address ?? v.location ?? "");
+                          setVendorContact(v.contact ?? "");
+                          setVendorEmail(v.email ?? "");
+                        }
+                      }}
+                      className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400"
+                    >
+                      <option value="">Enter vendor details freeform (no existing vendor)…</option>
+                      {vendors.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                    <div data-arrow-row className="grid grid-cols-2 gap-2">
+                      <input value={vendorName} onChange={(e) => setVendorName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Vendor / company name" />
+                      <input value={vendorContactPerson} onChange={(e) => setVendorContactPerson(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact person" />
+                      <input value={vendorAddress} onChange={(e) => setVendorAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Address" />
+                      <input value={vendorContact} onChange={(e) => setVendorContact(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact no." />
+                      <input value={vendorEmail} onChange={(e) => setVendorEmail(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Email" />
+                    </div>
+                  </div>
+                )}
+                <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
                     <label className={labelCls}>PI Number</label>
-                    <input value={piNumber} onChange={(e) => setPiNumber(e.target.value)} className={inputCls} placeholder="Optional" />
+                    <input value={piNumber} onChange={(e) => setPiNumber(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                   </div>
                   <div>
                     <label className={labelCls}>PI Date</label>
@@ -433,7 +535,7 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelCls}>Currency</label>
-                    <input value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputCls} />
+                    <input value={currency} onChange={(e) => setCurrency(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>Exchange Rate</label>
@@ -441,7 +543,7 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelCls}>Payment Terms</label>
-                    <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} placeholder="Optional" />
+                    <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                   </div>
                   <div>
                     <label className={labelCls}>Validity Date</label>
@@ -453,11 +555,11 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelCls}>Customer PAN No.</label>
-                    <input value={customerPan} onChange={(e) => setCustomerPan(e.target.value)} className={inputCls} placeholder="Optional" />
+                    <input value={customerPan} onChange={(e) => setCustomerPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                   </div>
                   <div>
                     <label className={labelCls}>Vendor PAN No.</label>
-                    <input value={vendorPan} onChange={(e) => setVendorPan(e.target.value)} className={inputCls} placeholder="Optional" />
+                    <input value={vendorPan} onChange={(e) => setVendorPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                   </div>
                 </div>
 
@@ -470,16 +572,18 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     {items.map((row, i) => (
-                      <div key={i} className="flex items-center gap-2 p-2 border rounded-lg border-slate-200">
+                      <div key={i} data-arrow-row className="flex items-center gap-2 p-2 border rounded-lg border-slate-200">
                         <input
                           value={row.hsnCode}
                           onChange={(e) => updateItemRow(i, { hsnCode: e.target.value })}
+                          onKeyDown={handleRowArrowNav}
                           placeholder="HS Code"
                           className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <input
                           value={row.itemName}
                           onChange={(e) => updateItemRow(i, { itemName: e.target.value })}
+                          onKeyDown={handleRowArrowNav}
                           placeholder="Item name"
                           className="flex-[2] min-w-0 px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
@@ -494,6 +598,7 @@ const ProformaInvoicesPage: React.FC = () => {
                         <input
                           value={row.unit}
                           onChange={(e) => updateItemRow(i, { unit: e.target.value })}
+                          onKeyDown={handleRowArrowNav}
                           placeholder="Unit"
                           className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
@@ -524,20 +629,20 @@ const ProformaInvoicesPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                  <div data-arrow-row className="p-3 space-y-2 border rounded-lg border-slate-200">
                     <p className="text-[11px] font-semibold text-slate-900">Bank Details</p>
-                    <input value={bankBeneficiaryName} onChange={(e) => setBankBeneficiaryName(e.target.value)} className={inputCls} placeholder="Beneficiary's Name" />
-                    <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={inputCls} placeholder="A/C No." />
-                    <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="Bank Name" />
-                    <input value={bankSwiftCode} onChange={(e) => setBankSwiftCode(e.target.value)} className={inputCls} placeholder="SWIFT Code" />
-                    <input value={bankAddress} onChange={(e) => setBankAddress(e.target.value)} className={inputCls} placeholder="Bank Address" />
+                    <input value={bankBeneficiaryName} onChange={(e) => setBankBeneficiaryName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Beneficiary's Name" />
+                    <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="A/C No." />
+                    <input value={bankName} onChange={(e) => setBankName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Bank Name" />
+                    <input value={bankSwiftCode} onChange={(e) => setBankSwiftCode(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="SWIFT Code" />
+                    <input value={bankAddress} onChange={(e) => setBankAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Bank Address" />
                   </div>
-                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                  <div data-arrow-row className="p-3 space-y-2 border rounded-lg border-slate-200">
                     <p className="text-[11px] font-semibold text-slate-900">Terms of Delivery</p>
-                    <input value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} className={inputCls} placeholder="Delivery Terms (e.g. DAP Parsa Nepal, Incoterms 2020)" />
-                    <input value={placeOfLoading} onChange={(e) => setPlaceOfLoading(e.target.value)} className={inputCls} placeholder="Place of Loading" />
-                    <input value={placeOfDischarge} onChange={(e) => setPlaceOfDischarge(e.target.value)} className={inputCls} placeholder="Place of Discharge" />
-                    <input value={modeOfShipment} onChange={(e) => setModeOfShipment(e.target.value)} className={inputCls} placeholder="Mode & Duration of Shipment" />
+                    <input value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Delivery Terms (e.g. DAP Parsa Nepal, Incoterms 2020)" />
+                    <input value={placeOfLoading} onChange={(e) => setPlaceOfLoading(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Place of Loading" />
+                    <input value={placeOfDischarge} onChange={(e) => setPlaceOfDischarge(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Place of Discharge" />
+                    <input value={modeOfShipment} onChange={(e) => setModeOfShipment(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Mode & Duration of Shipment" />
                   </div>
                 </div>
 
@@ -579,7 +684,7 @@ const ProformaInvoicesPage: React.FC = () => {
               <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
                 {search || statusFilter
                   ? "Try adjusting your filters."
-                  : "Add one above once a purchase order has been generated for a vendor."}
+                  : "Add one above — link it to a purchase order, or create a standalone PI for a vendor."}
               </p>
             </div>
           ) : (
@@ -615,15 +720,26 @@ const ProformaInvoicesPage: React.FC = () => {
                             </td>
                             <td className="px-3 py-2 font-medium text-slate-800">{pi.piNumber || `PI #${pi.id}`}</td>
                             <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={() => pi.purchaseOrder?.id && navigate(`/${organizationId}/purchase-orders/${pi.purchaseOrder.id}`)}
-                                className="text-left text-blue-900 hover:underline"
-                              >
-                                {pi.purchaseOrder?.poNumber || `PO #${pi.purchaseOrder?.id ?? "--"}`}
-                              </button>
-                              <div className="text-[11px] text-slate-400">
-                                {pi.purchaseOrder?.vendor?.name || "Unknown vendor"} · {pi.purchaseOrder?.project?.name || "Unknown project"}
-                              </div>
+                              {pi.purchaseOrder ? (
+                                <>
+                                  <button
+                                    onClick={() => navigate(`/${organizationId}/purchase-orders/${pi.purchaseOrder!.id}`)}
+                                    className="text-left text-blue-900 hover:underline"
+                                  >
+                                    {pi.purchaseOrder.poNumber || `PO #${pi.purchaseOrder.id}`}
+                                  </button>
+                                  <div className="text-[11px] text-slate-400">
+                                    {pi.purchaseOrder.vendor?.name || "Unknown vendor"} · {pi.purchaseOrder.project?.name || "Unknown project"}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-slate-500 italic">Standalone</span>
+                                  <div className="text-[11px] text-slate-400">
+                                    {pi.vendor?.name || pi.vendorName || "No vendor"}
+                                  </div>
+                                </>
+                              )}
                             </td>
                             <td className="px-3 py-2"><Pill {...PI_STATUS_STYLES[pi.status]} /></td>
                             <td className="px-3 py-2 text-slate-600">{formatDate(pi.piDate)}</td>
