@@ -21,6 +21,13 @@ export interface ProformaInvoiceInput {
   taxPercent?: number;
   customerPan?: string;
   vendorPan?: string;
+  /** Only meaningful when creating/editing a standalone (PO-less) PI. */
+  vendorId?: number | null;
+  vendorName?: string;
+  vendorContactPerson?: string;
+  vendorAddress?: string;
+  vendorContact?: string;
+  vendorEmail?: string;
   bankBeneficiaryName?: string;
   bankAccountNumber?: string;
   bankName?: string;
@@ -49,6 +56,12 @@ export async function createProformaInvoice(
     `/api/purchase-orders/${purchaseOrderId}/proforma-invoices`,
     input,
   );
+  return res.data.proformaInvoice;
+}
+
+/** POST create a standalone proforma invoice with no purchase order behind it. */
+export async function createStandaloneProformaInvoice(input: ProformaInvoiceInput): Promise<ProformaInvoice> {
+  const res = await api.post<{ proformaInvoice: ProformaInvoice }>("/api/workspace/proforma-invoices", input);
   return res.data.proformaInvoice;
 }
 

@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, RefreshCw, Loader2, AlertCircle, X, CreditCard, History, Plus, Pencil, Trash2 } from "lucide-react";
+import { Wallet, Search, RefreshCw, Loader2, AlertCircle, X, CreditCard, History, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { FinancePurchaseOrderRow } from "../../../types";
-import { useFinanceOverviewQuery, useAddFinanceRowPaymentMutation, useDeleteFinanceManualRecordMutation } from "../hooks/useFinance";
+import { useFinanceOverviewQuery, useAddFinanceRowPaymentMutation, useDeleteFinanceManualRecordMutation, useExchangeRatesQuery } from "../hooks/useFinance";
 import PaymentHistoryModal from "../components/PaymentHistoryModal";
 import ManualRecordModal from "../components/ManualRecordModal";
 import { formatCost } from "../../../lib/currency";
@@ -15,8 +15,39 @@ const formatDate = (value?: string | null) =>
 
 const rowKey = (r: FinancePurchaseOrderRow) => `${r.source}-${r.source === "po" ? r.poId : r.manualRecordId}`;
 
-type PaymentForm = { amount: string; paidDate: string; reference: string; notes: string };
-const emptyPaymentForm: PaymentForm = { amount: "", paidDate: new Date().toISOString().slice(0, 10), reference: "", notes: "" };
+/** Currencies the "Display in" toggle can convert the whole table into — "native" (the default)
+ * shows each row in its own currency, unconverted, exactly like before. */
+const DISPLAY_CURRENCIES = ["native", "NPR", "USD", "INR", "RMB"] as const;
+type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
+
+/** Converts one row's Item Value/Amount Paid/Outstanding Balance into `target`, using today's
+ * live NRB rate for both the row's currency and the target — this is what answers "how much
+ * {target} do I need today to settle this row," which is the whole point of the toggle: a
+ * vendor debt fixed in USD costs a different amount of NPR every day, so seeing it converted at
+ * *today's* rate (not some average or the rate from when the PO was made) is what prevents
+ * over/under-paying. Returns null when the toggle is "native" or the rate isn't available yet
+ * (rates still loading, or an unsupported currency) — callers fall back to the row's own
+ * currency in that case. */
+function convertRowForDisplay(
+  row: FinancePurchaseOrderRow,
+  target: DisplayCurrency,
+  liveRates: Record<string, number> | undefined,
+): { itemValue: number; amountPaid: number; outstandingBalance: number; currency: string } | null {
+  if (target === "native" || target === row.currency) return null;
+  const rowRate = row.currency === "NPR" ? 1 : liveRates?.[row.currency];
+  const targetRate = target === "NPR" ? 1 : liveRates?.[target];
+  if (!rowRate || !targetRate) return null;
+  const factor = rowRate / targetRate;
+  return {
+    itemValue: row.itemValue * factor,
+    amountPaid: row.amountPaid * factor,
+    outstandingBalance: row.outstandingBalance * factor,
+    currency: target,
+  };
+}
+
+type PaymentForm = { amount: string; paidDate: string; exchangeRate: string; reference: string; notes: string };
+const emptyPaymentForm: PaymentForm = { amount: "", paidDate: new Date().toISOString().slice(0, 10), exchangeRate: "", reference: "", notes: "" };
 
 /**
  * Finance ledger (procurement pipeline's money layer, on top of the existing Cost Sheet) — one
@@ -34,9 +65,11 @@ const FinancePage: React.FC = () => {
   const overviewQuery = useFinanceOverviewQuery();
   const rows = overviewQuery.data ?? [];
   const deleteManualMutation = useDeleteFinanceManualRecordMutation();
+  const ratesQuery = useExchangeRatesQuery();
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("native");
   const [paymentTarget, setPaymentTarget] = useState<FinancePurchaseOrderRow | null>(null);
   const [historyTarget, setHistoryTarget] = useState<FinancePurchaseOrderRow | null>(null);
   const [manualModalOpen, setManualModalOpen] = useState(false);
@@ -105,14 +138,36 @@ const FinancePage: React.FC = () => {
       ) : (
         <div className="flex flex-col w-full min-w-0 gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search PO#, vendor, item..."
-                className="pl-8 pr-3 py-2 w-64 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search PO#, vendor, item..."
+                  className="pl-8 pr-3 py-2 w-64 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
+                />
+              </div>
+              <div className="relative">
+                <select
+                  value={displayCurrency}
+                  onChange={(e) => setDisplayCurrency(e.target.value as DisplayCurrency)}
+                  className="appearance-none pl-3 pr-8 py-2 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 focus:bg-white transition-colors"
+                  title="Convert every row's amounts to one currency using today's exchange rate"
+                >
+                  <option value="native">Display in: each row's own currency</option>
+                  <option value="NPR">Display in: NPR</option>
+                  <option value="USD">Display in: USD</option>
+                  <option value="INR">Display in: INR</option>
+                  <option value="RMB">Display in: RMB</option>
+                </select>
+                <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
+              </div>
+              {displayCurrency !== "native" && (
+                <span className="text-[11px] text-slate-400">
+                  {ratesQuery.data ? "converted at today's NRB rate" : "loading today's rate…"}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {isAdmin && (
@@ -162,7 +217,10 @@ const FinancePage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((r) => (
+                    {filteredRows.map((r) => {
+                      const converted = convertRowForDisplay(r, displayCurrency, ratesQuery.data);
+                      const display = converted ?? { itemValue: r.itemValue, amountPaid: r.amountPaid, outstandingBalance: r.outstandingBalance, currency: r.currency };
+                      return (
                       <tr
                         key={rowKey(r)}
                         onClick={() => navigate(`/${organizationId}/finance/records/${r.source}/${r.source === "po" ? r.poId : r.manualRecordId}`)}
@@ -197,11 +255,15 @@ const FinancePage: React.FC = () => {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right text-slate-700">
-                          {formatCost(r.itemValue)}
-                          {r.currency && r.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{r.currency}</span>}
+                          {formatCost(display.itemValue, display.currency)}
+                          {display.currency && display.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{display.currency}</span>}
+                          {converted && <div className="text-[10px] text-slate-400">{formatCost(r.itemValue, r.currency)} native</div>}
                         </td>
                         <td className="px-3 py-2 text-slate-600">{r.paymentTerms || "--"}</td>
-                        <td className="px-3 py-2 text-right text-slate-700">{formatCost(r.amountPaid)}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">
+                          {formatCost(display.amountPaid, display.currency)}
+                          {converted && <div className="text-[10px] text-slate-400">{formatCost(r.amountPaid, r.currency)} native</div>}
+                        </td>
                         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => setHistoryTarget(r)}
@@ -213,8 +275,9 @@ const FinancePage: React.FC = () => {
                             {r.payments.length > 0 && <History size={11} />}
                           </button>
                         </td>
-                        <td className={`px-3 py-2 text-right font-medium ${r.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                          {formatCost(r.outstandingBalance)}
+                        <td className={`px-3 py-2 text-right font-medium ${display.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                          {formatCost(display.outstandingBalance, display.currency)}
+                          {converted && <div className="text-[10px] font-normal text-slate-400">{formatCost(r.outstandingBalance, r.currency)} native</div>}
                         </td>
                         {isAdmin && (
                           <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -248,7 +311,8 @@ const FinancePage: React.FC = () => {
                           </td>
                         )}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -287,11 +351,22 @@ const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => v
   onLogged,
 }) => {
   const addPaymentMutation = useAddFinanceRowPaymentMutation();
+  const ratesQuery = useExchangeRatesQuery();
   const [form, setForm] = useState<PaymentForm>(emptyPaymentForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const rowId = row.source === "po" ? row.poId : row.manualRecordId;
+  const needsRate = row.currency && row.currency !== "NPR";
+
+  // Prefill the exchange rate from today's live rate once it loads, so the field isn't blank —
+  // but only if the user hasn't already typed something in (e.g. the bank's actual rate).
+  useEffect(() => {
+    if (!needsRate || form.exchangeRate) return;
+    const liveRate = ratesQuery.data?.[row.currency];
+    if (liveRate) setForm((f) => (f.exchangeRate ? f : { ...f, exchangeRate: String(liveRate) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ratesQuery.data, needsRate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,6 +378,14 @@ const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => v
     if (!form.paidDate) {
       setFormError("Select a paid date.");
       return;
+    }
+    let exchangeRate: number | null = null;
+    if (needsRate) {
+      exchangeRate = parseFloat(form.exchangeRate);
+      if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
+        setFormError(`Enter a valid ${row.currency} → NPR exchange rate.`);
+        return;
+      }
     }
     if (rowId == null) {
       setFormError("This record can't be found.");
@@ -317,6 +400,7 @@ const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => v
         input: {
           amount,
           paidDate: form.paidDate,
+          exchangeRate,
           reference: form.reference.trim() || null,
           notes: form.notes.trim() || null,
         },
@@ -347,7 +431,7 @@ const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => v
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Amount</label>
+              <label className="block mb-1 text-[11px] font-medium text-slate-900">Amount{row.currency && row.currency !== "NPR" ? ` (${row.currency})` : ""}</label>
               <input
                 autoFocus
                 type="number"
@@ -368,6 +452,28 @@ const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => v
               />
             </div>
           </div>
+          {needsRate && (
+            <div>
+              <label className="block mb-1 text-[11px] font-medium text-slate-900">Exchange Rate ({row.currency} → NPR)</label>
+              <input
+                type="number"
+                min="0.01"
+                step="any"
+                value={form.exchangeRate}
+                onChange={(e) => setForm({ ...form, exchangeRate: e.target.value })}
+                placeholder={ratesQuery.data?.[row.currency] ? String(ratesQuery.data[row.currency]) : "e.g. 133.20"}
+                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Prefilled from today's NRB selling rate — edit it to match the rate your bank actually used.
+                {parseFloat(form.amount) > 0 && parseFloat(form.exchangeRate) > 0 && (
+                  <span className="block mt-0.5 font-medium text-slate-700">
+                    = {formatCost(parseFloat(form.amount) * parseFloat(form.exchangeRate), "NPR")}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
           <div>
             <label className="block mb-1 text-[11px] font-medium text-slate-900">Reference</label>
             <input

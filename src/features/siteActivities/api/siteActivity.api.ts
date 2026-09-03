@@ -90,6 +90,9 @@ export type SiteActivityReport = {
   signedBy: string | null;
   status: SiteActivityReportStatus;
   createdBy: { id: number; name: string } | null;
+  /** Whoever last saved this report (create or edit) — distinct from createdBy, which stays
+   * fixed to the original author. */
+  updatedBy: { id: number; name: string } | null;
   createdAt: string;
   updatedAt: string;
   activities: SiteActivityItem[];

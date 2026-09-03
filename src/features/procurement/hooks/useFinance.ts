@@ -3,6 +3,7 @@ import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   fetchFinanceOverview,
+  fetchExchangeRates,
   fetchVendorFinanceSummary,
   fetchItemCostReport,
   addPurchaseOrderPayment,
@@ -25,6 +26,18 @@ export function useFinanceOverviewQuery() {
     queryKey: queryKeys.financeOverview(wsId),
     queryFn: () => fetchFinanceOverview(),
     enabled: Number.isFinite(wsId),
+  });
+}
+
+/** Today's exchange rates — one NRB rate per day, so cache generously; refetching every mount
+ * would just re-serve the backend's own daily cache anyway. */
+export function useExchangeRatesQuery() {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.exchangeRates(wsId),
+    queryFn: () => fetchExchangeRates(),
+    enabled: Number.isFinite(wsId),
+    staleTime: 60 * 60 * 1000,
   });
 }
 

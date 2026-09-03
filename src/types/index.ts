@@ -277,6 +277,15 @@ export type ProformaInvoice = {
   taxPercent?: number | string | null;
   customerPan?: string | null;
   vendorPan?: string | null;
+  /** Only meaningful for a PO-less PI — a linked Vendor and/or freeform vendor details, used
+   * instead of purchaseOrder.vendor for the VENDOR box. */
+  vendorId?: number | null;
+  vendor?: Vendor | null;
+  vendorName?: string | null;
+  vendorContactPerson?: string | null;
+  vendorAddress?: string | null;
+  vendorContact?: string | null;
+  vendorEmail?: string | null;
   bankBeneficiaryName?: string | null;
   bankAccountNumber?: string | null;
   bankName?: string | null;
@@ -288,7 +297,7 @@ export type ProformaInvoice = {
   modeOfShipment?: string | null;
   notes?: string | null;
   items: ProformaInvoiceItem[];
-  /** Only present when fetched from the org-wide Proforma Invoices list (not when embedded in PurchaseOrder.proformaInvoices). */
+  /** Only present when fetched from the org-wide Proforma Invoices list (not when embedded in PurchaseOrder.proformaInvoices). Null for a standalone PI created without a purchase order. */
   purchaseOrder?: { id: number; poNumber?: string | null; vendor?: Vendor | null; project?: { id: number; name: string } | null } | null;
   createdAt: string;
   updatedAt: string;
@@ -460,6 +469,9 @@ export type PurchaseOrderPaymentEntry = {
   id: number;
   amount: number;
   paidDate: string;
+  /** NPR per 1 unit of the row's currency at the time this installment was paid — null for NPR
+   * rows or payments logged before this field existed. */
+  exchangeRate?: number | null;
   reference?: string | null;
   notes?: string | null;
 };
@@ -513,15 +525,18 @@ export type FinanceCostBreakdownRow = {
   majorCost: number;
   freight: number;
   lcNumber?: string | null;
+  /** The Letter of Credit's own principal amount — manually entered, distinct from lcCharge/lcCommission (fees). */
+  lcAmount: number;
   lcCharge: number;
   lcCommission: number;
   vat: number;
-  /** Always 0 — retained alongside refundedAmount/toBeRefunded now that the per-row Refundable
-   * Margin % this was computed from has been removed. */
+  importDuties: number;
+  insurance: number;
+  /** Manually entered directly in NPR (not the row's own currency) — how much VAT/tax is refundable on this row. */
   refundableAmount: number;
-  /** How much VAT has actually been refunded so far. */
+  /** How much VAT has actually been refunded so far, also in NPR. */
   refundedAmount: number;
-  /** refundableAmount - refundedAmount — computed server-side. */
+  /** refundableAmount - refundedAmount, in NPR — computed server-side. */
   toBeRefunded: number;
   remarks?: string | null;
 };
@@ -532,6 +547,8 @@ export type FinanceCostBreakdown = {
   manualRecordId?: number | null;
   poNumber?: string | null;
   vendorName?: string | null;
+  /** "NPR" | "INR" | "USD" | "RMB", or null for a PO row (no standardized currency code there). */
+  currency?: string | null;
   rows: FinanceCostBreakdownRow[];
 };
 

@@ -7,6 +7,12 @@ export async function fetchFinanceOverview(): Promise<FinancePurchaseOrderRow[]>
   return res.data.rows ?? [];
 }
 
+/** GET today's USD/INR/RMB -> NPR selling rates (NRB), keyed by currency code plus NPR: 1. */
+export async function fetchExchangeRates(): Promise<Record<string, number>> {
+  const res = await api.get<{ date: string; rates: Record<string, number> }>("/api/workspace/finance/exchange-rates");
+  return res.data.rates ?? { NPR: 1 };
+}
+
 /** GET one vendor's POs plus aggregated totals (Total Procurement / Total Amount Paid / Total Outstanding). */
 export async function fetchVendorFinanceSummary(vendorId: number): Promise<VendorFinanceSummary> {
   const res = await api.get<VendorFinanceSummary>(`/api/workspace/finance/vendors/${vendorId}`);
@@ -22,6 +28,8 @@ export async function fetchItemCostReport(): Promise<ItemCostReportRow[]> {
 export interface AddPurchaseOrderPaymentInput {
   amount: number;
   paidDate: string;
+  /** NPR per 1 unit of the row's currency at the time of payment — only for non-NPR rows. */
+  exchangeRate?: number | null;
   reference?: string | null;
   notes?: string | null;
 }
@@ -91,9 +99,13 @@ export interface EditCostBreakdownRowInput {
   majorCost: number;
   freight: number;
   lcNumber?: string | null;
+  lcAmount: number;
   lcCharge: number;
   lcCommission: number;
   vat: number;
+  importDuties: number;
+  insurance: number;
+  refundableAmount: number;
   refundedAmount: number;
   remarks?: string | null;
 }
