@@ -585,6 +585,24 @@ async function parseSheetFile(
   return { headers, rows, dateColumnNames };
 }
 
+/** Collapses invisible/lookalike character differences that make two header strings which read
+ * identically to the eye fail a naive exact match — headers pasted into Excel from a Word doc or
+ * PDF report template are prone to non-breaking spaces, smart quotes, and dash variants (en dash,
+ * em dash, minus sign, ...) that a plain-typed column name won't have, so "Alignment - Weekly
+ * Total (Nos.)" in the file can silently differ from an identical-looking column name by a single
+ * invisible character. Only used for matching a file's header to an existing column name — the
+ * raw header text is still shown as-is in the unmatched-headers warning. */
+function normalizeHeaderText(s: string): string {
+  return s
+    .normalize("NFKC")
+    .replace(/[‐-―−]/g, "-") // hyphen/non-breaking hyphen/figure/en/em dash/horizontal bar, minus sign -> "-"
+    .replace(/[‘’‛]/g, "'") // curly single quotes -> '
+    .replace(/[“”‟]/g, '"') // curly double quotes -> "
+    .replace(/\s+/g, " ") // any run of whitespace (incl. non-breaking spaces, tabs) -> single space
+    .trim()
+    .toLowerCase();
+}
+
 /** Coerces one parsed spreadsheet cell value to match an *existing* column's
  * data type — import never creates columns, so every value that survives
  * gets forced into the shape its target column already declared, the same
@@ -815,7 +833,7 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
       const unmatchedHeaders: string[] = [];
       const headerToColumn = new Map<string, PlantReportColumn>();
       for (const h of headers) {
-        const existing = existingColumns.find((c) => c.name.trim().toLowerCase() === h.trim().toLowerCase());
+        const existing = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(h));
         if (existing) {
           matchedColumns.push({ id: existing.id, name: existing.name, dataType: existing.dataType });
           headerToColumn.set(h, existing);
