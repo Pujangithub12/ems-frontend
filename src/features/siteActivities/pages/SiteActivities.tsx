@@ -613,6 +613,8 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
 
   const sortedReports = useMemo(() => [...reports].sort((a, b) => a.reportDate.localeCompare(b.reportDate)), [reports]);
   const [manpowerDailyView, setManpowerDailyView] = useState(false);
+  const [equipmentDailyView, setEquipmentDailyView] = useState(false);
+  const [materialDailyView, setMaterialDailyView] = useState(false);
 
   const totals = useMemo(() => {
     const daysReported = reports.length;
@@ -645,6 +647,19 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
       }
     }
     return Array.from(byMaterial.values());
+  }, [reports]);
+
+  // Grouped by unit rather than one lump sum, since summing e.g. meters and cubic-meters
+  // together would be meaningless — each unit gets its own total.
+  const activityQtyByUnit = useMemo(() => {
+    const byUnit = new Map<string, number>();
+    for (const r of reports) {
+      for (const a of r.activities) {
+        const key = a.unit?.trim() || "";
+        byUnit.set(key, (byUnit.get(key) ?? 0) + (a.todayQty ?? 0));
+      }
+    }
+    return Array.from(byUnit.entries()).map(([unit, qty]) => ({ unit, qty }));
   }, [reports]);
 
   const manpowerTotals = useMemo(() => {
@@ -691,6 +706,50 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
     }
     return Array.from(byEquipment.values());
   }, [reports]);
+
+  // Same "only columns for dates that actually have a report" approach as manpowerDaily above.
+  const equipmentDaily = useMemo(() => {
+    const names = new Set<string>();
+    const byNameDay = new Map<string, Map<string, number>>();
+    for (const r of sortedReports) {
+      for (const e of r.equipment) {
+        names.add(e.equipmentName);
+        if (!byNameDay.has(e.equipmentName)) byNameDay.set(e.equipmentName, new Map());
+        const dayMap = byNameDay.get(e.equipmentName)!;
+        dayMap.set(r.reportDate, (dayMap.get(r.reportDate) ?? 0) + (e.workingHours ?? 0));
+      }
+    }
+    return Array.from(names).map((equipmentName) => ({
+      equipmentName,
+      byDay: sortedReports.map((r) => byNameDay.get(equipmentName)?.get(r.reportDate) ?? 0),
+    }));
+  }, [sortedReports]);
+  const equipmentDailyTotals = useMemo(
+    () => sortedReports.map((r) => r.equipment.reduce((s, e) => s + (e.workingHours ?? 0), 0)),
+    [sortedReports],
+  );
+
+  const materialDaily = useMemo(() => {
+    const types = new Set<string>();
+    const byTypeDay = new Map<string, Map<string, { received: number; used: number; receivedUnit: string; usedUnit: string }>>();
+    for (const r of sortedReports) {
+      for (const m of r.materials) {
+        types.add(m.materialType);
+        if (!byTypeDay.has(m.materialType)) byTypeDay.set(m.materialType, new Map());
+        const dayMap = byTypeDay.get(m.materialType)!;
+        const existing = dayMap.get(r.reportDate) ?? { received: 0, used: 0, receivedUnit: m.receivedUnit ?? "", usedUnit: m.usedUnit ?? "" };
+        existing.received += m.receivedQuantity ?? 0;
+        existing.used += m.usedQuantity ?? 0;
+        if (!existing.receivedUnit && m.receivedUnit) existing.receivedUnit = m.receivedUnit;
+        if (!existing.usedUnit && m.usedUnit) existing.usedUnit = m.usedUnit;
+        dayMap.set(r.reportDate, existing);
+      }
+    }
+    return Array.from(types).map((materialType) => ({
+      materialType,
+      byDay: sortedReports.map((r) => byTypeDay.get(materialType)?.get(r.reportDate) ?? null),
+    }));
+  }, [sortedReports]);
 
   const curveData = useMemo(() => {
     let cumulative = 0;
@@ -783,6 +842,19 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         ))
                     )}
                   </tbody>
+                  {activityQtyByUnit.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-blue-50">
+                        <td colSpan={2} className={`${tdCls} font-semibold text-blue-900`}>
+                          Total Quantity
+                        </td>
+                        <td className={`${tdCls} font-semibold text-blue-900`}>
+                          {activityQtyByUnit.map((u) => `${u.qty}${u.unit ? ` ${u.unit}` : ""}`).join(", ")}
+                        </td>
+                        <td className={tdCls} />
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </InfoCard>
@@ -869,61 +941,168 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
             </InfoCard>
 
             <InfoCard title="Equipment — All Time" badge={`${totals.totalEquipmentHours} hrs`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr>
-                      <th className={thCls}>Equipment / plant</th>
-                      <th className={thCls}>Times Logged</th>
-                      <th className={thCls}>Total Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {equipmentTotals.length === 0 ? (
-                      <EmptyRow colSpan={3} />
-                    ) : (
-                      equipmentTotals.map((e) => (
-                        <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>{e.entries}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>{e.totalHours}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="flex items-center justify-end px-3 pt-1">
+                <button
+                  onClick={() => setEquipmentDailyView((v) => !v)}
+                  className="text-[11.5px] font-medium text-blue-600 hover:underline"
+                >
+                  {equipmentDailyView ? "Show totals only" : "Break down by day"}
+                </button>
               </div>
+              {equipmentDailyView ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>Equipment / plant</th>
+                        {sortedReports.map((r) => (
+                          <th key={r.reportDate} className={`${thCls} text-center`} style={{ width: 60 }}>
+                            {formatShortDate(r.reportDate)}
+                          </th>
+                        ))}
+                        <th className={`${thCls} text-center`} style={{ width: 60 }}>
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {equipmentDaily.length === 0 ? (
+                        <EmptyRow colSpan={2} />
+                      ) : (
+                        equipmentDaily.map((e) => (
+                          <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
+                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
+                            {e.byDay.map((hrs, i) => (
+                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#64748b]`}>
+                                {hrs || "—"}
+                              </td>
+                            ))}
+                            <td className={`${tdCls} text-center font-semibold text-[#1d4ed8]`}>{e.byDay.reduce((s, n) => s + n, 0)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    {equipmentDaily.length > 0 && (
+                      <tfoot>
+                        <tr className="bg-blue-50">
+                          <td className={`${tdCls} font-semibold text-blue-900`}>Total Hours</td>
+                          {equipmentDailyTotals.map((n, i) => (
+                            <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center font-semibold text-blue-900`}>
+                              {n || "—"}
+                            </td>
+                          ))}
+                          <td className={`${tdCls} text-center font-bold text-blue-900`}>{totals.totalEquipmentHours}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>Equipment / plant</th>
+                        <th className={thCls}>Times Logged</th>
+                        <th className={thCls}>Total Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {equipmentTotals.length === 0 ? (
+                        <EmptyRow colSpan={3} />
+                      ) : (
+                        equipmentTotals.map((e) => (
+                          <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
+                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
+                            <td className={`${tdCls} text-[#64748b]`}>{e.entries}</td>
+                            <td className={`${tdCls} text-[#64748b]`}>{e.totalHours}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </InfoCard>
 
             <InfoCard title="Materials — All Time" badge={`${materialTotals.length} type${materialTotals.length === 1 ? "" : "s"}`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr>
-                      <th className={thCls}>Material Type</th>
-                      <th className={thCls}>Received</th>
-                      <th className={thCls}>Used</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materialTotals.length === 0 ? (
-                      <EmptyRow colSpan={3} />
-                    ) : (
-                      materialTotals.map((m) => (
-                        <tr key={m.materialType} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>
-                            {m.receivedQuantity} {m.receivedUnit}
-                          </td>
-                          <td className={`${tdCls} text-[#64748b]`}>
-                            {m.usedQuantity} {m.usedUnit}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="flex items-center justify-end px-3 pt-1">
+                <button
+                  onClick={() => setMaterialDailyView((v) => !v)}
+                  className="text-[11.5px] font-medium text-blue-600 hover:underline"
+                >
+                  {materialDailyView ? "Show totals only" : "Break down by day"}
+                </button>
               </div>
+              {materialDailyView ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>Material Type</th>
+                        {sortedReports.map((r) => (
+                          <th key={r.reportDate} className={`${thCls} text-center`} style={{ width: 70 }}>
+                            {formatShortDate(r.reportDate)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialDaily.length === 0 ? (
+                        <EmptyRow colSpan={2} />
+                      ) : (
+                        materialDaily.map((m) => (
+                          <tr key={m.materialType} className="hover:bg-[#f8fafc]">
+                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
+                            {m.byDay.map((entry, i) => (
+                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#64748b]`}>
+                                {!entry || (entry.received === 0 && entry.used === 0) ? (
+                                  "—"
+                                ) : (
+                                  <div className="leading-tight">
+                                    <div>R {entry.received}</div>
+                                    <div>U {entry.used}</div>
+                                  </div>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                  <p className="px-[18px] pb-2 pt-1 text-[11px] text-[#94a3b8]">R = Received, U = Used, per day.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className={thCls}>Material Type</th>
+                        <th className={thCls}>Received</th>
+                        <th className={thCls}>Used</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialTotals.length === 0 ? (
+                        <EmptyRow colSpan={3} />
+                      ) : (
+                        materialTotals.map((m) => (
+                          <tr key={m.materialType} className="hover:bg-[#f8fafc]">
+                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
+                            <td className={`${tdCls} text-[#64748b]`}>
+                              {m.receivedQuantity} {m.receivedUnit}
+                            </td>
+                            <td className={`${tdCls} text-[#64748b]`}>
+                              {m.usedQuantity} {m.usedUnit}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </InfoCard>
           </div>
         </>
@@ -1590,7 +1769,7 @@ const SiteActivities: React.FC = () => {
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {manpower.map((row, i) => (
-                        <div key={i} data-arrow-row className="flex items-center gap-2 px-3 py-2.5">
+                        <div key={i} data-arrow-row className="flex items-center gap-2 px-3 py-3">
                           <input
                             className="flex-1 min-w-0 p-0 bg-transparent border-none outline-none text-[13.5px] font-medium text-slate-800 focus:ring-0"
                             value={row.role}
@@ -1599,14 +1778,14 @@ const SiteActivities: React.FC = () => {
                           />
                           <input
                             placeholder="Name (specific post only)"
-                            className="flex-1 min-w-0 px-1.5 py-1 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
+                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
                             value={row.names}
                             onChange={(e) => updateManpower(i, { names: e.target.value })}
                             onKeyDown={handleRowArrowNav}
                           />
                           <input
                             placeholder="Remarks"
-                            className="flex-1 min-w-0 px-1.5 py-1 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
+                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
                             value={row.remarks}
                             onChange={(e) => updateManpower(i, { remarks: e.target.value })}
                             onKeyDown={handleRowArrowNav}
@@ -1615,7 +1794,7 @@ const SiteActivities: React.FC = () => {
                             type="text"
                             inputMode="numeric"
                             style={{ fontFamily: FONT_MONO }}
-                            className="w-12 px-1 py-1 text-[14px] font-semibold text-right bg-white border border-slate-200 rounded outline-none text-slate-900 hover:border-slate-300 focus:border-blue-600"
+                            className="w-12 px-1 py-2 text-[14px] font-semibold text-right bg-white border border-slate-200 rounded outline-none text-slate-900 hover:border-slate-300 focus:border-blue-600"
                             value={row.headcount}
                             onChange={(e) => updateManpower(i, { headcount: e.target.value })}
                             onKeyDown={handleRowArrowNav}
