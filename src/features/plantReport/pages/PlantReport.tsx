@@ -31,6 +31,7 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
 import { getErrorMessage } from "../../../lib/errors";
+import { adDateForBsDay } from "../../../lib/bsDate";
 import ErrorBanner from "../../../components/ErrorBanner";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import {
@@ -155,6 +156,29 @@ function toIsoDateValue(raw: unknown): string | null {
   }
   if (typeof raw === "number" && Number.isFinite(raw)) return excelSerialToIso(raw);
   return parseFlexibleDate(String(raw));
+}
+
+/** Parses a Bikram Sambat date typed as free text — "2083/04/26", "2083-4-26",
+ * etc. (year, 1-based month, day) — and converts it to the equivalent AD
+ * "YYYY-MM-DD" string via nepali-date-converter. Without this, a BS date like
+ * "2083/04/26" numerically *looks* like a valid Gregorian date to
+ * `parseFlexibleDate` (year 2083 is a real AD year) and silently gets stored
+ * as that wrong, decades-off AD date instead of being converted. Returns null
+ * if the text isn't YYYY/MM/DD-shaped or isn't a valid BS calendar day. */
+function bsStringToIso(raw: unknown): string | null {
+  if (raw == null) return null;
+  const match = String(raw).trim().match(/^(\d{4})[\-/.](\d{1,2})[\-/.](\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1; // file is 1-based; nepali-date-converter's month is 0-based
+  const day = Number(match[3]);
+  if (month < 0 || month > 11 || day < 1 || day > 32) return null;
+  try {
+    const iso = adDateForBsDay(year, month, day);
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Rounds away Excel/XLSX floating-point noise from arithmetic (e.g.
@@ -538,9 +562,27 @@ async function parseSheetFile(
   type SheetCell = { t?: string; v?: unknown; w?: string; z?: string };
   const cellAt = (r: number, c: number): SheetCell | undefined => sheet[XLSX.utils.encode_cell({ r, c })];
 
+  // The real header row isn't always the sheet's very first row — a report title like "WORK
+  // PROGRESS REPORT" merged across the top (which only leaves a value in that row's first cell)
+  // would otherwise get read as a single "header", every other column reads as unnamed, and the
+  // real headers one row down get skipped entirely as data. Skip any such leading row(s) — fewer
+  // than 2 non-blank cells — and use the first row with at least 2 as the header row.
+  let headerRow = range.s.r;
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    let nonBlank = 0;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = cellAt(r, c);
+      if (String(cell?.v ?? cell?.w ?? "").trim()) nonBlank++;
+    }
+    if (nonBlank >= 2) {
+      headerRow = r;
+      break;
+    }
+  }
+
   const headerEntries: { name: string; index: number }[] = [];
   for (let c = range.s.c; c <= range.e.c; c++) {
-    const cell = cellAt(range.s.r, c);
+    const cell = cellAt(headerRow, c);
     const name = String(cell?.v ?? cell?.w ?? "").trim();
     if (name) headerEntries.push({ name, index: c });
   }
@@ -550,7 +592,7 @@ async function parseSheetFile(
   for (const { name, index } of headerEntries) {
     let sampled = 0;
     let dateLike = 0;
-    for (let r = range.s.r + 1; r <= range.e.r && sampled < 50; r++) {
+    for (let r = headerRow + 1; r <= range.e.r && sampled < 50; r++) {
       const cell = cellAt(r, index);
       if (!cell || cell.v == null || cell.v === "") continue;
       sampled++;
@@ -560,7 +602,7 @@ async function parseSheetFile(
   }
 
   const rows: Record<string, unknown>[] = [];
-  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
     const row: Record<string, unknown> = {};
     let hasValue = false;
     for (const { name, index } of headerEntries) {
@@ -606,12 +648,15 @@ function normalizeHeaderText(s: string): string {
 /** Coerces one parsed spreadsheet cell value to match an *existing* column's
  * data type — import never creates columns, so every value that survives
  * gets forced into the shape its target column already declared, the same
- * way a manually-typed cell edit would. */
-function coerceToColumnType(raw: unknown, dataType: PlantReportColumnDataType): PlantReportCellValue {
+ * way a manually-typed cell edit would. `dateFormat` is the user's choice
+ * (see the upload panel's English/Nepali toggle) for how to read a "date"
+ * column's text — BS dates like "2083/04/26" are converted via bsStringToIso
+ * instead of being misread as a (wrong) literal AD date. */
+function coerceToColumnType(raw: unknown, dataType: PlantReportColumnDataType, dateFormat: "AD" | "BS" = "AD"): PlantReportCellValue {
   if (raw == null || String(raw).trim() === "") return null;
   switch (dataType) {
     case "date":
-      return toIsoDateValue(raw);
+      return dateFormat === "BS" ? (bsStringToIso(raw) ?? toIsoDateValue(raw)) : toIsoDateValue(raw);
     case "number": {
       const n = typeof raw === "number" ? raw : Number(raw);
       return Number.isFinite(n) ? n : null;
@@ -746,7 +791,9 @@ const FileFormatInfoModal: React.FC<{
   inputId: string;
   onFileChosen: (file: File | undefined) => void;
   onClose: () => void;
-}> = ({ inputId, onFileChosen, onClose }) => (
+  dateFormat: "AD" | "BS";
+  onDateFormatChange: (format: "AD" | "BS") => void;
+}> = ({ inputId, onFileChosen, onClose, dateFormat, onDateFormatChange }) => (
   <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
     <div className="w-full max-w-md overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/60">
@@ -782,12 +829,40 @@ const FileFormatInfoModal: React.FC<{
         </div>
         <ul className="text-[12px] text-slate-500 space-y-1.5 list-disc pl-4">
           <li>.csv, .xlsx or .xls</li>
-          <li>The first row must be column headers — one header per column, no blank/merged header cells</li>
-          <li>Every row after that is one entry</li>
+          <li>Needs a header row — one header per column, no blank/merged header cells — a report title row above it (e.g. "WORK PROGRESS REPORT") is fine and gets skipped automatically</li>
+          <li>Every row after the header row is one entry</li>
           <li>A header must exactly match an existing column's name (case-insensitive) to be imported — this never creates new columns, so add a matching column first if one doesn't exist yet</li>
           <li>Any header with no matching column is skipped — you'll see which ones in the preview</li>
           <li>You'll see a preview before anything is actually uploaded</li>
         </ul>
+        <div>
+          <p className="mb-1 text-[11.5px] font-medium text-slate-700">Dates in this file are written in:</p>
+          <div className="inline-flex overflow-hidden border rounded-lg border-slate-200">
+            <button
+              type="button"
+              onClick={() => onDateFormatChange("AD")}
+              className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                dateFormat === "AD" ? "bg-blue-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              English (AD)
+            </button>
+            <button
+              type="button"
+              onClick={() => onDateFormatChange("BS")}
+              className={`px-3 py-1.5 text-[12px] font-medium border-l border-slate-200 transition-colors ${
+                dateFormat === "BS" ? "bg-blue-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Nepali (BS)
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {dateFormat === "BS"
+              ? 'Applies to any "date" column — e.g. "2083/04/26" is read as Bikram Sambat and converted to the equivalent English date.'
+              : 'Applies to any "date" column — switch to Nepali (BS) if your Date column looks like "2083/04/26".'}
+          </p>
+        </div>
         <label
           htmlFor={inputId}
           className="flex items-center justify-center w-full gap-1.5 px-3 py-2 mt-2 text-[12.5px] font-medium text-white bg-blue-900 rounded-lg shadow-sm cursor-pointer hover:bg-blue-800"
@@ -816,6 +891,7 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
   const [formatInfoOpen, setFormatInfoOpen] = useState(false);
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [dateFormat, setDateFormat] = useState<"AD" | "BS">("AD");
   const inputId = `plant-report-upload-${tableId}`;
 
   const handleFile = async (file: File | undefined) => {
@@ -845,7 +921,7 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
       const normalizedRows = rows.map((row) => {
         const out: Record<string, PlantReportCellValue> = {};
         for (const [header, column] of headerToColumn) {
-          out[String(column.id)] = coerceToColumnType(row[header], column.dataType);
+          out[String(column.id)] = coerceToColumnType(row[header], column.dataType, dateFormat);
         }
         return out;
       });
@@ -885,7 +961,15 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
         <p className={`text-[11.5px] ${message.kind === "success" ? "text-emerald-600" : "text-red-600"}`}>{message.text}</p>
       )}
 
-      {formatInfoOpen && <FileFormatInfoModal inputId={inputId} onFileChosen={handleFile} onClose={() => setFormatInfoOpen(false)} />}
+      {formatInfoOpen && (
+        <FileFormatInfoModal
+          inputId={inputId}
+          onFileChosen={handleFile}
+          onClose={() => setFormatInfoOpen(false)}
+          dateFormat={dateFormat}
+          onDateFormatChange={setDateFormat}
+        />
+      )}
 
       {pending && (
         <ImportPreviewModal
