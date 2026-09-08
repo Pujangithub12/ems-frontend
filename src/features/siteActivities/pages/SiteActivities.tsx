@@ -29,9 +29,13 @@ import {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
 
-// ---- Palette lifted from the reference Site Diary design — scoped to this
-// page only (via Tailwind arbitrary-value classes) rather than touched into
-// the app-wide theme. ----
+// ---- Palette lifted from the reference Site Diary design — graphite ink
+// (#20242a) on a warm paper ground (#eef0ea), amber (#e2903a / #c67527)
+// as the input-focus accent, steel (#3f6079) for actions/emphasis, plus
+// green/brick status tints — applied inline as literal hex Tailwind
+// arbitrary-value classes (not JS constants) since Tailwind's class scanner
+// needs the literal string, not an interpolated variable. Scoped to this
+// page only rather than touched into the app-wide theme. ----
 const FONT_DISPLAY = "'Barlow Semi Condensed', sans-serif";
 const FONT_BODY = "'IBM Plex Sans', sans-serif";
 const FONT_MONO = "'IBM Plex Mono', monospace";
@@ -86,24 +90,25 @@ const DEFAULT_ROLES = ["Site Engineer", "Supervisor", "Skilled Labor", "Unskille
 const emptyManpowerRows = (): FormManpower[] => DEFAULT_ROLES.map((role) => ({ role, headcount: "", names: "", remarks: "" }));
 
 const TINT: Record<string, string> = {
-  ongoing: "bg-amber-100 text-amber-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  working: "bg-emerald-100 text-emerald-700",
-  idle: "bg-slate-100 text-slate-600",
-  breakdown: "bg-red-100 text-red-700",
-  observation: "bg-blue-100 text-blue-700",
-  incident: "bg-red-100 text-red-700",
+  ongoing: "bg-[#fbedda] text-[#c67527]",
+  completed: "bg-[#e6efe8] text-[#3f7d5c]",
+  working: "bg-[#e6efe8] text-[#3f7d5c]",
+  idle: "bg-[#dcdfd6] text-[#6c7166]",
+  breakdown: "bg-[#f7e8e4] text-[#a94a35]",
+  observation: "bg-[#e9eef1] text-[#3f6079]",
+  incident: "bg-[#f7e8e4] text-[#a94a35]",
 };
-const tintCls = (value: string) => `${TINT[value] || "bg-slate-100 text-slate-600"} rounded-full font-medium`;
+const tintCls = (value: string) => `${TINT[value] || "bg-[#dcdfd6] text-[#6c7166]"} rounded-full font-semibold`;
 
 // ---- Shared styling ----
 const cellInputCls =
-  "w-full border border-slate-200 bg-white px-1.5 py-1.5 rounded text-[13px] text-slate-900 hover:border-slate-300 focus:outline-none focus:border-blue-600 transition-colors";
+  "w-full border border-transparent bg-transparent px-1.5 py-1.5 rounded-[3px] text-[13px] text-[#20242a] hover:border-[#b7bab0] focus:outline-none focus:border-[#e2903a] focus:bg-white transition-colors";
 const cellMonoCls = `${cellInputCls}`;
-const thCls = "text-left text-[11px] font-semibold text-slate-500 px-3 py-2.5 bg-slate-50 border-b border-slate-200 whitespace-nowrap";
-const tdCls = "px-3 py-2 border-b border-slate-100 align-middle";
+const thCls =
+  "text-left text-[11px] font-semibold uppercase tracking-[.03em] text-[#9a9d94] px-3 py-2.5 bg-[#f7f8f4] border-b border-[#dcdfd6] whitespace-nowrap";
+const tdCls = "px-3 py-2 border-b border-[#dcdfd6] align-middle";
 const metaInputCls =
-  "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-[13.5px] bg-slate-50 text-slate-900 focus:outline-none focus:border-blue-600";
+  "w-full border border-[#b7bab0] rounded-[3px] px-2.5 py-1.5 text-[13.5px] bg-white text-[#20242a] focus:outline-none focus:border-[#e2903a]";
 
 /** Left/Right arrow at a text field's edge moves focus to the next/previous editable field in
  * the same table row (or same manpower row, via [data-arrow-row]), instead of doing nothing —
@@ -131,6 +136,34 @@ const handleRowArrowNav = (e: React.KeyboardEvent<HTMLInputElement>) => {
   }
 };
 
+/** Same left/right behavior as handleRowArrowNav, plus ArrowUp/ArrowDown moving focus to the
+ * same-column field in the row above/below — used on the Manpower Breakdown box, where each
+ * [data-arrow-row] is a direct sibling div rather than a <tr>. */
+const handleManpowerArrowNav = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") {
+    handleRowArrowNav(e);
+    return;
+  }
+  const input = e.currentTarget;
+  const row = input.closest<HTMLElement>("[data-arrow-row]");
+  if (!row || !row.parentElement) return;
+  const fieldsInRow = Array.from(row.querySelectorAll<HTMLInputElement>("input[type='text'], input:not([type])")).filter((el) => !el.disabled);
+  const colIdx = fieldsInRow.indexOf(input);
+  if (colIdx === -1) return;
+
+  const rows = Array.from(row.parentElement.children).filter((el): el is HTMLElement => el.hasAttribute("data-arrow-row"));
+  const rowIdx = rows.indexOf(row);
+  const targetRow = rows[e.key === "ArrowDown" ? rowIdx + 1 : rowIdx - 1];
+  if (!targetRow) return;
+  const targetFields = Array.from(targetRow.querySelectorAll<HTMLInputElement>("input[type='text'], input:not([type])")).filter((el) => !el.disabled);
+  const target = targetFields[colIdx];
+  if (target) {
+    e.preventDefault();
+    target.focus();
+    target.setSelectionRange(target.value.length, target.value.length);
+  }
+};
+
 // ---- Small building blocks ----
 
 const SectionCard: React.FC<{ idx: string; title: string; badge?: string; onAdd?: () => void; addLabel?: string; children: React.ReactNode }> = ({
@@ -141,16 +174,19 @@ const SectionCard: React.FC<{ idx: string; title: string; badge?: string; onAdd?
   addLabel,
   children,
 }) => (
-  <section className="bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
-    <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-100">
-      <h3 className="flex-1 font-semibold text-[15px] text-slate-900 m-0">
-        {idx}. {title}
+  <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
+    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+      <span className="mono px-1.5 py-0.5 text-[11px] text-[#9a9d94] border border-[#b7bab0] rounded-[3px]" style={{ fontFamily: FONT_MONO }}>
+        {idx}
+      </span>
+      <h3 className="flex-1 font-semibold text-[17px] text-[#20242a] m-0" style={{ fontFamily: FONT_DISPLAY }}>
+        {title}
       </h3>
-      {badge && <span className="px-2 py-0.5 text-[11px] font-medium text-slate-500 bg-slate-100 rounded-full">{badge}</span>}
+      {badge && <span className="px-2 py-0.5 text-[11px] font-medium text-[#6c7166] bg-white border border-[#dcdfd6] rounded-full">{badge}</span>}
       {onAdd && (
         <button
           onClick={onAdd}
-          className="px-2.5 py-1 text-[12px] font-medium border border-slate-200 rounded-lg text-blue-600 hover:border-blue-600 hover:bg-blue-50 transition-colors"
+          className="px-2.5 py-1 text-[12px] font-semibold border border-[#b7bab0] rounded-[3px] text-[#3f6079] hover:border-[#3f6079] hover:bg-[#e9eef1] transition-colors"
         >
           + {addLabel}
         </button>
@@ -161,7 +197,7 @@ const SectionCard: React.FC<{ idx: string; title: string; badge?: string; onAdd?
 );
 
 const RowDelBtn: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button onClick={onClick} className="p-1 text-[#94a3b8] hover:text-[#b91c1c] transition-colors" title="Remove row">
+  <button onClick={onClick} className="p-1 text-[#9a9d94] hover:text-[#a94a35] hover:bg-[#f7e8e4] rounded-[3px] transition-colors" title="Remove row">
     <Trash2 size={13} />
   </button>
 );
@@ -190,18 +226,18 @@ const AddOptionModal: React.FC<{
     onAdd(name);
   };
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#0f172a]/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white border border-[#e2e8f0]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8f0]">
-          <h3 className="font-semibold text-[15px] text-[#0f172a]" style={{ fontFamily: FONT_DISPLAY }}>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#20242a]/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white border border-[#b7bab0] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+          <h3 className="font-semibold text-[17px] text-[#20242a]" style={{ fontFamily: FONT_DISPLAY }}>
             {title}
           </h3>
-          <button onClick={onClose} className="p-1 text-[#94a3b8] hover:text-[#0f172a] transition-colors">
+          <button onClick={onClose} className="p-1 text-[#9a9d94] hover:text-[#20242a] transition-colors">
             <X size={15} />
           </button>
         </div>
         <div className="p-4">
-          <label className="block mb-1 text-[10.5px] text-[#64748b] tracking-wide">{fieldLabel}</label>
+          <label className="block mb-1 text-[10.5px] text-[#9a9d94] uppercase tracking-wide">{fieldLabel}</label>
           <input
             autoFocus
             className={metaInputCls}
@@ -214,13 +250,13 @@ const AddOptionModal: React.FC<{
           />
         </div>
         <div className="flex justify-end gap-2 px-4 pb-4">
-          <button onClick={onClose} className="px-3 py-1.5 text-[12.5px] border border-[#cbd5e1] rounded-[3px] text-[#64748b] hover:bg-[#f1f5f9] transition-colors">
+          <button onClick={onClose} className="px-3 py-1.5 text-[12.5px] border border-[#b7bab0] rounded-[3px] text-[#6c7166] hover:bg-[#f7f8f4] transition-colors">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={!value.trim() || saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium text-white bg-[#1d4ed8] rounded-[3px] hover:bg-[#1e3a8a] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-semibold text-white bg-[#3f6079] rounded-[3px] hover:bg-[#2f4a5c] transition-colors disabled:opacity-50"
           >
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Save
@@ -233,7 +269,7 @@ const AddOptionModal: React.FC<{
 
 const EmptyRow: React.FC<{ colSpan: number }> = ({ colSpan }) => (
   <tr>
-    <td colSpan={colSpan} className="px-2.5 py-4 text-[12.5px] text-center text-[#94a3b8]">
+    <td colSpan={colSpan} className="px-2.5 py-4 text-[12.5px] text-center italic text-[#9a9d94]">
       No entries yet — use "+ Add" above.
     </td>
   </tr>
@@ -258,23 +294,25 @@ const PhotosSection: React.FC<{ report: SiteActivityReport | null; projectId: nu
   };
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
-      <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-100">
-        <h3 className="flex-1 font-semibold text-[15px] text-slate-900 m-0">Site Photographs ({report?.photos.length ?? 0})</h3>
+    <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+        <h3 className="flex-1 font-semibold text-[17px] text-[#20242a] m-0" style={{ fontFamily: FONT_DISPLAY }}>
+          Site Photographs ({report?.photos.length ?? 0})
+        </h3>
       </div>
       <div className="p-4">
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-3" />}
         {!report ? (
-          <p className="text-[12.5px] text-slate-400">Add at least one entry above (it autosaves) before attaching photos.</p>
+          <p className="text-[12.5px] text-[#9a9d94]">Add at least one entry above (it autosaves) before attaching photos.</p>
         ) : (
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             {report.photos.map((p) => (
-              <div key={p.id} className="relative overflow-hidden border border-slate-200 rounded-lg group aspect-[4/3] bg-slate-100">
+              <div key={p.id} className="relative overflow-hidden border border-[#dcdfd6] rounded-[3px] group aspect-[4/3] bg-[#f4f5f0]">
                 <img src={fileUrl(p.filePath)} alt={p.caption ?? p.fileName} className="object-cover w-full h-full" />
                 <button
                   onClick={() => deleteMutation.mutate(p.id)}
                   title="Delete photo"
-                  className="absolute flex items-center justify-center w-5 h-5 text-white transition-opacity rounded-full opacity-0 top-1 right-1 bg-black/60 group-hover:opacity-100 hover:bg-red-600"
+                  className="absolute flex items-center justify-center w-5 h-5 text-white transition-opacity rounded-full opacity-0 top-1 right-1 bg-[#20242a]/70 group-hover:opacity-100 hover:bg-[#a94a35]"
                 >
                   <X size={11} />
                 </button>
@@ -283,7 +321,7 @@ const PhotosSection: React.FC<{ report: SiteActivityReport | null; projectId: nu
             <button
               onClick={() => inputRef.current?.click()}
               disabled={uploadMutation.isPending}
-              className="flex flex-col items-center justify-center gap-1 text-slate-500 border-[1.5px] border-dashed border-slate-200 rounded-lg aspect-[4/3] hover:border-blue-600 hover:text-blue-600 disabled:opacity-50 transition-colors"
+              className="flex flex-col items-center justify-center gap-1 text-[#6c7166] border-[1.5px] border-dashed border-[#b7bab0] rounded-[3px] aspect-[4/3] hover:border-[#e2903a] hover:text-[#c67527] disabled:opacity-50 transition-colors"
             >
               {uploadMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
               <span className="text-[11px] font-medium">Add photo</span>
@@ -309,20 +347,24 @@ const PhotosSection: React.FC<{ report: SiteActivityReport | null; projectId: nu
 // Mon-Sun week (one range request), plus a cumulative-progress S-curve. ----
 
 const InfoCard: React.FC<{ title: string; badge?: string; children: React.ReactNode }> = ({ title, badge, children }) => (
-  <section className="bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
-    <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-100">
-      <h3 className="flex-1 font-semibold text-[15px] text-slate-900 m-0">{title}</h3>
-      {badge && <span className="px-2 py-0.5 text-[11px] font-medium text-slate-500 bg-slate-100 rounded-full">{badge}</span>}
+  <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
+    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+      <h3 className="flex-1 font-semibold text-[17px] text-[#20242a] m-0" style={{ fontFamily: FONT_DISPLAY }}>
+        {title}
+      </h3>
+      {badge && <span className="px-2 py-0.5 text-[11px] font-medium text-[#6c7166] bg-white border border-[#dcdfd6] rounded-full">{badge}</span>}
     </div>
     <div className="py-1">{children}</div>
   </section>
 );
 
 const WeekStat: React.FC<{ label: string; value: string; sub?: string }> = ({ label, value, sub }) => (
-  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-3.5">
-    <p className="m-0 text-[10.5px] text-slate-500 tracking-wide">{label}</p>
-    <p className="m-0 mt-1 font-bold text-[20px] text-slate-900">{value}</p>
-    {sub && <p className="m-0 mt-0.5 text-[11px] text-slate-400">{sub}</p>}
+  <div className="bg-white border border-[#b7bab0] rounded-lg p-3.5">
+    <p className="m-0 text-[10.5px] uppercase tracking-[.04em] text-[#9a9d94]">{label}</p>
+    <p className="m-0 mt-1 font-bold text-[22px] text-[#20242a]" style={{ fontFamily: FONT_DISPLAY }}>
+      {value}
+    </p>
+    {sub && <p className="m-0 mt-0.5 text-[11px] text-[#9a9d94]">{sub}</p>}
   </div>
 );
 
@@ -410,28 +452,28 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div>
-          <h2 className="font-bold text-[22px] m-0 mb-0.5 text-[#0f172a]" style={{ fontFamily: FONT_DISPLAY }}>
+          <h2 className="font-bold text-[22px] m-0 mb-0.5 text-[#20242a]" style={{ fontFamily: FONT_DISPLAY }}>
             Weekly Summary
           </h2>
-          <p className="m-0 text-[12.5px] text-[#64748b]">
+          <p className="m-0 text-[12.5px] text-[#6c7166]">
             {formatShortDateWithYear(weekStart)} – {formatShortDateWithYear(weekEnd)}
             {isCurrentWeek ? " (This Week)" : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1 px-1 py-1 bg-white border border-[#e2e8f0] rounded-[3px]">
-          <button onClick={() => onWeekStart(shiftDateIso(weekStart, -7))} className="p-1.5 rounded-[3px] hover:bg-[#f8fafc] text-[#64748b]">
+        <div className="flex items-center gap-1 px-1 py-1 bg-white border border-[#dcdfd6] rounded-[3px]">
+          <button onClick={() => onWeekStart(shiftDateIso(weekStart, -7))} className="p-1.5 rounded-[3px] hover:bg-[#f7f8f4] text-[#6c7166]">
             <ChevronLeft size={15} />
           </button>
           <button
             onClick={() => onWeekStart(getWeekStart(todayIso()))}
-            className="px-2 py-1 text-[11.5px] font-medium rounded-[3px] text-[#0f172a] hover:bg-[#f8fafc]"
+            className="px-2 py-1 text-[11.5px] font-medium rounded-[3px] text-[#20242a] hover:bg-[#f7f8f4]"
           >
             This Week
           </button>
           <button
             onClick={() => onWeekStart(shiftDateIso(weekStart, 7))}
             disabled={isCurrentWeek}
-            className="p-1.5 rounded-[3px] hover:bg-[#f8fafc] text-[#64748b] disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-[3px] hover:bg-[#f7f8f4] text-[#6c7166] disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight size={15} />
           </button>
@@ -439,7 +481,7 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-[#94a3b8]">
+        <div className="flex items-center justify-center py-16 text-[#9a9d94]">
           <Loader2 className="w-5 h-5 animate-spin" />
         </div>
       ) : (
@@ -469,10 +511,10 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
                       <EmptyRow colSpan={4} />
                     ) : (
                       activitiesWeekly.map((a, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} text-[#64748b]`}>{formatShortDate(a.date)}</td>
-                          <td className={`${tdCls} text-[#0f172a]`}>{a.description}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
+                          <td className={`${tdCls} text-[#6c7166]`}>{formatShortDate(a.date)}</td>
+                          <td className={`${tdCls} text-[#20242a]`}>{a.description}</td>
+                          <td className={`${tdCls} text-[#6c7166]`}>
                             {a.todayQty ?? "—"} {a.unit ?? ""}
                           </td>
                           <td className={tdCls}>
@@ -507,28 +549,28 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
                       <EmptyRow colSpan={9} />
                     ) : (
                       manpowerDailyWeekly.map((m) => (
-                        <tr key={m.role} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.role}</td>
+                        <tr key={m.role} className="hover:bg-[#f7f8f4]">
+                          <td className={`${tdCls} font-medium text-[#20242a]`}>{m.role}</td>
                           {m.byDay.map((n, i) => (
-                            <td key={weekDays[i]} className={`${tdCls} text-center text-[#64748b]`}>
+                            <td key={weekDays[i]} className={`${tdCls} text-center text-[#6c7166]`}>
                               {n || "—"}
                             </td>
                           ))}
-                          <td className={`${tdCls} text-center font-semibold text-[#1d4ed8]`}>{m.total}</td>
+                          <td className={`${tdCls} text-center font-semibold text-[#3f6079]`}>{m.total}</td>
                         </tr>
                       ))
                     )}
                   </tbody>
                   {manpowerDailyWeekly.length > 0 && (
                     <tfoot>
-                      <tr className="bg-blue-50">
-                        <td className={`${tdCls} font-semibold text-blue-900`}>Total Headcount</td>
+                      <tr className="bg-[#fbedda]">
+                        <td className={`${tdCls} font-semibold text-[#c67527]`}>Total Headcount</td>
                         {manpowerDailyTotals.map((n, i) => (
-                          <td key={weekDays[i]} className={`${tdCls} text-center font-semibold text-blue-900`}>
+                          <td key={weekDays[i]} className={`${tdCls} text-center font-semibold text-[#c67527]`}>
                             {n || "—"}
                           </td>
                         ))}
-                        <td className={`${tdCls} text-center font-bold text-blue-900`}>{totals.totalManpowerDays}</td>
+                        <td className={`${tdCls} text-center font-bold text-[#c67527]`}>{totals.totalManpowerDays}</td>
                       </tr>
                     </tfoot>
                   )}
@@ -551,10 +593,10 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
                       <EmptyRow colSpan={3} />
                     ) : (
                       equipmentWeekly.map((e) => (
-                        <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>{e.entries}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>{e.totalHours}</td>
+                        <tr key={e.equipmentName} className="hover:bg-[#f7f8f4]">
+                          <td className={`${tdCls} font-medium text-[#20242a]`}>{e.equipmentName}</td>
+                          <td className={`${tdCls} text-[#6c7166]`}>{e.entries}</td>
+                          <td className={`${tdCls} text-[#6c7166]`}>{e.totalHours}</td>
                         </tr>
                       ))
                     )}
@@ -578,12 +620,12 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
                       <EmptyRow colSpan={3} />
                     ) : (
                       materialTotals.map((m) => (
-                        <tr key={m.materialType} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
-                          <td className={`${tdCls} text-[#64748b]`}>
+                        <tr key={m.materialType} className="hover:bg-[#f7f8f4]">
+                          <td className={`${tdCls} font-medium text-[#20242a]`}>{m.materialType}</td>
+                          <td className={`${tdCls} text-[#6c7166]`}>
                             {m.receivedQuantity} {m.receivedUnit}
                           </td>
-                          <td className={`${tdCls} text-[#64748b]`}>
+                          <td className={`${tdCls} text-[#6c7166]`}>
                             {m.usedQuantity} {m.usedUnit}
                           </td>
                         </tr>
@@ -604,6 +646,15 @@ const WeeklySummary: React.FC<{ projectId: number; weekStart: string; onWeekStar
 // the same way as Weekly Summary but with no week boundary (and no day-by-day
 // manpower matrix, which wouldn't scale past a handful of days). ----
 
+type ChartMetricKey = "qty" | "manpower" | "equipment" | "activities" | "safetyIncidents";
+const CHART_METRIC_OPTIONS: { key: ChartMetricKey; label: string; dailyLabel: string; cumulativeLabel: string }[] = [
+  { key: "qty", label: "Work Quantity Completed", dailyLabel: "Daily qty", cumulativeLabel: "Cumulative qty" },
+  { key: "manpower", label: "Manpower (person-days)", dailyLabel: "Daily headcount", cumulativeLabel: "Cumulative person-days" },
+  { key: "equipment", label: "Equipment Hours", dailyLabel: "Daily hours", cumulativeLabel: "Cumulative hours" },
+  { key: "activities", label: "Work Items Logged", dailyLabel: "Daily items", cumulativeLabel: "Cumulative items" },
+  { key: "safetyIncidents", label: "Safety Incidents", dailyLabel: "Daily incidents", cumulativeLabel: "Cumulative incidents" },
+];
+
 const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
   // "All reports for this project" has no dedicated endpoint — reuse the range
   // endpoint with a wide-enough floor date to capture the project's whole history.
@@ -615,6 +666,7 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
   const [manpowerDailyView, setManpowerDailyView] = useState(false);
   const [equipmentDailyView, setEquipmentDailyView] = useState(false);
   const [materialDailyView, setMaterialDailyView] = useState(false);
+  const [chartMetric, setChartMetric] = useState<ChartMetricKey>("qty");
 
   const totals = useMemo(() => {
     const daysReported = reports.length;
@@ -751,26 +803,43 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
     }));
   }, [sortedReports]);
 
+  const qtyDaily = useMemo(() => sortedReports.map((r) => r.activities.reduce((s, a) => s + (a.todayQty ?? 0), 0)), [sortedReports]);
+  const activitiesDaily = useMemo(() => sortedReports.map((r) => r.activities.length), [sortedReports]);
+  const safetyIncidentsDaily = useMemo(() => sortedReports.map((r) => r.safety.filter((s) => s.type === "incident").length), [sortedReports]);
+
+  const dailyValuesByMetric: Record<ChartMetricKey, number[]> = {
+    qty: qtyDaily,
+    manpower: manpowerDailyTotals,
+    equipment: equipmentDailyTotals,
+    activities: activitiesDaily,
+    safetyIncidents: safetyIncidentsDaily,
+  };
+  const activeMetric = CHART_METRIC_OPTIONS.find((m) => m.key === chartMetric)!;
+
   const curveData = useMemo(() => {
+    const values = dailyValuesByMetric[chartMetric];
     let cumulative = 0;
-    return sortedReports.map((r) => {
-      const daily = r.activities.reduce((s, a) => s + (a.todayQty ?? 0), 0);
+    return sortedReports.map((r, i) => {
+      const daily = values[i] ?? 0;
       cumulative += daily;
       return { label: formatShortDate(r.reportDate), daily, cumulative };
     });
-  }, [sortedReports]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartMetric, sortedReports, qtyDaily, manpowerDailyTotals, equipmentDailyTotals, activitiesDaily, safetyIncidentsDaily]);
 
   const firstDate = sortedReports[0]?.reportDate;
 
   return (
     <div>
       <div className="mb-4">
-        <h2 className="font-bold text-[22px] m-0 mb-0.5 text-slate-900">All-Time Overview</h2>
-        <p className="m-0 text-[12.5px] text-slate-500">{firstDate ? `${formatShortDateWithYear(firstDate)} – Today` : "No entries logged yet"}</p>
+        <h2 className="font-bold text-[22px] m-0 mb-0.5 text-[#20242a]" style={{ fontFamily: FONT_DISPLAY }}>
+          All-Time Overview
+        </h2>
+        <p className="m-0 text-[12.5px] text-[#6c7166]">{firstDate ? `${formatShortDateWithYear(firstDate)} – Today` : "No entries logged yet"}</p>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-slate-400">
+        <div className="flex items-center justify-center py-16 text-[#9a9d94]">
           <Loader2 className="w-5 h-5 animate-spin" />
         </div>
       ) : (
@@ -784,28 +853,42 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
           </div>
 
           <InfoCard title="Cumulative Progress (S-Curve)">
+            <div className="flex items-center justify-end gap-1.5 px-[18px] pt-1">
+              <label className="text-[11.5px] text-[#6c7166]">Y-axis value:</label>
+              <select
+                value={chartMetric}
+                onChange={(e) => setChartMetric(e.target.value as ChartMetricKey)}
+                className="px-2 py-1 text-[11.5px] font-medium border rounded-lg cursor-pointer text-[#20242a] border-[#dcdfd6] hover:bg-[#f7f8f4] focus:outline-none"
+              >
+                {CHART_METRIC_OPTIONS.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="px-[10px] pt-3" style={{ height: 260 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={curveData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scurveFillOverview" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1e3a8a" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="#2f4a5c" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#2f4a5c" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} interval="preserveStartEnd" minTickGap={30} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={{ stroke: "#e2e8f0" }} tickLine={false} width={36} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f7f8f4" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6c7166" }} axisLine={{ stroke: "#dcdfd6" }} tickLine={false} interval="preserveStartEnd" minTickGap={30} />
+                  <YAxis tick={{ fontSize: 11, fill: "#6c7166" }} axisLine={{ stroke: "#dcdfd6" }} tickLine={false} width={36} allowDecimals={false} />
                   <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 3, borderColor: "#e2e8f0" }}
-                    formatter={((value: number, name: string) => [value, name === "cumulative" ? "Cumulative qty" : "Daily qty"]) as any}
+                    contentStyle={{ fontSize: 12, borderRadius: 3, borderColor: "#dcdfd6" }}
+                    formatter={((value: number, name: string) => [value, name === "cumulative" ? activeMetric.cumulativeLabel : activeMetric.dailyLabel]) as any}
                   />
-                  <Area type="monotone" dataKey="cumulative" stroke="#1d4ed8" strokeWidth={2} fill="url(#scurveFillOverview)" dot={false} />
+                  <Area type="monotone" dataKey="cumulative" stroke="#3f6079" strokeWidth={2} fill="url(#scurveFillOverview)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-            <p className="px-[18px] pb-3 pt-1 text-[11.5px] text-[#94a3b8]">
-              Cumulative "today qty" completed across every Work Activities row logged for this project so far.
+            <p className="px-[18px] pb-3 pt-1 text-[11.5px] text-[#9a9d94]">
+              {activeMetric.cumulativeLabel} across every day logged for this project so far.
             </p>
           </InfoCard>
 
@@ -829,10 +912,10 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         .reverse()
                         .flatMap((r) => r.activities.map((a) => ({ ...a, date: r.reportDate })))
                         .map((a, i) => (
-                          <tr key={i} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} text-[#64748b]`}>{formatShortDate(a.date)}</td>
-                            <td className={`${tdCls} text-[#0f172a]`}>{a.description}</td>
-                            <td className={`${tdCls} text-[#64748b]`}>
+                          <tr key={i} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} text-[#6c7166]`}>{formatShortDate(a.date)}</td>
+                            <td className={`${tdCls} text-[#20242a]`}>{a.description}</td>
+                            <td className={`${tdCls} text-[#6c7166]`}>
                               {a.todayQty ?? "—"} {a.unit ?? ""}
                             </td>
                             <td className={tdCls}>
@@ -844,11 +927,11 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                   </tbody>
                   {activityQtyByUnit.length > 0 && (
                     <tfoot>
-                      <tr className="bg-blue-50">
-                        <td colSpan={2} className={`${tdCls} font-semibold text-blue-900`}>
+                      <tr className="bg-[#fbedda]">
+                        <td colSpan={2} className={`${tdCls} font-semibold text-[#c67527]`}>
                           Total Quantity
                         </td>
-                        <td className={`${tdCls} font-semibold text-blue-900`}>
+                        <td className={`${tdCls} font-semibold text-[#c67527]`}>
                           {activityQtyByUnit.map((u) => `${u.qty}${u.unit ? ` ${u.unit}` : ""}`).join(", ")}
                         </td>
                         <td className={tdCls} />
@@ -863,7 +946,7 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
               <div className="flex items-center justify-end px-3 pt-1">
                 <button
                   onClick={() => setManpowerDailyView((v) => !v)}
-                  className="text-[11.5px] font-medium text-blue-600 hover:underline"
+                  className="text-[11.5px] font-medium text-[#3f6079] hover:underline"
                 >
                   {manpowerDailyView ? "Show totals only" : "Break down by day"}
                 </button>
@@ -889,28 +972,28 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         <EmptyRow colSpan={2} />
                       ) : (
                         manpowerDaily.map((m) => (
-                          <tr key={m.role} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.role}</td>
+                          <tr key={m.role} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} font-medium text-[#20242a]`}>{m.role}</td>
                             {m.byDay.map((n, i) => (
-                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#64748b]`}>
+                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#6c7166]`}>
                                 {n || "—"}
                               </td>
                             ))}
-                            <td className={`${tdCls} text-center font-semibold text-[#1d4ed8]`}>{m.byDay.reduce((s, n) => s + n, 0)}</td>
+                            <td className={`${tdCls} text-center font-semibold text-[#3f6079]`}>{m.byDay.reduce((s, n) => s + n, 0)}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                     {manpowerDaily.length > 0 && (
                       <tfoot>
-                        <tr className="bg-blue-50">
-                          <td className={`${tdCls} font-semibold text-blue-900`}>Total Headcount</td>
+                        <tr className="bg-[#fbedda]">
+                          <td className={`${tdCls} font-semibold text-[#c67527]`}>Total Headcount</td>
                           {manpowerDailyTotals.map((n, i) => (
-                            <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center font-semibold text-blue-900`}>
+                            <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center font-semibold text-[#c67527]`}>
                               {n || "—"}
                             </td>
                           ))}
-                          <td className={`${tdCls} text-center font-bold text-blue-900`}>{totals.totalManpowerDays}</td>
+                          <td className={`${tdCls} text-center font-bold text-[#c67527]`}>{totals.totalManpowerDays}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -919,22 +1002,22 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
               ) : (
                 <div className="px-2 py-1">
                   {manpowerTotals.length === 0 ? (
-                    <p className="px-3 py-6 text-[12.5px] text-center text-slate-400">No manpower logged yet.</p>
+                    <p className="px-3 py-6 text-[12.5px] text-center text-[#9a9d94]">No manpower logged yet.</p>
                   ) : (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-[#eef0ea]">
                       {manpowerTotals.map((m) => (
                         <div key={m.role} className="flex items-center justify-between px-3 py-2.5">
-                          <span className="text-[13.5px] font-medium text-slate-800">{m.role}</span>
-                          <span className="text-[13px] text-slate-500">
+                          <span className="text-[13.5px] font-medium text-[#20242a]">{m.role}</span>
+                          <span className="text-[13px] text-[#6c7166]">
                             {m.headcount} person-day{m.headcount === 1 ? "" : "s"}
                           </span>
                         </div>
                       ))}
                     </div>
                   )}
-                  <div className="flex items-center justify-between px-3 py-2.5 mt-1.5 mb-1 border border-blue-200 rounded-lg bg-blue-50">
-                    <span className="text-[13px] font-medium text-blue-900">Total Person-Days</span>
-                    <span className="text-[14px] font-bold text-blue-900">{totals.totalManpowerDays} Total</span>
+                  <div className="flex items-center justify-between px-3 py-2.5 mt-1.5 mb-1 border border-[#e6cfa6] rounded-lg bg-[#fbedda]">
+                    <span className="text-[13px] font-medium text-[#c67527]">Total Person-Days</span>
+                    <span className="text-[14px] font-bold text-[#c67527]">{totals.totalManpowerDays} Total</span>
                   </div>
                 </div>
               )}
@@ -944,7 +1027,7 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
               <div className="flex items-center justify-end px-3 pt-1">
                 <button
                   onClick={() => setEquipmentDailyView((v) => !v)}
-                  className="text-[11.5px] font-medium text-blue-600 hover:underline"
+                  className="text-[11.5px] font-medium text-[#3f6079] hover:underline"
                 >
                   {equipmentDailyView ? "Show totals only" : "Break down by day"}
                 </button>
@@ -970,28 +1053,28 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         <EmptyRow colSpan={2} />
                       ) : (
                         equipmentDaily.map((e) => (
-                          <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
+                          <tr key={e.equipmentName} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} font-medium text-[#20242a]`}>{e.equipmentName}</td>
                             {e.byDay.map((hrs, i) => (
-                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#64748b]`}>
+                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#6c7166]`}>
                                 {hrs || "—"}
                               </td>
                             ))}
-                            <td className={`${tdCls} text-center font-semibold text-[#1d4ed8]`}>{e.byDay.reduce((s, n) => s + n, 0)}</td>
+                            <td className={`${tdCls} text-center font-semibold text-[#3f6079]`}>{e.byDay.reduce((s, n) => s + n, 0)}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                     {equipmentDaily.length > 0 && (
                       <tfoot>
-                        <tr className="bg-blue-50">
-                          <td className={`${tdCls} font-semibold text-blue-900`}>Total Hours</td>
+                        <tr className="bg-[#fbedda]">
+                          <td className={`${tdCls} font-semibold text-[#c67527]`}>Total Hours</td>
                           {equipmentDailyTotals.map((n, i) => (
-                            <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center font-semibold text-blue-900`}>
+                            <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center font-semibold text-[#c67527]`}>
                               {n || "—"}
                             </td>
                           ))}
-                          <td className={`${tdCls} text-center font-bold text-blue-900`}>{totals.totalEquipmentHours}</td>
+                          <td className={`${tdCls} text-center font-bold text-[#c67527]`}>{totals.totalEquipmentHours}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -1012,10 +1095,10 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         <EmptyRow colSpan={3} />
                       ) : (
                         equipmentTotals.map((e) => (
-                          <tr key={e.equipmentName} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{e.equipmentName}</td>
-                            <td className={`${tdCls} text-[#64748b]`}>{e.entries}</td>
-                            <td className={`${tdCls} text-[#64748b]`}>{e.totalHours}</td>
+                          <tr key={e.equipmentName} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} font-medium text-[#20242a]`}>{e.equipmentName}</td>
+                            <td className={`${tdCls} text-[#6c7166]`}>{e.entries}</td>
+                            <td className={`${tdCls} text-[#6c7166]`}>{e.totalHours}</td>
                           </tr>
                         ))
                       )}
@@ -1029,7 +1112,7 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
               <div className="flex items-center justify-end px-3 pt-1">
                 <button
                   onClick={() => setMaterialDailyView((v) => !v)}
-                  className="text-[11.5px] font-medium text-blue-600 hover:underline"
+                  className="text-[11.5px] font-medium text-[#3f6079] hover:underline"
                 >
                   {materialDailyView ? "Show totals only" : "Break down by day"}
                 </button>
@@ -1052,10 +1135,10 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         <EmptyRow colSpan={2} />
                       ) : (
                         materialDaily.map((m) => (
-                          <tr key={m.materialType} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
+                          <tr key={m.materialType} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} font-medium text-[#20242a]`}>{m.materialType}</td>
                             {m.byDay.map((entry, i) => (
-                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#64748b]`}>
+                              <td key={sortedReports[i]!.reportDate} className={`${tdCls} text-center text-[#6c7166]`}>
                                 {!entry || (entry.received === 0 && entry.used === 0) ? (
                                   "—"
                                 ) : (
@@ -1071,7 +1154,7 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                       )}
                     </tbody>
                   </table>
-                  <p className="px-[18px] pb-2 pt-1 text-[11px] text-[#94a3b8]">R = Received, U = Used, per day.</p>
+                  <p className="px-[18px] pb-2 pt-1 text-[11px] text-[#9a9d94]">R = Received, U = Used, per day.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1088,12 +1171,12 @@ const OverviewSummary: React.FC<{ projectId: number }> = ({ projectId }) => {
                         <EmptyRow colSpan={3} />
                       ) : (
                         materialTotals.map((m) => (
-                          <tr key={m.materialType} className="hover:bg-[#f8fafc]">
-                            <td className={`${tdCls} font-medium text-[#0f172a]`}>{m.materialType}</td>
-                            <td className={`${tdCls} text-[#64748b]`}>
+                          <tr key={m.materialType} className="hover:bg-[#f7f8f4]">
+                            <td className={`${tdCls} font-medium text-[#20242a]`}>{m.materialType}</td>
+                            <td className={`${tdCls} text-[#6c7166]`}>
                               {m.receivedQuantity} {m.receivedUnit}
                             </td>
-                            <td className={`${tdCls} text-[#64748b]`}>
+                            <td className={`${tdCls} text-[#6c7166]`}>
                               {m.usedQuantity} {m.usedUnit}
                             </td>
                           </tr>
@@ -1448,22 +1531,22 @@ const SiteActivities: React.FC = () => {
 
   const saveIndicator =
     saveState === "saving" ? (
-      <span className="inline-flex items-center gap-1 text-[#94a3b8]">
+      <span className="inline-flex items-center gap-1 text-[#9a9d94]">
         <Loader2 size={11} className="animate-spin" /> Saving…
       </span>
     ) : saveState === "saved" ? (
-      <span className="text-[#047857]">Saved</span>
+      <span className="text-[#3f7d5c]">Saved</span>
     ) : saveState === "error" ? (
-      <span className="text-[#b91c1c]">Save failed</span>
+      <span className="text-[#a94a35]">Save failed</span>
     ) : null;
 
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
-          <ClipboardList className="w-5 h-5 text-slate-400" />
+        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-[#f7f8f4] to-[#eef0ea] ring-1 ring-[#dcdfd6]">
+          <ClipboardList className="w-5 h-5 text-[#9a9d94]" />
         </div>
-        <p className="text-[13px] text-slate-400">No projects yet — create a project to start tracking here.</p>
+        <p className="text-[13px] text-[#9a9d94]">No projects yet — create a project to start tracking here.</p>
       </div>
     );
   }
@@ -1479,15 +1562,15 @@ const SiteActivities: React.FC = () => {
   const idleEquipment = equipment.filter((e) => e.condition !== "working").length;
 
   return (
-    <div className="w-full min-h-full" style={{ fontFamily: FONT_BODY, background: "#F7F8FA" }}>
+    <div className="w-full min-h-full" style={{ fontFamily: FONT_BODY, background: "#F7F8FA", color: "#20242a" }}>
       <main className="px-4 py-6 pb-20 lg:px-6">
         <div className="max-w-[1280px] mx-auto">
           {/* Control bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 mb-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 mb-4 bg-white border border-[#b7bab0] rounded-lg">
             <select
               value={projectId}
               onChange={(e) => setProjectId(Number(e.target.value))}
-              className="bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-lg text-[13px] cursor-pointer focus:outline-none focus:border-blue-600"
+              className="bg-white border border-[#dcdfd6] text-[#20242a] px-3 py-2 rounded-lg text-[13px] cursor-pointer focus:outline-none focus:border-[#e2903a]"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1496,11 +1579,11 @@ const SiteActivities: React.FC = () => {
               ))}
             </select>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-0.5 p-0.5 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="flex items-center gap-0.5 p-0.5 bg-[#f7f8f4] border border-[#dcdfd6] rounded-lg">
                 <button
                   onClick={() => setViewMode("daily")}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    viewMode === "daily" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-white"
+                    viewMode === "daily" ? "bg-[#3f6079] text-white" : "text-[#6c7166] hover:bg-white"
                   }`}
                 >
                   <CalendarDays size={13} /> Daily
@@ -1508,7 +1591,7 @@ const SiteActivities: React.FC = () => {
                 <button
                   onClick={() => setViewMode("weekly")}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    viewMode === "weekly" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-white"
+                    viewMode === "weekly" ? "bg-[#3f6079] text-white" : "text-[#6c7166] hover:bg-white"
                   }`}
                 >
                   <CalendarRange size={13} /> Weekly
@@ -1516,7 +1599,7 @@ const SiteActivities: React.FC = () => {
                 <button
                   onClick={() => setViewMode("overview")}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    viewMode === "overview" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-white"
+                    viewMode === "overview" ? "bg-[#3f6079] text-white" : "text-[#6c7166] hover:bg-white"
                   }`}
                 >
                   <BarChart3 size={13} /> Overview
@@ -1524,27 +1607,27 @@ const SiteActivities: React.FC = () => {
               </div>
               {viewMode === "daily" && (
                 <>
-                  <div className="hidden w-px h-7 sm:block bg-slate-200" />
-                  <div className="flex items-center gap-0.5 p-0.5 bg-slate-50 border border-slate-200 rounded-lg">
-                    <button onClick={() => setDate((d) => shiftDateIso(d, -1))} className="p-1.5 rounded-md hover:bg-white text-slate-500" title="Previous day">
+                  <div className="hidden w-px h-7 sm:block bg-[#dcdfd6]" />
+                  <div className="flex items-center gap-0.5 p-0.5 bg-[#f7f8f4] border border-[#dcdfd6] rounded-lg">
+                    <button onClick={() => setDate((d) => shiftDateIso(d, -1))} className="p-1.5 rounded-md hover:bg-white text-[#6c7166]" title="Previous day">
                       <ChevronLeft size={15} />
                     </button>
                     <button
                       onClick={() => setDate(todayIso())}
-                      className="px-2 py-1 text-[12px] font-medium rounded-md text-slate-900 hover:bg-white min-w-[130px] text-center"
+                      className="px-2 py-1 text-[12px] font-medium rounded-md text-[#20242a] hover:bg-white min-w-[130px] text-center"
                     >
                       {formatShortDate(date)} ({dayLabel(date)})
                     </button>
                     <button
                       onClick={() => setDate((d) => shiftDateIso(d, 1))}
                       disabled={date >= todayIso()}
-                      className="p-1.5 rounded-md hover:bg-white text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1.5 rounded-md hover:bg-white text-[#6c7166] disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Next day"
                     >
                       <ChevronRight size={15} />
                     </button>
                   </div>
-                  <div className="relative flex items-center justify-center w-9 h-9 text-slate-500 border rounded-lg bg-slate-50 border-slate-200 hover:bg-white" title="Jump to date">
+                  <div className="relative flex items-center justify-center w-9 h-9 text-[#6c7166] border rounded-lg bg-[#f7f8f4] border-[#dcdfd6] hover:bg-white" title="Jump to date">
                     <Calendar size={14} className="pointer-events-none" />
                     <input
                       type="date"
@@ -1558,7 +1641,7 @@ const SiteActivities: React.FC = () => {
                     <button
                       onClick={() => setPendingDelete({ id: report.id, date: report.reportDate })}
                       title="Delete this entry"
-                      className="p-2 text-slate-500 border border-slate-200 rounded-lg hover:text-red-600 hover:border-red-600 transition-colors"
+                      className="p-2 text-[#6c7166] border border-[#dcdfd6] rounded-lg hover:text-[#a94a35] hover:border-[#a94a35] transition-colors"
                     >
                       <Trash2 size={15} />
                     </button>
@@ -1575,22 +1658,22 @@ const SiteActivities: React.FC = () => {
           ) : viewMode === "overview" ? (
             projectId && <OverviewSummary projectId={projectId} />
           ) : isLoading && hydratedKeyRef.current !== `${projectId}:${date}` ? (
-            <div className="flex items-center justify-center py-16 text-[#94a3b8]">
+            <div className="flex items-center justify-center py-16 text-[#9a9d94]">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
           ) : (
             <>
               {/* Meta panel */}
-              <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 p-4 mb-5 bg-white border border-slate-200 rounded-xl shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 p-4 mb-5 bg-white border border-[#b7bab0] rounded-lg">
                 <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-blue-600 rounded-lg bg-blue-50">
+                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-[#3f6079] rounded-lg bg-[#e9eef1]">
                       <MapPin size={16} />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Work location</label>
+                      <label className="block text-[10px] font-semibold text-[#9a9d94] uppercase tracking-wide">Work location</label>
                       <input
-                        className="w-32 p-0 bg-transparent border-b border-slate-200 outline-none text-[13.5px] font-medium text-slate-900 hover:border-slate-300 focus:border-blue-600"
+                        className="w-32 p-0 bg-transparent border-b border-[#dcdfd6] outline-none text-[13.5px] font-medium text-[#20242a] hover:border-[#b7bab0] focus:border-[#e2903a]"
                         placeholder="e.g. Birgunj"
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
@@ -1598,13 +1681,13 @@ const SiteActivities: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg text-violet-600 bg-violet-50">
+                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg text-[#3f6079] bg-[#e9eef1]">
                       <Calendar size={16} />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Date (B.S.)</label>
+                      <label className="block text-[10px] font-semibold text-[#9a9d94] uppercase tracking-wide">Date (B.S.)</label>
                       <input
-                        className="w-36 p-0 bg-transparent border-b border-slate-200 outline-none text-[13.5px] font-medium text-slate-900 hover:border-slate-300 focus:border-blue-600"
+                        className="w-36 p-0 bg-transparent border-b border-[#dcdfd6] outline-none text-[13.5px] font-medium text-[#20242a] hover:border-[#b7bab0] focus:border-[#e2903a]"
                         placeholder="2083 Bhadra 13"
                         value={reportDateBs}
                         onChange={(e) => setReportDateBs(e.target.value)}
@@ -1612,13 +1695,13 @@ const SiteActivities: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg text-emerald-600 bg-emerald-50">
+                    <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg text-[#3f7d5c] bg-[#e6efe8]">
                       <User size={16} />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Prepared by</label>
+                      <label className="block text-[10px] font-semibold text-[#9a9d94] uppercase tracking-wide">Prepared by</label>
                       <input
-                        className="w-28 p-0 bg-transparent border-b border-slate-200 outline-none text-[13.5px] font-medium text-slate-900 hover:border-slate-300 focus:border-blue-600"
+                        className="w-28 p-0 bg-transparent border-b border-[#dcdfd6] outline-none text-[13.5px] font-medium text-[#20242a] hover:border-[#b7bab0] focus:border-[#e2903a]"
                         placeholder="Name"
                         value={preparedBy}
                         onChange={(e) => setPreparedBy(e.target.value)}
@@ -1626,37 +1709,37 @@ const SiteActivities: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <div className={`flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg ${report?.status === "submitted" ? "text-emerald-600 bg-emerald-50" : "text-amber-600 bg-amber-50"}`}>
+                    <div className={`flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-lg ${report?.status === "submitted" ? "text-[#3f7d5c] bg-[#e6efe8]" : "text-[#c67527] bg-[#fbedda]"}`}>
                       <CheckCircle2 size={16} />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Status</label>
-                      <p className="m-0 text-[13.5px] font-medium text-slate-900">
+                      <label className="block text-[10px] font-semibold text-[#9a9d94] uppercase tracking-wide">Status</label>
+                      <p className="m-0 text-[13.5px] font-medium text-[#20242a]">
                         {report ? report.status[0]!.toUpperCase() + report.status.slice(1) : "Draft"}
-                        {saveIndicator && <span className="ml-1.5 text-[11px] font-normal text-slate-400">· {saveIndicator}</span>}
+                        {saveIndicator && <span className="ml-1.5 text-[11px] font-normal text-[#9a9d94]">· {saveIndicator}</span>}
                       </p>
                     </div>
                   </div>
                 </div>
-                {report?.updatedBy && <p className="m-0 text-[11.5px] text-slate-400 whitespace-nowrap">Last edited by {report.updatedBy.name}</p>}
+                {report?.updatedBy && <p className="m-0 text-[11.5px] text-[#9a9d94] whitespace-nowrap">Last edited by {report.updatedBy.name}</p>}
               </div>
 
               {/* Stat cards */}
               <div className="grid grid-cols-1 gap-4 mb-5 sm:grid-cols-3">
-                <div className="bg-white border-l-4 border border-slate-200 border-l-blue-600 rounded-xl px-4 py-3">
-                  <p className="m-0 text-[12px] text-slate-500">Total Work Items</p>
-                  <p className="m-0 text-[22px] font-bold text-slate-900">{activities.length} Active</p>
-                  <p className="m-0 text-[12px] text-slate-400">{totalTodayQty} Nos completed today</p>
+                <div className="bg-white border-l-[3px] border border-[#dcdfd6] rounded-lg border-l-[#3f6079] px-4 py-3">
+                  <p className="m-0 text-[12px] text-[#6c7166]">Total Work Items</p>
+                  <p className="m-0 text-[22px] font-bold text-[#20242a]">{activities.length} Active</p>
+                  <p className="m-0 text-[12px] text-[#9a9d94]">{totalTodayQty} Nos completed today</p>
                 </div>
-                <div className="bg-white border-l-4 border border-slate-200 border-l-emerald-500 rounded-xl px-4 py-3">
-                  <p className="m-0 text-[12px] text-slate-500">Site Manpower</p>
-                  <p className="m-0 text-[22px] font-bold text-slate-900">{totalManpower} Personnel</p>
-                  <p className="m-0 text-[12px] text-slate-400 truncate">{manpowerBreakdown || "No headcount logged yet"}</p>
+                <div className="bg-white border-l-[3px] border border-[#dcdfd6] rounded-lg border-l-[#3f7d5c] px-4 py-3">
+                  <p className="m-0 text-[12px] text-[#6c7166]">Site Manpower</p>
+                  <p className="m-0 text-[22px] font-bold text-[#20242a]">{totalManpower} Personnel</p>
+                  <p className="m-0 text-[12px] text-[#9a9d94] truncate">{manpowerBreakdown || "No headcount logged yet"}</p>
                 </div>
-                <div className="bg-white border-l-4 border border-slate-200 border-l-amber-500 rounded-xl px-4 py-3">
-                  <p className="m-0 text-[12px] text-slate-500">Equipment Deployed</p>
-                  <p className="m-0 text-[22px] font-bold text-slate-900">{equipment.length} Units</p>
-                  <p className="m-0 text-[12px] text-slate-400">
+                <div className="bg-white border-l-[3px] border border-[#dcdfd6] rounded-lg border-l-[#c67527] px-4 py-3">
+                  <p className="m-0 text-[12px] text-[#6c7166]">Equipment Deployed</p>
+                  <p className="m-0 text-[22px] font-bold text-[#20242a]">{equipment.length} Units</p>
+                  <p className="m-0 text-[12px] text-[#9a9d94]">
                     {workingEquipment} Working, {idleEquipment} Idle
                   </p>
                 </div>
@@ -1696,8 +1779,8 @@ const SiteActivities: React.FC = () => {
                       <EmptyRow colSpan={8} />
                     ) : (
                       activities.map((row, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
-                          <td className={`${tdCls} text-center text-[12px] text-[#94a3b8]`} style={{ fontFamily: FONT_MONO }}>
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
+                          <td className={`${tdCls} text-center text-[12px] text-[#9a9d94]`} style={{ fontFamily: FONT_MONO }}>
                             {i + 1}
                           </td>
                           <td className={tdCls}>
@@ -1718,7 +1801,7 @@ const SiteActivities: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setAddWorkTypeFor(i)}
-                                className="flex-shrink-0 p-1 text-[#94a3b8] hover:text-[#1d4ed8] transition-colors"
+                                className="flex-shrink-0 p-1 text-[#9a9d94] hover:text-[#3f6079] transition-colors"
                                 title="Add new work description"
                               >
                                 <Plus size={14} />
@@ -1765,41 +1848,41 @@ const SiteActivities: React.FC = () => {
               >
                 <div className="px-2 py-1">
                   {manpower.length === 0 ? (
-                    <p className="px-3 py-6 text-[12.5px] text-center text-slate-400">No entries yet — use "+ Add category" above.</p>
+                    <p className="px-3 py-6 text-[12.5px] text-center text-[#9a9d94]">No entries yet — use "+ Add category" above.</p>
                   ) : (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-[#eef0ea]">
                       {manpower.map((row, i) => (
                         <div key={i} data-arrow-row className="flex items-center gap-2 px-3 py-3">
                           <input
-                            className="flex-1 min-w-0 p-0 bg-transparent border-none outline-none text-[13.5px] font-medium text-slate-800 focus:ring-0"
+                            className="flex-1 min-w-0 p-0 bg-transparent border-none outline-none text-[13.5px] font-medium text-[#20242a] focus:ring-0"
                             value={row.role}
                             onChange={(e) => updateManpower(i, { role: e.target.value })}
-                            onKeyDown={handleRowArrowNav}
+                            onKeyDown={handleManpowerArrowNav}
                           />
                           <input
                             placeholder="Name (specific post only)"
-                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
+                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-[#6c7166] bg-white border border-[#dcdfd6] rounded outline-none hover:border-[#b7bab0] focus:border-[#e2903a]"
                             value={row.names}
                             onChange={(e) => updateManpower(i, { names: e.target.value })}
-                            onKeyDown={handleRowArrowNav}
+                            onKeyDown={handleManpowerArrowNav}
                           />
                           <input
                             placeholder="Remarks"
-                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded outline-none hover:border-slate-300 focus:border-blue-600"
+                            className="flex-1 min-w-0 px-1.5 py-2 text-[11.5px] text-[#6c7166] bg-white border border-[#dcdfd6] rounded outline-none hover:border-[#b7bab0] focus:border-[#e2903a]"
                             value={row.remarks}
                             onChange={(e) => updateManpower(i, { remarks: e.target.value })}
-                            onKeyDown={handleRowArrowNav}
+                            onKeyDown={handleManpowerArrowNav}
                           />
                           <input
                             type="text"
                             inputMode="numeric"
                             style={{ fontFamily: FONT_MONO }}
-                            className="w-12 px-1 py-2 text-[14px] font-semibold text-right bg-white border border-slate-200 rounded outline-none text-slate-900 hover:border-slate-300 focus:border-blue-600"
+                            className="w-12 px-1 py-2 text-[14px] font-semibold text-right bg-white border border-[#dcdfd6] rounded outline-none text-[#20242a] hover:border-[#b7bab0] focus:border-[#e2903a]"
                             value={row.headcount}
                             onChange={(e) => updateManpower(i, { headcount: e.target.value })}
-                            onKeyDown={handleRowArrowNav}
+                            onKeyDown={handleManpowerArrowNav}
                           />
-                          <span className="text-[12px] text-slate-400 w-14">Person{row.headcount === "1" ? "" : "s"}</span>
+                          <span className="text-[12px] text-[#9a9d94] w-14">Person{row.headcount === "1" ? "" : "s"}</span>
                           <div className="w-4">
                             {i >= DEFAULT_ROLES.length && (
                               <RowDelBtn onClick={() => setManpower((rows) => rows.filter((_, idx) => idx !== i))} />
@@ -1809,15 +1892,14 @@ const SiteActivities: React.FC = () => {
                       ))}
                     </div>
                   )}
-                  <div className="flex items-center justify-between px-3 py-2.5 mt-1.5 mb-1 border border-blue-200 rounded-lg bg-blue-50">
-                    <span className="text-[13px] font-medium text-blue-900">Total Headcount On-Site</span>
-                    <span className="text-[14px] font-bold text-blue-900">{totalManpower} Total</span>
+                  <div className="flex items-center justify-between px-3 py-2.5 mt-1.5 mb-1 border border-[#e6cfa6] rounded-lg bg-[#fbedda]">
+                    <span className="text-[13px] font-medium text-[#c67527]">Total Headcount On-Site</span>
+                    <span className="text-[14px] font-bold text-[#c67527]">{totalManpower} Total</span>
                   </div>
                 </div>
               </SectionCard>
 
-              {/* 03 Equipment + 04 Weather status, side by side */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* 03 Equipment (full width) */}
               <SectionCard idx="03" title="Equipment & Machinery Log" addLabel="Add equipment" onAdd={() => setEquipment((rows) => [...rows, emptyEquipment()])}>
                 <table className="w-full text-[13px]">
                   <thead>
@@ -1844,7 +1926,7 @@ const SiteActivities: React.FC = () => {
                       <EmptyRow colSpan={7} />
                     ) : (
                       equipment.map((row, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
                           <td className={tdCls}>
                             <div className="flex items-center gap-1">
                               <select
@@ -1863,7 +1945,7 @@ const SiteActivities: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setAddEquipmentTypeFor(i)}
-                                className="flex-shrink-0 p-1 text-[#94a3b8] hover:text-[#1d4ed8] transition-colors"
+                                className="flex-shrink-0 p-1 text-[#9a9d94] hover:text-[#3f6079] transition-colors"
                                 title="Add new equipment"
                               >
                                 <Plus size={14} />
@@ -1897,9 +1979,9 @@ const SiteActivities: React.FC = () => {
                             <input className={cellInputCls} value={row.remarks} onChange={(e) => updateEquipment(i, { remarks: e.target.value })} onKeyDown={handleRowArrowNav} />
                           </td>
                           <td className={tdCls}>
-                            <div className="w-full h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div className="w-full h-1.5 overflow-hidden rounded-full bg-[#eef0ea]">
                               <div
-                                className={`h-full rounded-full ${row.condition === "working" ? "bg-blue-600" : row.condition === "breakdown" ? "bg-red-400" : "bg-slate-300"}`}
+                                className={`h-full rounded-full ${row.condition === "working" ? "bg-[#3f7d5c]" : row.condition === "breakdown" ? "bg-[#a94a35]" : "bg-[#b7bab0]"}`}
                                 style={{ width: `${Math.min(100, ((parseFloat(row.workingHours) || 0) / 12) * 100)}%` }}
                               />
                             </div>
@@ -1914,19 +1996,20 @@ const SiteActivities: React.FC = () => {
                 </table>
               </SectionCard>
 
+              {/* 04 Weather status (full width) */}
               <SectionCard idx="04" title="Weather status">
                 <div
-                  className="grid mx-[18px] my-2.5 border border-[#e2e8f0]"
-                  style={{ gridTemplateColumns: "120px repeat(3, 1fr)", gap: 1, background: "#e2e8f0" }}
+                  className="grid mx-[18px] my-2.5 border border-[#dcdfd6]"
+                  style={{ gridTemplateColumns: "120px repeat(3, 1fr)", gap: 1, background: "#dcdfd6" }}
                 >
-                  <div className="bg-[#f8fafc]" />
+                  <div className="bg-[#f7f8f4]" />
                   {WEATHER_SLOTS.map((slot) => (
-                    <div key={slot} className="bg-[#f8fafc] px-2.5 py-2 text-[11.5px] font-semibold text-[#64748b]">
+                    <div key={slot} className="bg-[#f7f8f4] px-2.5 py-2 text-[11.5px] font-semibold text-[#6c7166]">
                       {WEATHER_SLOT_LABEL[slot]}
                     </div>
                   ))}
 
-                  <div className="bg-[#f8fafc] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Weather status</div>
+                  <div className="bg-[#f7f8f4] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Weather status</div>
                   <div data-arrow-row style={{ display: "contents" }}>
                     {weather.map((w, i) => (
                       <div key={`status-${w.slot}`} className="bg-white px-2.5 py-2">
@@ -1935,7 +2018,7 @@ const SiteActivities: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="bg-[#f8fafc] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Temperature (°C)</div>
+                  <div className="bg-[#f7f8f4] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Temperature (°C)</div>
                   <div data-arrow-row style={{ display: "contents" }}>
                     {weather.map((w, i) => (
                       <div key={`temp-${w.slot}`} className="bg-white px-2.5 py-2">
@@ -1944,7 +2027,7 @@ const SiteActivities: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="bg-[#f8fafc] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Rainfall status</div>
+                  <div className="bg-[#f7f8f4] px-2.5 py-2 text-[12.5px] font-medium flex items-center">Rainfall status</div>
                   {weather.map((w, i) => (
                     <div key={`rain-${w.slot}`} className="bg-white px-2.5 py-2">
                       <select className={`${cellInputCls} cursor-pointer`} value={w.rainfall} onChange={(e) => updateWeather(i, { rainfall: e.target.value as SiteActivityRainfall })}>
@@ -1958,7 +2041,6 @@ const SiteActivities: React.FC = () => {
                   ))}
                 </div>
               </SectionCard>
-              </div>
 
               {/* 05 Materials + 06 Safety, side by side */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -2000,7 +2082,7 @@ const SiteActivities: React.FC = () => {
                       <EmptyRow colSpan={7} />
                     ) : (
                       materials.map((row, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
                           <td className={tdCls}>
                             <div className="flex items-center gap-1">
                               <select
@@ -2019,7 +2101,7 @@ const SiteActivities: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setAddMaterialTypeFor(i)}
-                                className="flex-shrink-0 p-1 text-[#94a3b8] hover:text-[#1d4ed8] transition-colors"
+                                className="flex-shrink-0 p-1 text-[#9a9d94] hover:text-[#3f6079] transition-colors"
                                 title="Add new material type"
                               >
                                 <Plus size={14} />
@@ -2086,7 +2168,7 @@ const SiteActivities: React.FC = () => {
                       <EmptyRow colSpan={4} />
                     ) : (
                       safety.map((row, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
                           <td className={tdCls}>
                             <select
                               className={`${cellInputCls} ${tintCls(row.type)} cursor-pointer`}
@@ -2142,7 +2224,7 @@ const SiteActivities: React.FC = () => {
                       <EmptyRow colSpan={6} />
                     ) : (
                       instructions.map((row, i) => (
-                        <tr key={i} className="hover:bg-[#f8fafc]">
+                        <tr key={i} className="hover:bg-[#f7f8f4]">
                           <td className={tdCls}>
                             <input className={cellInputCls} value={row.description} onChange={(e) => updateInstruction(i, { description: e.target.value })} onKeyDown={handleRowArrowNav} />
                           </td>
@@ -2170,21 +2252,21 @@ const SiteActivities: React.FC = () => {
               </div>
 
               {/* Remarks + signature */}
-              <section className="bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
-                <div className="px-5 py-3.5 border-b border-slate-100">
-                  <h3 className="font-semibold text-[15px] text-slate-900 m-0">Remarks / issues / concerns</h3>
+              <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-[#eef0ea]">
+                  <h3 className="font-semibold text-[15px] text-[#20242a] m-0">Remarks / issues / concerns</h3>
                 </div>
                 <div className="p-4">
                   <textarea
-                    className="w-full min-h-[70px] border border-slate-200 rounded-lg p-2.5 text-[13.5px] resize-y focus:outline-none focus:border-blue-600"
+                    className="w-full min-h-[70px] border border-[#dcdfd6] rounded-lg p-2.5 text-[13.5px] resize-y focus:outline-none focus:border-[#e2903a]"
                     placeholder="Any open issues, concerns or notes for the day..."
                     value={remarksText}
                     onChange={(e) => setRemarksText(e.target.value)}
                   />
                   <div className="flex items-center justify-end gap-2.5 mt-3">
-                    <label className="text-[12px] text-slate-500">Signature (site in-charge):</label>
+                    <label className="text-[12px] text-[#6c7166]">Signature (site in-charge):</label>
                     <input
-                      className="w-[220px] px-0.5 py-1 border-0 border-b border-slate-300 text-[13.5px] focus:outline-none focus:border-blue-600 bg-transparent"
+                      className="w-[220px] px-0.5 py-1 border-0 border-b border-[#b7bab0] text-[13.5px] focus:outline-none focus:border-[#e2903a] bg-transparent"
                       placeholder="Name"
                       value={signedBy}
                       onChange={(e) => setSignedBy(e.target.value)}
@@ -2196,14 +2278,14 @@ const SiteActivities: React.FC = () => {
               {/* Submit */}
               <div className="flex items-center justify-end gap-3 mb-4">
                 {reportStatus === "submitted" ? (
-                  <span className="px-3 py-2 text-[13px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">✓ Submitted</span>
+                  <span className="px-3 py-2 text-[13px] font-medium text-[#3f7d5c] bg-[#e6efe8] border border-[#bcd6c6] rounded-lg">✓ Submitted</span>
                 ) : (
-                  <span className="text-[12px] text-slate-400">Not submitted yet — fields are being saved as a draft.</span>
+                  <span className="text-[12px] text-[#9a9d94]">Not submitted yet — fields are being saved as a draft.</span>
                 )}
                 <button
                   onClick={handleSubmitReport}
                   disabled={submitting}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-[13.5px] hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#3f6079] text-white rounded-lg font-semibold text-[13.5px] hover:bg-[#2f4a5c] transition-colors disabled:opacity-50"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {reportStatus === "submitted" ? "Re-submit Report" : "Submit Report"}

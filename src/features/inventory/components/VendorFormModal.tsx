@@ -13,6 +13,7 @@ type VendorForm = {
   contactPerson: string;
   address: string;
   email: string;
+  panVatNumber: string;
 };
 
 const emptyForm: VendorForm = {
@@ -24,6 +25,7 @@ const emptyForm: VendorForm = {
   contactPerson: "",
   address: "",
   email: "",
+  panVatNumber: "",
 };
 
 interface VendorFormModalProps {
@@ -54,6 +56,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
           contactPerson: editingVendor.contactPerson || "",
           address: editingVendor.address || "",
           email: editingVendor.email || "",
+          panVatNumber: editingVendor.panVatNumber || "",
         }
       : emptyForm,
   );
@@ -82,6 +85,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
               contactPerson: form.contactPerson.trim(),
               address: form.address.trim(),
               email: form.email.trim(),
+              panVatNumber: form.panVatNumber.trim(),
             },
           })
         : await createMutation.mutateAsync({
@@ -93,6 +97,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
             contactPerson: form.contactPerson.trim() || undefined,
             address: form.address.trim() || undefined,
             email: form.email.trim() || undefined,
+            panVatNumber: form.panVatNumber.trim() || undefined,
           });
       onSaved(vendor);
     } catch (err) {
@@ -177,6 +182,15 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
                 className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
               />
             </div>
+          </div>
+          <div>
+            <label className="block mb-1 text-[11px] font-medium text-slate-900">PAN/VAT No.</label>
+            <input
+              value={form.panVatNumber}
+              onChange={(e) => setForm({ ...form, panVatNumber: e.target.value })}
+              placeholder="Optional"
+              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+            />
           </div>
           <div>
             <label className="block mb-1 text-[11px] font-medium text-slate-900">Address</label>

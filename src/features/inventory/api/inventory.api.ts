@@ -197,6 +197,7 @@ export async function createVendor(input: {
   contactPerson?: string;
   address?: string;
   email?: string;
+  panVatNumber?: string;
 }): Promise<Vendor> {
   const res = await api.post<{ vendor: Vendor }>("/api/workspace/vendors", input);
   return res.data.vendor;
@@ -214,6 +215,7 @@ export async function updateVendor(
     contactPerson?: string;
     address?: string;
     email?: string;
+    panVatNumber?: string;
   },
 ): Promise<Vendor> {
   const res = await api.put<{ vendor: Vendor }>(`/api/workspace/vendors/${vendorId}`, input);

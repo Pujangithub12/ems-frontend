@@ -69,6 +69,7 @@ export async function createPurchaseOrder(
 
 export interface PurchaseOrderInput {
   poNumber?: string;
+  poDate?: string | null;
   paymentTerms?: string;
   incoterms?: string;
   taxPercent?: number | null;
@@ -76,6 +77,7 @@ export interface PurchaseOrderInput {
   deliveryPeriod?: string;
   finalDestination?: string;
   customerContactPerson?: string;
+  customerPanVatNumber?: string;
   currency?: string;
   purchaseType?: PurchaseType;
   status?: PurchaseOrderStatus;
