@@ -21,12 +21,7 @@ import {
   ProjectPerformanceTab,
   ProjectInventoryTab,
   ProjectTeamTab,
-  StatusPill,
-  PriorityPill,
-  formatDate,
-  dueDateInfo,
 } from "../components/tabs";
-import { flattenProjectTasks } from "../../tasks/utils/taskUtils";
 
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -91,13 +86,6 @@ const ProjectDetails: React.FC = () => {
     );
   }
 
-  const deadline = project.status === "completed" ? null : dueDateInfo(project.dueDate);
-
-  const allTasks = flattenProjectTasks(project);
-  const total = project.tasksCount ?? allTasks.length;
-  const completedCount = allTasks.filter((t) => (t.status || "to_do") === "completed").length;
-  const progress = project.progress ?? (total > 0 ? Math.round((completedCount / total) * 100) : 0);
-
   const renderTabContent = () => {
     switch (activeTab) {
       case "overview":
@@ -123,50 +111,16 @@ const ProjectDetails: React.FC = () => {
     // No outer padding/margin — this box is the entire page area (below the
     // top bar), edge to edge in both directions.
     <div className="flex flex-col w-full min-h-[calc(100vh-4rem)] bg-white">
-      {/* Header */}
-      <div className="flex items-center flex-shrink-0 gap-4 px-6 pt-2 pb-3 bg-white lg:px-8">
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-semibold text-[22px] tracking-tight text-slate-900 truncate">
-              {project.name}
-            </h1>
-            <StatusPill status={project.status} />
-            <PriorityPill priority={project.priority} />
-            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
-              <Calendar className="flex-shrink-0 w-3.5 h-3.5" />
-              {project.dueDate ? formatDate(project.dueDate) : "No due date"}
-              {deadline && <span className={`font-medium ${deadline.tone}`}>({deadline.label})</span>}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex-shrink-0 w-52 px-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-md">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-medium text-slate-500">Progress</span>
-            <span className="text-[13px] font-bold text-slate-900">{progress}%</span>
-          </div>
-          <div className="w-full h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full transition-all rounded-full bg-blue-600"
-              style={{ width: `${Math.min(100, progress)}%` }}
-            />
-          </div>
-          <div className="mt-1 text-[10px] text-slate-400">
-            {completedCount} of {total} tasks completed
-          </div>
-        </div>
-      </div>
-
       {/* Tabs & Content — fills the remaining page height */}
       <div className="flex flex-col flex-1 w-full overflow-hidden">
-        <div className="flex flex-shrink-0 gap-1 px-4 overflow-x-auto border-b border-slate-200 bg-slate-50/60 lg:px-8">
+        <div className="flex flex-shrink-0 px-2 overflow-x-auto border-b border-slate-200 bg-slate-50/60 lg:px-4">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-[13px] border-b-2 whitespace-nowrap transition-colors
+                className={`flex items-center gap-1.5 px-2.5 py-3 text-[13px] border-b-2 whitespace-nowrap transition-colors
                   ${
                     activeTab === tab.id
                       ? "border-slate-900 text-black font-semibold"
@@ -179,7 +133,9 @@ const ProjectDetails: React.FC = () => {
             );
           })}
         </div>
-        <div className="flex-1 p-6 overflow-auto bg-white">{renderTabContent()}</div>
+        <div className={`flex-1 p-6 bg-white ${activeTab === "schedule" ? "overflow-hidden" : "overflow-auto"}`}>
+          {renderTabContent()}
+        </div>
       </div>
     </div>
   );

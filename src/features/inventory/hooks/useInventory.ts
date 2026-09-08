@@ -207,6 +207,7 @@ export function useUpdateVendorMutation() {
         contactPerson?: string;
         address?: string;
         email?: string;
+        panVatNumber?: string;
       };
     }) => updateVendor(vendorId, input),
   });
@@ -250,6 +251,7 @@ export function useCreateVendorMutation() {
       contactPerson?: string;
       address?: string;
       email?: string;
+      panVatNumber?: string;
     }) => createVendor(input),
   });
 }

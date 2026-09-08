@@ -101,6 +101,8 @@ export type Vendor = {
   /** Full postal address, for the generated Purchase Order PDF's "VENDOR" box — distinct from the shorter free-text `location`. */
   address?: string | null;
   email?: string | null;
+  /** PAN/VAT registration number for this vendor, used on generated Purchase Order PDFs. */
+  panVatNumber?: string | null;
   createdAt: string;
 };
 
@@ -434,6 +436,8 @@ export type CostSheet = {
 export type PurchaseOrder = {
   id: number;
   poNumber?: string | null;
+  /** User-editable "Date" shown in the PDF's P.O. NUMBER/DATE box — the Overview tab displays today's date until this is explicitly set. */
+  poDate?: string | null;
   paymentTerms?: string | null;
   incoterms?: string | null;
   taxPercent?: number | string | null;
@@ -443,6 +447,8 @@ export type PurchaseOrder = {
   finalDestination?: string | null;
   /** Contact person name for the PDF's CUSTOMER box — the buying organization's own contact, distinct from the vendor's contactPerson. */
   customerContactPerson?: string | null;
+  /** PAN/VAT registration number for the PDF's CUSTOMER box — the buying organization's own PAN/VAT, distinct from the vendor's panVatNumber. */
+  customerPanVatNumber?: string | null;
   /** Currency label for the PDF's "Amount in Words" line (e.g. "Indian Rupees", "US Dollar") — falls back to "Rupees" when unset. */
   currency?: string | null;
   purchaseType: PurchaseType;

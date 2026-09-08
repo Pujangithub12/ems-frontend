@@ -355,6 +355,7 @@ const PurchaseOrderDetailPage: React.FC = () => {
 
 type OverviewForm = {
   poNumber: string;
+  poDate: string;
   paymentTerms: string;
   incoterms: string;
   taxPercent: string;
@@ -362,11 +363,13 @@ type OverviewForm = {
   deliveryPeriod: string;
   finalDestination: string;
   customerContactPerson: string;
+  customerPanVatNumber: string;
   currency: string;
 };
 
 const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   poNumber: po.poNumber || "",
+  poDate: po.poDate ? po.poDate.slice(0, 10) : new Date().toLocaleDateString("en-CA"),
   paymentTerms: po.paymentTerms || "",
   incoterms: po.incoterms || "",
   taxPercent: po.taxPercent !== null && po.taxPercent !== undefined ? String(po.taxPercent) : "",
@@ -374,6 +377,7 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   deliveryPeriod: po.deliveryPeriod || "",
   finalDestination: po.finalDestination || "",
   customerContactPerson: po.customerContactPerson || "",
+  customerPanVatNumber: po.customerPanVatNumber || "",
   currency: po.currency || "",
 });
 
@@ -591,6 +595,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         id: po.id,
         input: {
           poNumber: trimmedPoNumber,
+          poDate: form.poDate || null,
           paymentTerms: form.paymentTerms.trim() || undefined,
           incoterms: form.incoterms.trim() || undefined,
           taxPercent: numOrUndef(form.taxPercent) ?? null,
@@ -598,6 +603,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           deliveryPeriod: form.deliveryPeriod.trim() || undefined,
           finalDestination: form.finalDestination.trim() || undefined,
           customerContactPerson: form.customerContactPerson.trim() || undefined,
+          customerPanVatNumber: form.customerPanVatNumber.trim() || undefined,
           currency: form.currency.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
         },
@@ -649,6 +655,24 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               value={form.poNumber}
               onChange={(e) => setForm({ ...form, poNumber: e.target.value })}
               onKeyDown={handleRowArrowNav}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Date</label>
+            <input
+              type="date"
+              disabled={!isAdmin}
+              value={form.poDate}
+              onChange={(e) => setForm({ ...form, poDate: e.target.value })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Vendor PAN/VAT No.</label>
+            <input
+              disabled
+              value={po.vendor?.panVatNumber || "--"}
               className={inputCls}
             />
           </div>
@@ -712,6 +736,16 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
               onKeyDown={handleRowArrowNav}
               placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer PAN/VAT No.</label>
+            <input
+              disabled={!isAdmin}
+              value={form.customerPanVatNumber}
+              onChange={(e) => setForm({ ...form, customerPanVatNumber: e.target.value })}
+              onKeyDown={handleRowArrowNav}
               className={inputCls}
             />
           </div>

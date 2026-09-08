@@ -13,6 +13,7 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
+  Zap,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -30,6 +31,7 @@ import {
 } from "recharts";
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
+import ProjectPerformanceTab from "../../projects/components/tabs/ProjectPerformanceTab";
 import { getErrorMessage } from "../../../lib/errors";
 import { adDateForBsDay } from "../../../lib/bsDate";
 import ErrorBanner from "../../../components/ErrorBanner";
@@ -1745,7 +1747,7 @@ const PlantReport: React.FC = () => {
   const { data: projects = [] } = useProjects();
 
   const [projectId, setProjectId] = useState<number | "">("");
-  const [activeTabId, setActiveTabId] = useState<number | "charts" | "">("");
+  const [activeTabId, setActiveTabId] = useState<number | "charts" | "energyPerformance" | "">("");
   const [addTableOpen, setAddTableOpen] = useState(false);
   const [renamingTable, setRenamingTable] = useState<PlantReportTable | null>(null);
   const [confirmDeleteTable, setConfirmDeleteTable] = useState<PlantReportTable | null>(null);
@@ -1760,12 +1762,17 @@ const PlantReport: React.FC = () => {
   const deleteTableMutation = useDeletePlantReportTable();
 
   useEffect(() => {
-    if (tables.length > 0 && (activeTabId === "" || (activeTabId !== "charts" && !tables.some((t) => t.id === activeTabId)))) {
+    if (
+      tables.length > 0 &&
+      (activeTabId === "" ||
+        (activeTabId !== "charts" && activeTabId !== "energyPerformance" && !tables.some((t) => t.id === activeTabId)))
+    ) {
       setActiveTabId(tables[0].id);
     }
   }, [tables, activeTabId]);
 
-  const activeTable = activeTabId !== "charts" ? tables.find((t) => t.id === activeTabId) : null;
+  const activeTable = activeTabId !== "charts" && activeTabId !== "energyPerformance" ? tables.find((t) => t.id === activeTabId) : null;
+  const currentProject = projects.find((p) => p.id === projectId) ?? null;
 
   if (projects.length === 0) {
     return (
@@ -1838,6 +1845,15 @@ const PlantReport: React.FC = () => {
         )}
 
         <button
+          onClick={() => setActiveTabId("energyPerformance")}
+          className={`flex items-center gap-1.5 px-4 py-3 text-[13px] border-b-2 whitespace-nowrap transition-colors ${
+            activeTabId === "energyPerformance" ? "border-slate-900 text-black font-semibold" : "border-transparent font-medium text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Zap size={14} className="opacity-70" /> Energy Performance
+        </button>
+
+        <button
           onClick={() => setActiveTabId("charts")}
           className={`flex items-center gap-1.5 px-4 py-3 text-[13px] border-b-2 whitespace-nowrap transition-colors ${
             activeTabId === "charts" ? "border-slate-900 text-black font-semibold" : "border-transparent font-medium text-slate-500 hover:text-slate-700"
@@ -1859,6 +1875,12 @@ const PlantReport: React.FC = () => {
 
       {activeTabId === "charts" ? (
         <ChartsTab tables={tables} />
+      ) : activeTabId === "energyPerformance" ? (
+        currentProject && (
+          <div className="p-6">
+            <ProjectPerformanceTab project={currentProject} />
+          </div>
+        )
       ) : activeTable ? (
         <TableSheet key={activeTable.id} tableId={activeTable.id} isAdmin={isAdmin} tableName={activeTable.name} isDefaultTable={activeTable.isDefault} />
       ) : null}
