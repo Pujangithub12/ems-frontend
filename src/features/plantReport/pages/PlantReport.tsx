@@ -1878,7 +1878,7 @@ const PlantReport: React.FC = () => {
       ) : activeTabId === "energyPerformance" ? (
         currentProject && (
           <div className="p-6">
-            <ProjectPerformanceTab project={currentProject} />
+            <ProjectPerformanceTab project={currentProject} hideChart />
           </div>
         )
       ) : activeTable ? (

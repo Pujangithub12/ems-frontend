@@ -105,7 +105,7 @@ const cellInputCls =
   "w-full border border-transparent bg-transparent px-1.5 py-1.5 rounded-[3px] text-[13px] text-[#20242a] hover:border-[#b7bab0] focus:outline-none focus:border-[#e2903a] focus:bg-white transition-colors";
 const cellMonoCls = `${cellInputCls}`;
 const thCls =
-  "text-left text-[11px] font-semibold uppercase tracking-[.03em] text-[#9a9d94] px-3 py-2.5 bg-[#f7f8f4] border-b border-[#dcdfd6] whitespace-nowrap";
+  "text-left text-[11px] font-semibold uppercase tracking-[.03em] text-[#9a9d94] px-3 py-2.5 bg-white border-b border-[#dcdfd6] whitespace-nowrap";
 const tdCls = "px-3 py-2 border-b border-[#dcdfd6] align-middle";
 const metaInputCls =
   "w-full border border-[#b7bab0] rounded-[3px] px-2.5 py-1.5 text-[13.5px] bg-white text-[#20242a] focus:outline-none focus:border-[#e2903a]";
@@ -175,7 +175,7 @@ const SectionCard: React.FC<{ idx: string; title: string; badge?: string; onAdd?
   children,
 }) => (
   <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
-    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-white">
       <span className="mono px-1.5 py-0.5 text-[11px] text-[#9a9d94] border border-[#b7bab0] rounded-[3px]" style={{ fontFamily: FONT_MONO }}>
         {idx}
       </span>
@@ -228,7 +228,7 @@ const AddOptionModal: React.FC<{
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#20242a]/50 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-sm bg-white border border-[#b7bab0] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#dcdfd6] bg-white">
           <h3 className="font-semibold text-[17px] text-[#20242a]" style={{ fontFamily: FONT_DISPLAY }}>
             {title}
           </h3>
@@ -295,7 +295,7 @@ const PhotosSection: React.FC<{ report: SiteActivityReport | null; projectId: nu
 
   return (
     <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-white">
         <h3 className="flex-1 font-semibold text-[17px] text-[#20242a] m-0" style={{ fontFamily: FONT_DISPLAY }}>
           Site Photographs ({report?.photos.length ?? 0})
         </h3>
@@ -348,7 +348,7 @@ const PhotosSection: React.FC<{ report: SiteActivityReport | null; projectId: nu
 
 const InfoCard: React.FC<{ title: string; badge?: string; children: React.ReactNode }> = ({ title, badge, children }) => (
   <section className="bg-white border border-[#b7bab0] rounded-lg mb-4 overflow-hidden">
-    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-[#f7f8f4]">
+    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dcdfd6] bg-white">
       <h3 className="flex-1 font-semibold text-[17px] text-[#20242a] m-0" style={{ fontFamily: FONT_DISPLAY }}>
         {title}
       </h3>

@@ -48,6 +48,9 @@ import {
 
 interface ProjectPerformanceTabProps {
   project: Project;
+  /** Hides the "Generation Trend" line chart — used when this tab is embedded somewhere that
+   * only wants the tabular data (e.g. Plant Report's Energy Performance tab). */
+  hideChart?: boolean;
 }
 
 const emptyForm = {
@@ -75,7 +78,7 @@ const diff = (initial: string, final: string): number | null => {
 // this is 1-based purely for display / financial-table row keys.
 const BS_MONTH_INDEXES = Array.from({ length: 12 }, (_, i) => i);
 
-const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }) => {
+const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, hideChart }) => {
   const projectId = String(project.id);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -608,30 +611,32 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project }
   return (
     <div className="flex flex-col gap-6">
       {/* Trend chart */}
-      <div className="p-4 bg-white border rounded-lg border-slate-200">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[13px] font-semibold text-slate-900">Generation Trend</h3>
-          <div className="flex text-[11px] border rounded-lg border-slate-200 overflow-hidden">
-            <button
-              onClick={() => setChartMode("daily")}
-              className={`px-3 py-1.5 font-medium ${chartMode === "daily" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
-            >
-              Daily
-            </button>
-            <button
-              onClick={() => setChartMode("monthly")}
-              className={`px-3 py-1.5 font-medium ${chartMode === "monthly" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
-            >
-              Monthly trend
-            </button>
+      {!hideChart && (
+        <div className="p-4 bg-white border rounded-lg border-slate-200">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[13px] font-semibold text-slate-900">Generation Trend</h3>
+            <div className="flex text-[11px] border rounded-lg border-slate-200 overflow-hidden">
+              <button
+                onClick={() => setChartMode("daily")}
+                className={`px-3 py-1.5 font-medium ${chartMode === "daily" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setChartMode("monthly")}
+                className={`px-3 py-1.5 font-medium ${chartMode === "monthly" ? "bg-blue-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+              >
+                Monthly trend
+              </button>
+            </div>
           </div>
+          <EnergyPerformanceChart
+            data={chartData}
+            navigatorLabel={chartMode === "daily" ? periodLabel : `${year}`}
+            onNavigate={(dir) => (chartMode === "daily" ? navigateMonth(dir) : setYear((y) => y + dir))}
+          />
         </div>
-        <EnergyPerformanceChart
-          data={chartData}
-          navigatorLabel={chartMode === "daily" ? periodLabel : `${year}`}
-          onNavigate={(dir) => (chartMode === "daily" ? navigateMonth(dir) : setYear((y) => y + dir))}
-        />
-      </div>
+      )}
 
       {/* Month picker */}
       <div className="flex items-center justify-between">
