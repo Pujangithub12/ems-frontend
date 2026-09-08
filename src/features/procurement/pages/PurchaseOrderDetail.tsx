@@ -669,7 +669,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             />
           </div>
           <div>
-            <label className={labelCls}>Vendor PAN/VAT No.</label>
+            <label className={labelCls}>{po.purchaseType === "international" ? "GSTIN No." : "Vendor PAN/VAT No."}</label>
             <input
               disabled
               value={po.vendor?.panVatNumber || "--"}
