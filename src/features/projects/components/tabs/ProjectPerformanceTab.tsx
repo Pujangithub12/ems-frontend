@@ -103,7 +103,8 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
   // single figures an admin enters for one BS month and can't be honestly
   // split across an AD month boundary.
   const [dateFormat, setDateFormat] = useState<"bs" | "ad">("bs");
-  const dateLabel = (dateIso: string) => (dateFormat === "bs" ? bsDateLabel(dateIso) : adDateLabel(dateIso));
+  const dateLabel = (dateIso: string, includeYear = false) =>
+    dateFormat === "bs" ? bsDateLabel(dateIso, true, includeYear) : adDateLabel(dateIso, true, includeYear);
 
   // The period currently driving the daily grid (Add Entry, Upload Sheet,
   // the entries table, and the daily-mode chart) — BS or AD depending on dateFormat.
@@ -454,12 +455,16 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
     setImportStatus(null);
     try {
       const buffer = await file.arrayBuffer();
-      // cellDates: true — a "Date" column is normally a full date (e.g. "1-Aug-26"), and
-      // without this XLSX would hand that cell back as a raw Excel date serial (e.g. 46235),
-      // which the day-of-month parsing below would misread. With it, such a cell comes through
-      // as a real JS Date instead, which is handled directly. The column may also just contain
-      // a plain 1-31 day-of-month number — both forms are handled below.
-      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      // Deliberately NOT cellDates: true — that converts a date cell to a JS Date object via
+      // SheetJS's numdate(), which round-trips through the browser's local timezone offset to
+      // land on the right calendar date. That's normally fine, but real-world files (exported
+      // by Excel/Google Sheets/etc., not authored by this same SheetJS build) can carry a date
+      // serial that numdate()'s offset compensation resolves to the wrong side of midnight,
+      // silently shifting every row back one day (e.g. every date in the sheet showing one day
+      // earlier than the file actually has). Reading the *raw* Excel serial number instead and
+      // decoding it with XLSX.SSF.parse_date_code — pure integer arithmetic on the serial, no
+      // Date object or timezone involved at any point — sidesteps that entirely.
+      const workbook = XLSX.read(buffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
 
@@ -504,21 +509,18 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
         let resolvedDate: string;
         let resolvedLabel: string;
         // Set only when the file's Date was a plain day-of-month number interpreted against the
-        // chosen BS month/year — a full date cell (the `instanceof Date` branch) is unambiguously
+        // chosen BS month/year — a full date cell (the raw-serial branch below) is unambiguously
         // AD, so there's no BS original to record for it.
         let resolvedDateBs: string | undefined;
-        if (dayRaw instanceof Date) {
-          // SheetJS (with cellDates: true) always builds these Date objects anchored at UTC
-          // midnight for the cell's calendar date — reading them back with local-timezone
-          // getters (getDate/getMonth/getFullYear, toLocaleDateString) rolls the date back a
-          // day for anyone west of UTC (e.g. "1-Apr-26" showing as "Mar 31, 2026"). Read the
-          // UTC components instead so the calendar date matches exactly what the cell said,
-          // regardless of the browser's local timezone.
-          day = dayRaw.getUTCDate();
-          const utcYear = dayRaw.getUTCFullYear();
-          const utcMonth = dayRaw.getUTCMonth();
-          resolvedDate = `${utcYear}-${String(utcMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          resolvedLabel = new Date(Date.UTC(utcYear, utcMonth, day)).toLocaleDateString("en-US", {
+        // A real Excel date serial is comfortably > 1000 for any modern calendar date (day-of-month
+        // values only ever run 1-31), so magnitude alone disambiguates the two without needing
+        // cellDates/Date-object conversion at all — see the read() call above for why that's
+        // deliberately avoided.
+        if (typeof dayRaw === "number" && dayRaw > 1000) {
+          const code = XLSX.SSF.parse_date_code(dayRaw) as { y: number; m: number; d: number };
+          day = code.d;
+          resolvedDate = `${code.y}-${String(code.m).padStart(2, "0")}-${String(code.d).padStart(2, "0")}`;
+          resolvedLabel = new Date(Date.UTC(code.y, code.m - 1, code.d)).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -614,7 +616,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
     const dailySheetData = [
       ["Date", "Check Meter Initial", "Check Meter Final", "Check Meter Diff", "Main Meter Initial", "Main Meter Final", "Main Meter Diff"],
       ...dailyEntries.map((d) => [
-        dateLabel(d.date),
+        dateLabel(d.date, true),
         rawNum(d.checkMeterInitial),
         rawNum(d.checkMeterFinal),
         rawNum(d.checkMeterDifference),
