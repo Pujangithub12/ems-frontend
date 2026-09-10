@@ -52,7 +52,10 @@ export async function fetchDailyGeneration(
 }
 
 export interface UpsertDailyGenerationInput {
-  date: string; // AD ISO date
+  date: string; // AD ISO date — always the authoritative, converted value; never a raw BS string.
+  /** Free-text Bikram Sambat date note (e.g. "2083 Bhadra 13") — audit trail for when this
+   * entry was entered/uploaded as a BS date. Omit to leave the stored value untouched. */
+  dateBs?: string | null;
   checkMeterInitial?: number | null;
   checkMeterFinal?: number | null;
   mainMeterInitial?: number | null;

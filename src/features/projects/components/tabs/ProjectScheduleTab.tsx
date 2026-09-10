@@ -6,8 +6,6 @@ import {
   Pencil,
   CloudUpload,
   Check,
-  LayoutGrid,
-  Rows3,
   Filter,
   Download,
   Plus,
@@ -35,6 +33,12 @@ import {
   GANTT_TYPE_TO_LINK_TYPE,
 } from "../../utils/predecessorTokens";
 import { recalcAfterTaskEdit, recalcAfterLinkEdit } from "../../utils/scheduleAutoSchedule";
+import {
+  computeCriticalPath,
+  markCriticalTasks,
+  markCriticalLinks,
+  criticalPathLengthDays,
+} from "../../utils/criticalPath";
 import GanttChartView, { ScheduleColumnDef, ScheduleScale, LinkEditInfo } from "../GanttChartView";
 import { deleteTask } from "../../../tasks/api/tasks.api";
 import { getErrorMessage } from "../../../../lib/errors";
@@ -626,7 +630,11 @@ function dedupeRowIds(rows: ScheduleRow[]): ScheduleRow[] {
 const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onScheduleUpdate }) => {
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("day");
-  const [viewTab, setViewTab] = useState<ViewTab>("gantt");
+  // Fixed to "gantt" — the List view toggle was removed, so this is no longer user-switchable,
+  // but the conditional column/rendering logic below still keys off it. useState (rather than a
+  // plain const) keeps its type as the full ViewTab union instead of narrowing to the literal
+  // "gantt", which the viewTab === "list" checks below still need to type-check.
+  const [viewTab] = useState<ViewTab>("gantt");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -662,6 +670,32 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
   // StickyHorizontalScrollbar so its scrollbar stays reachable at the
   // bottom of the viewport instead of requiring the whole page scrolled down.
   const chartScrollRef = useRef<HTMLDivElement>(null);
+  // Fixed pixel height for the chart card — the viewport's height minus everything above it
+  // (top bar, project tabs, this tab's own toolbar/banners), measured directly via
+  // getBoundingClientRect rather than a CSS flex/percentage cascade: nothing in this app's
+  // outer layout (html/body/#root) is pinned to a hard 100vh, so a pure-CSS flex-1/min-h-0
+  // chain down from the page root has no definite height to resolve against and collapses to
+  // 0 — which is what made the chart (and "Add Task") disappear the first time this was tried.
+  // Re-measured on window resize and whenever the toolbar area above the chart changes size
+  // (e.g. a banner appearing/disappearing, or the toolbar wrapping to a second line).
+  const chartCardRef = useRef<HTMLDivElement>(null);
+  const toolbarAreaRef = useRef<HTMLDivElement>(null);
+  const [chartCardHeight, setChartCardHeight] = useState(560);
+  useEffect(() => {
+    const measure = () => {
+      if (!chartCardRef.current) return;
+      const top = chartCardRef.current.getBoundingClientRect().top;
+      setChartCardHeight(Math.max(300, window.innerHeight - top - 24));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = toolbarAreaRef.current ? new ResizeObserver(measure) : null;
+    if (observer && toolbarAreaRef.current) observer.observe(toolbarAreaRef.current);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, []);
   // Master edit switch for the chart itself — off by default so the Gantt is
   // read-only until "Edit Schedule" is clicked. Inline text editing,
   // drag-to-link, and drag-resize on the chart all key off this.
@@ -806,10 +840,25 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
 
   // Derive the Gantt chart from scheduleRows — the single source of truth,
   // whether it came from an Excel upload, the modal, or the backend.
-  const { tasks: ganttTasks, links: ganttLinks } = useMemo(
+  const { tasks: ganttTasksRaw, links: ganttLinksRaw } = useMemo(
     () => buildGanttData(scheduleRows as NormalizedRow[]),
     [scheduleRows],
   );
+
+  // Client-side CPM (dhtmlx-gantt's built-in critical path is Pro-only —
+  // see criticalPath.ts) — recomputed on every schedule edit since
+  // scheduleRows already drives everything else.
+  const criticalPathResult = useMemo(() => computeCriticalPath(scheduleRows), [scheduleRows]);
+  const [showCriticalPath, setShowCriticalPath] = useState(true);
+  const ganttTasks = useMemo(
+    () => (showCriticalPath ? markCriticalTasks(ganttTasksRaw, criticalPathResult) : ganttTasksRaw),
+    [ganttTasksRaw, criticalPathResult, showCriticalPath],
+  );
+  const ganttLinks = useMemo(
+    () => (showCriticalPath ? markCriticalLinks(ganttLinksRaw, criticalPathResult) : ganttLinksRaw),
+    [ganttLinksRaw, criticalPathResult, showCriticalPath],
+  );
+  const criticalPathDays = useMemo(() => criticalPathLengthDays(criticalPathResult), [criticalPathResult]);
 
   // Summary rows always stay visible (so the hierarchy stays navigable);
   // the status filter only hides non-matching leaf tasks/milestones.
@@ -1551,6 +1600,11 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
           document.body,
         )}
       <div>
+          {/* Wraps everything above the chart card (toolbar + any banners) so its
+              ResizeObserver (see chartCardHeight above) picks up height changes from any of
+              them — a wrapping toolbar row, an error banner appearing, etc. — and re-measures
+              how much viewport height is left for the chart. */}
+          <div ref={toolbarAreaRef}>
           {/* Toolbar — a single flat row of minimal, icon+text controls
               (borderless, hover background) matching the reference design's
               clean, airy toolbar instead of the previous two boxed rows. */}
@@ -1585,11 +1639,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
                 )}
               </button>
 
-              <div className="flex items-center gap-0.5 p-0.5 mr-1 bg-slate-100 rounded-md">
-                <ViewTabButton icon={<LayoutGrid className="w-3 h-3" />} label="Gantt" active={viewTab === "gantt"} onClick={() => setViewTab("gantt")} />
-                <ViewTabButton icon={<Rows3 className="w-3 h-3" />} label="List" active={viewTab === "list"} onClick={() => setViewTab("list")} />
-              </div>
-
               <div className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-medium text-slate-600 rounded-md hover:bg-slate-100">
                 <Filter className="w-3.5 h-3.5 text-slate-400" />
                 <select
@@ -1614,6 +1663,23 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
               </button>
 
               {viewTab === "gantt" && <ZoomSlider level={zoomLevel} onChange={setZoomLevel} />}
+
+              <button
+                type="button"
+                onClick={() => setShowCriticalPath((prev) => !prev)}
+                title={showCriticalPath ? "Hide critical path" : "Show critical path"}
+                className={`flex items-center gap-1.5 ml-1 px-2 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                  showCriticalPath ? "bg-red-50 text-red-600" : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <span
+                  className={`inline-block w-2 h-2 rounded-full ${showCriticalPath ? "bg-red-600" : "bg-slate-300"}`}
+                />
+                Critical Path
+                {showCriticalPath && criticalPathDays !== null && (
+                  <span className="text-red-400 font-normal">· {criticalPathDays}d</span>
+                )}
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-0.5">
@@ -1704,23 +1770,29 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
               </div>
             </div>
           )}
+          </div>
 
           {/* -mx-6 cancels the page's own p-6 gutter (see ProjectDetails.tsx,
               shared by every tab) so the chart genuinely spans the full
               content width instead of sitting inset within it. Scoped to
               just this card, not the whole tab, so the toolbar above stays
               normally aligned with the rest of the page.
-              Only horizontal overflow is handled here — vertical scrolling
-              happens *inside* GanttChartView itself (a fixed/content-aware
-              height there, not this wrapper) so the grid/date-scale header
-              rows stay fixed in place while the rows beneath scroll, instead
-              of scrolling away along with everything else. */}
-          <div className="bg-white border-y border-slate-200 -mx-6">
+              Height is an explicit pixel value (chartCardHeight, measured via
+              getBoundingClientRect — see above) rather than a CSS flex/percentage
+              cascade: the viewport's height minus everything above it (top bar,
+              project tabs, this toolbar), so GanttChartView's own root div has a
+              real, definite height to fill instead of sizing itself to the task
+              count. Only horizontal overflow is handled here; vertical scrolling
+              for schedules taller than that fits happens *inside* GanttChartView
+              itself, so the grid/date-scale header rows stay fixed in place
+              while the rows beneath scroll, instead of scrolling away along
+              with everything else. */}
+          <div ref={chartCardRef} className="bg-white border-y border-slate-200 -mx-6" style={{ height: chartCardHeight }}>
             <div
               ref={chartScrollRef}
-              className={`overflow-x-auto no-scrollbar ${editMode ? "relative z-40" : ""}`}
+              className={`h-full overflow-x-auto no-scrollbar ${editMode ? "relative z-40" : ""}`}
             >
-              <div className="min-w-[600px]">
+              <div className="min-w-[600px] h-full">
                 <GanttChartView
                   tasks={visibleTasks}
                   links={ganttLinks}
@@ -1935,23 +2007,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
 };
 
 // ---- Small presentational helpers -----------------------------------------
-
-const ViewTabButton: React.FC<{ icon: React.ReactNode; label: string; active: boolean; onClick: () => void }> = ({
-  icon,
-  label,
-  active,
-  onClick,
-}) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-      active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-    }`}
-  >
-    {icon}
-    {label}
-  </button>
-);
 
 /** Minimal borderless icon+text toolbar control — hover background instead
  * of a visible border, matching the reference design's understated chrome. */

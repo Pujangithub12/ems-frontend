@@ -32,6 +32,8 @@ import {
 import { useAuth } from "../../../context/AuthProvider";
 import { useProjects } from "../../projects/hooks/useProjects";
 import ProjectPerformanceTab from "../../projects/components/tabs/ProjectPerformanceTab";
+import { useDailyGenerationQuery } from "../../projects/hooks/useMonthlyPerformance";
+import { toNumber } from "../../../lib/currency";
 import { getErrorMessage } from "../../../lib/errors";
 import { adDateForBsDay } from "../../../lib/bsDate";
 import ErrorBanner from "../../../components/ErrorBanner";
@@ -472,7 +474,7 @@ const Cell: React.FC<{
           : value == null
             ? ""
             : String(value);
-    return <span className="block px-1.5 py-1 text-[12.5px] text-slate-700 truncate">{display || "—"}</span>;
+    return <span className="block px-1.5 py-1 text-[12.5px] text-black truncate">{display || "—"}</span>;
   }
 
   if (column.dataType === "boolean") {
@@ -506,7 +508,7 @@ const Cell: React.FC<{
         }}
         title={isInvalidDraft ? "Couldn't understand that date — try formats like 18-Sep-2026, 18/09/2026, or 2026-09-18" : undefined}
         className={`w-full px-1.5 py-1 text-[12.5px] bg-transparent outline-none focus:bg-white rounded ${
-          isInvalidDraft ? "text-red-600" : ""
+          isInvalidDraft ? "text-red-600" : "text-black"
         }`}
       />
     );
@@ -518,7 +520,7 @@ const Cell: React.FC<{
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => onCommit(draft === "" ? null : column.dataType === "number" ? Number(draft) : draft)}
-      className="w-full px-1.5 py-1 text-[12.5px] bg-transparent outline-none focus:bg-white rounded"
+      className="w-full px-1.5 py-1 text-[12.5px] text-black bg-transparent outline-none focus:bg-white rounded"
     />
   );
 };
@@ -731,9 +733,9 @@ const ImportPreviewModal: React.FC<{
                 <thead className="sticky top-0">
                   <tr className="border-b border-slate-200 bg-slate-50">
                     {pending.matchedColumns.map((col) => (
-                      <th key={col.id} className="py-2 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
+                      <th key={col.id} className="py-2 px-3 text-[11px] font-medium text-blue-900 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
                         <div className="flex items-center gap-1.5 normal-case">
-                          <span className="font-semibold text-slate-700">{col.name}</span>
+                          <span className="font-semibold text-blue-900">{col.name}</span>
                           <span className="text-[9px] font-semibold text-slate-400">({col.dataType})</span>
                         </div>
                       </th>
@@ -742,9 +744,9 @@ const ImportPreviewModal: React.FC<{
                 </thead>
                 <tbody>
                   {previewRows.map((row, i) => (
-                    <tr key={i} className="border-b border-slate-100 last:border-0">
+                    <tr key={i} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? "bg-slate-100" : "bg-white"}`}>
                       {pending.matchedColumns.map((col) => (
-                        <td key={col.id} className="px-3 py-1.5 text-[12px] text-slate-600 whitespace-nowrap border-r border-slate-50 last:border-r-0">
+                        <td key={col.id} className="px-3 py-1.5 text-[12px] text-black whitespace-nowrap border-r border-slate-50 last:border-r-0">
                           {row[String(col.id)] == null ? <span className="text-slate-300">—</span> : String(row[String(col.id)])}
                         </td>
                       ))}
@@ -810,18 +812,18 @@ const FileFormatInfoModal: React.FC<{
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                <th className="px-3 py-1.5 text-[11px] font-semibold text-slate-600 border-r border-slate-200 last:border-r-0">Date</th>
-                <th className="px-3 py-1.5 text-[11px] font-semibold text-slate-600 border-r border-slate-200 last:border-r-0">Quantity</th>
-                <th className="px-3 py-1.5 text-[11px] font-semibold text-slate-600">Remarks</th>
+                <th className="px-3 py-1.5 text-[11px] font-semibold text-blue-900 border-r border-slate-200 last:border-r-0">Date</th>
+                <th className="px-3 py-1.5 text-[11px] font-semibold text-blue-900 border-r border-slate-200 last:border-r-0">Quantity</th>
+                <th className="px-3 py-1.5 text-[11px] font-semibold text-blue-900">Remarks</th>
               </tr>
             </thead>
-            <tbody className="text-[11px] text-slate-500">
-              <tr className="border-t border-slate-100">
+            <tbody className="text-[11px] text-black">
+              <tr className="bg-white border-t border-slate-100">
                 <td className="px-3 py-1.5 border-r border-slate-100 last:border-r-0">2026-01-15</td>
                 <td className="px-3 py-1.5 border-r border-slate-100 last:border-r-0">120</td>
                 <td className="px-3 py-1.5">On track</td>
               </tr>
-              <tr className="border-t border-slate-100">
+              <tr className="bg-slate-100 border-t border-slate-100">
                 <td className="px-3 py-1.5 border-r border-slate-100 last:border-r-0">2026-01-16</td>
                 <td className="px-3 py-1.5 border-r border-slate-100 last:border-r-0">95</td>
                 <td className="px-3 py-1.5">Delayed</td>
@@ -861,7 +863,7 @@ const FileFormatInfoModal: React.FC<{
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
             {dateFormat === "BS"
-              ? 'Applies to any "date" column — e.g. "2083/04/26" is read as Bikram Sambat and converted to the equivalent English date.'
+              ? 'Applies to any "date" column — e.g. "2083/04/26" is read as Bikram Sambat and converted to the equivalent English date. The original BS text is kept as-is in a new "<Column> (BS)" column for reference.'
               : 'Applies to any "date" column — switch to Nepali (BS) if your Date column looks like "2083/04/26".'}
           </p>
         </div>
@@ -889,6 +891,7 @@ const FileFormatInfoModal: React.FC<{
 
 const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantReportColumn[] }> = ({ tableId, existingColumns }) => {
   const importMutation = useImportPlantReportSheet();
+  const createColumnMutation = useCreatePlantReportColumn();
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [formatInfoOpen, setFormatInfoOpen] = useState(false);
   const [pending, setPending] = useState<PendingImport | null>(null);
@@ -920,10 +923,36 @@ const UploadSheetButton: React.FC<{ tableId: number; existingColumns: PlantRepor
         }
       }
 
+      // Converting a BS date to AD before storage is right (see coerceToColumnType above) —
+      // but the raw BS text shouldn't just be discarded once converted. For every "date"
+      // column being imported as BS, mirror it into a companion "<Column> (BS)" text column
+      // (reusing one if it already exists) holding the original as-uploaded BS string, so the
+      // conversion has an audit trail and BS dates can still be shown to users directly instead
+      // of only ever re-derived from the AD value.
+      const bsColumnIdByDateColumnId = new Map<number, number>();
+      if (dateFormat === "BS") {
+        for (const column of matchedColumns) {
+          if (column.dataType !== "date") continue;
+          const bsName = `${column.name} (BS)`;
+          const existingBsColumn = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(bsName));
+          // eslint-disable-next-line no-await-in-loop -- only runs for the few date columns in a sheet, sequential keeps it simple
+          const bsColumn = existingBsColumn ?? (await createColumnMutation.mutateAsync({ tableId, payload: { name: bsName, dataType: "text" } }));
+          bsColumnIdByDateColumnId.set(column.id, bsColumn.id);
+          if (!matchedColumns.some((c) => c.id === bsColumn.id)) {
+            matchedColumns.push({ id: bsColumn.id, name: bsColumn.name, dataType: "text" });
+          }
+        }
+      }
+
       const normalizedRows = rows.map((row) => {
         const out: Record<string, PlantReportCellValue> = {};
         for (const [header, column] of headerToColumn) {
           out[String(column.id)] = coerceToColumnType(row[header], column.dataType, dateFormat);
+          const bsColumnId = bsColumnIdByDateColumnId.get(column.id);
+          if (bsColumnId != null) {
+            const raw = row[header];
+            out[String(bsColumnId)] = raw == null || raw === "" ? null : String(raw);
+          }
         }
         return out;
       });
@@ -1080,12 +1109,12 @@ const AggregatedTable: React.FC<{ granularity: Granularity; rows: AggregatedRow[
     <table className="w-full text-left border-collapse">
       <thead>
         <tr className="border-b border-slate-200 bg-slate-50/60">
-          <th className="py-2.5 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">
+          <th className="py-2.5 px-3 text-[11px] font-medium text-blue-900 uppercase tracking-wide whitespace-nowrap">
             {granularity === "monthly" ? "Month" : "Week"}
           </th>
-          <th className="py-2.5 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide text-right whitespace-nowrap">Entries</th>
+          <th className="py-2.5 px-3 text-[11px] font-medium text-blue-900 uppercase tracking-wide text-right whitespace-nowrap">Entries</th>
           {numberColumns.map((c) => (
-            <th key={c.id} className="py-2.5 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide text-right whitespace-nowrap">
+            <th key={c.id} className="py-2.5 px-3 text-[11px] font-medium text-blue-900 uppercase tracking-wide text-right whitespace-nowrap">
               {c.name} (sum)
             </th>
           ))}
@@ -1099,12 +1128,12 @@ const AggregatedTable: React.FC<{ granularity: Granularity; rows: AggregatedRow[
             </td>
           </tr>
         ) : (
-          rows.map((r) => (
-            <tr key={r.key} className="border-b border-slate-100 last:border-0">
-              <td className="px-3 py-2 text-[12.5px] font-medium text-slate-800 whitespace-nowrap">{r.label}</td>
-              <td className="px-3 py-2 text-[12.5px] text-right text-slate-500">{r.count}</td>
+          rows.map((r, i) => (
+            <tr key={r.key} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? "bg-slate-100" : "bg-white"}`}>
+              <td className="px-3 py-2 text-[12.5px] font-medium text-black whitespace-nowrap">{r.label}</td>
+              <td className="px-3 py-2 text-[12.5px] text-right text-black">{r.count}</td>
               {numberColumns.map((c) => (
-                <td key={c.id} className="px-3 py-2 text-[12.5px] text-right text-slate-700">
+                <td key={c.id} className="px-3 py-2 text-[12.5px] text-right text-black">
                   {r.sums[c.id] != null ? r.sums[c.id].toLocaleString() : "—"}
                 </td>
               ))}
@@ -1313,7 +1342,7 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
                   )}
                 </th>
                 {columns.map((col) => (
-                  <th key={col.id} className="py-2.5 px-3 text-[11px] font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
+                  <th key={col.id} className="py-2.5 px-3 text-[11px] font-medium text-blue-900 uppercase tracking-wide whitespace-nowrap border-r border-slate-100 last:border-r-0">
                     <div className="flex items-center gap-1.5">
                       <span>{col.name}</span>
                       <span className="text-[9px] font-semibold normal-case text-slate-400">({col.dataType})</span>
@@ -1342,11 +1371,11 @@ const TableSheet: React.FC<{ tableId: number; isAdmin: boolean; tableName: strin
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                rows.map((row, rowIndex) => (
                   <tr
                     key={row.id}
-                    className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/60 ${
-                      selectedRowIds.has(row.id) ? "bg-blue-50/40" : ""
+                    className={`border-b border-slate-100 last:border-0 hover:bg-slate-100 ${
+                      selectedRowIds.has(row.id) ? "bg-blue-50/40" : rowIndex % 2 === 1 ? "bg-slate-100" : "bg-white"
                     }`}
                   >
                     <td className="px-2 py-1 border-r border-slate-50">
@@ -1509,32 +1538,112 @@ const ColumnMultiSelect: React.FC<{
   );
 };
 
-const ChartsTab: React.FC<{ tables: PlantReportTable[] }> = ({ tables }) => {
-  const [selectedTableId, setSelectedTableId] = useState<number | "">(tables[0]?.id ?? "");
+/** Fixed pseudo-columns standing in for Energy Performance's Daily Generation data, which
+ * (unlike everything else in this tab) doesn't come from a user-defined PlantReportTable —
+ * negative ids so they can never collide with a real PlantReportColumn's autoincrement id,
+ * letting the rest of this component's selection/rendering logic treat them identically. */
+const ENERGY_PERFORMANCE_SOURCE = "energyPerformance" as const;
+const ENERGY_PERFORMANCE_COLUMNS: { id: number; name: string; dataType: "number"; target: null }[] = [
+  { id: -1, name: "Check Meter Initial Reading", dataType: "number", target: null },
+  { id: -2, name: "Check Meter Final Reading", dataType: "number", target: null },
+  { id: -3, name: "Check Meter Difference", dataType: "number", target: null },
+  { id: -4, name: "Main Meter Initial Reading", dataType: "number", target: null },
+  { id: -5, name: "Main Meter Final Reading", dataType: "number", target: null },
+  { id: -6, name: "Main Meter Difference", dataType: "number", target: null },
+  { id: -7, name: "Generation (Actual)", dataType: "number", target: null },
+];
+// Wide enough to cover essentially any real project's data without needing a year/date picker
+// in this tab (which, unlike the Energy Performance tab itself, charts everything at once).
+const ENERGY_PERFORMANCE_RANGE = { startDate: "2015-01-01", endDate: "2035-01-01" };
+
+const ChartsTab: React.FC<{ tables: PlantReportTable[]; projectId: number | "" }> = ({ tables, projectId }) => {
+  const [selectedTableId, setSelectedTableId] = useState<number | typeof ENERGY_PERFORMANCE_SOURCE | "">(
+    tables[0]?.id ?? ENERGY_PERFORMANCE_SOURCE,
+  );
   const [chartType, setChartType] = useState<"line" | "bar">("line");
   const [xColumnId, setXColumnId] = useState<number | "">("");
   const [yColumnIds, setYColumnIds] = useState<number[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("daily");
 
-  const { data, isLoading } = usePlantReportTableDetail(selectedTableId || null);
+  const isEnergyPerformance = selectedTableId === ENERGY_PERFORMANCE_SOURCE;
+  const plantTableId = typeof selectedTableId === "number" ? selectedTableId : null;
+  const { data, isLoading: tableLoading } = usePlantReportTableDetail(plantTableId);
+  const { data: dailyGenerationRows = [], isLoading: dailyLoading } = useDailyGenerationQuery(
+    isEnergyPerformance && projectId ? String(projectId) : "",
+    ENERGY_PERFORMANCE_RANGE.startDate,
+    ENERGY_PERFORMANCE_RANGE.endDate,
+  );
+  const isLoading = isEnergyPerformance ? dailyLoading : tableLoading;
   const columns = data?.columns ?? [];
-  const numberColumns = useMemo(() => columns.filter((c) => c.dataType === "number"), [columns]);
+  const numberColumns = useMemo(
+    () => (isEnergyPerformance ? ENERGY_PERFORMANCE_COLUMNS : columns.filter((c) => c.dataType === "number")),
+    [isEnergyPerformance, columns],
+  );
 
   useEffect(() => {
-    setXColumnId(columns[0]?.id ?? "");
-    setYColumnIds(numberColumns.slice(0, 3).map((c) => c.id));
+    if (isEnergyPerformance) {
+      setXColumnId("");
+      setYColumnIds(ENERGY_PERFORMANCE_COLUMNS.slice(0, 3).map((c) => c.id));
+    } else {
+      setXColumnId(columns[0]?.id ?? "");
+      setYColumnIds(numberColumns.slice(0, 3).map((c) => c.id));
+    }
     setGranularity("daily");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTableId]);
 
   const xColumn = columns.find((c) => c.id === xColumnId) ?? null;
-  const canGroupByPeriod = xColumn?.dataType === "date";
+  const canGroupByPeriod = isEnergyPerformance || xColumn?.dataType === "date";
 
   useEffect(() => {
     if (!canGroupByPeriod) setGranularity("daily");
   }, [canGroupByPeriod]);
 
   const chartData = useMemo(() => {
+    if (isEnergyPerformance) {
+      const dailyPoints = dailyGenerationRows.map((row) => ({
+        date: new Date(`${row.date}T00:00:00`),
+        values: {
+          [-1]: toNumber(row.checkMeterInitial),
+          [-2]: toNumber(row.checkMeterFinal),
+          [-3]: toNumber(row.checkMeterDifference),
+          [-4]: toNumber(row.mainMeterInitial),
+          [-5]: toNumber(row.mainMeterFinal),
+          [-6]: toNumber(row.mainMeterDifference),
+          [-7]: toNumber(row.generation),
+        } as Record<number, number | null>,
+      }));
+
+      if (granularity === "daily") {
+        return dailyPoints.map((p) => {
+          const point: Record<string, string | number | null> = { x: formatXValue(p.date.toISOString().slice(0, 10), "date") };
+          for (const col of ENERGY_PERFORMANCE_COLUMNS) point[String(col.id)] = p.values[col.id];
+          return point;
+        });
+      }
+
+      const buckets = new Map<string, { key: string; label: string; sums: Record<number, number> }>();
+      for (const p of dailyPoints) {
+        const { key, label } = getPeriodKey(p.date, granularity);
+        let bucket = buckets.get(key);
+        if (!bucket) {
+          bucket = { key, label, sums: {} };
+          buckets.set(key, bucket);
+        }
+        for (const col of ENERGY_PERFORMANCE_COLUMNS) {
+          const v = p.values[col.id];
+          if (v != null) bucket.sums[col.id] = (bucket.sums[col.id] ?? 0) + v;
+        }
+      }
+      return [...buckets.values()]
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .map((b) => {
+          const point: Record<string, string | number | null> = { x: b.label };
+          for (const col of ENERGY_PERFORMANCE_COLUMNS) point[String(col.id)] = b.sums[col.id] ?? null;
+          return point;
+        });
+    }
+
     if (!data || !xColumn) return [];
 
     if (granularity === "daily" || xColumn.dataType !== "date") {
@@ -1574,41 +1683,40 @@ const ChartsTab: React.FC<{ tables: PlantReportTable[] }> = ({ tables }) => {
         for (const yCol of numberColumns) point[String(yCol.id)] = b.sums[yCol.id] ?? null;
         return point;
       });
-  }, [data, xColumn, numberColumns, granularity]);
+  }, [isEnergyPerformance, dailyGenerationRows, data, xColumn, numberColumns, granularity]);
 
   const toggleYColumn = (id: number) => {
     setYColumnIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  if (tables.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
-          <LineChartIcon className="w-5 h-5 text-slate-400" />
-        </div>
-        <p className="text-[13px] text-slate-400">No tables yet — add one to chart its data here.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="px-6 py-5">
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <select value={selectedTableId} onChange={(e) => setSelectedTableId(Number(e.target.value))} className={inputCls} style={{ width: 200 }}>
+        <select
+          value={selectedTableId}
+          onChange={(e) =>
+            setSelectedTableId(e.target.value === ENERGY_PERFORMANCE_SOURCE ? ENERGY_PERFORMANCE_SOURCE : Number(e.target.value))
+          }
+          className={inputCls}
+          style={{ width: 220 }}
+        >
+          <option value={ENERGY_PERFORMANCE_SOURCE}>⚡ Energy Performance</option>
           {tables.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
             </option>
           ))}
         </select>
-        <select value={xColumnId} onChange={(e) => setXColumnId(Number(e.target.value))} className={inputCls} style={{ width: 160 }}>
-          <option value="">X axis: (none)</option>
-          {columns.map((c) => (
-            <option key={c.id} value={c.id}>
-              X: {c.name}
-            </option>
-          ))}
-        </select>
+        {!isEnergyPerformance && (
+          <select value={xColumnId} onChange={(e) => setXColumnId(Number(e.target.value))} className={inputCls} style={{ width: 160 }}>
+            <option value="">X axis: (none)</option>
+            {columns.map((c) => (
+              <option key={c.id} value={c.id}>
+                X: {c.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-0.5 p-0.5 border rounded-lg border-slate-200 bg-slate-50">
           {(["daily", "weekly", "monthly"] as Granularity[]).map((g) => (
             <button
@@ -1874,11 +1982,11 @@ const PlantReport: React.FC = () => {
       </div>
 
       {activeTabId === "charts" ? (
-        <ChartsTab tables={tables} />
+        <ChartsTab tables={tables} projectId={projectId} />
       ) : activeTabId === "energyPerformance" ? (
         currentProject && (
           <div className="p-6">
-            <ProjectPerformanceTab project={currentProject} hideChart />
+            <ProjectPerformanceTab project={currentProject} hideChart hideMonthlySummary />
           </div>
         )
       ) : activeTable ? (

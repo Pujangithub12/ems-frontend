@@ -1,5 +1,14 @@
 import { ScheduleRow } from "../schema/schedule.types";
-import { ScheduleLinkType, parsePredecessorList } from "./predecessorTokens";
+import { parsePredecessorList } from "./predecessorTokens";
+import {
+  RowDates,
+  ForwardEdge,
+  addDays,
+  formatISODate,
+  buildForwardEdges,
+  buildDatesMap,
+  impliedStart,
+} from "./scheduleDates";
 
 /**
  * MS-Project-style auto-scheduling: when a task's dates change (dragged on
@@ -18,75 +27,6 @@ import { ScheduleLinkType, parsePredecessorList } from "./predecessorTokens";
  * no constraint) and as recompute targets.
  */
 
-interface RowDates {
-  start: Date;
-  end: Date;
-  duration: number;
-}
-
-/** "YYYY-MM-DD" -> Date. Mirrors buildGanttData's coerceDate string fallback
- * (`new Date(String(value))`) — every ScheduleRow.startDate in this app is
- * always written in that exact format (see formatDateInput), so the fuller
- * Excel-serial-number handling coerceDate also does isn't needed here. */
-function parseISODate(value: string): Date | null {
-  if (!value.trim()) return null;
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function formatISODate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function getRowDates(row: ScheduleRow): RowDates | null {
-  const start = parseISODate(row.startDate);
-  if (!start) return null;
-  const durationNum = Number(row.duration);
-  const duration = row.duration.trim() === "" || isNaN(durationNum) ? 1 : durationNum;
-  // A milestone (duration 0) starts and finishes at the same instant for
-  // dependency purposes — buildGanttData separately pads its *displayed* bar
-  // to 1 day for visibility, which is a rendering concern only.
-  const end = duration <= 0 ? start : addDays(start, duration);
-  return { start, end, duration };
-}
-
-/** Where a task's start must land to satisfy one predecessor link, given the
- * predecessor's current dates and the successor's own (fixed) duration. */
-function impliedStart(pred: RowDates, type: ScheduleLinkType, lag: number, successorDuration: number): Date {
-  switch (type) {
-    case "FS":
-      return addDays(pred.end, lag);
-    case "SS":
-      return addDays(pred.start, lag);
-    case "FF":
-      return addDays(pred.end, lag - successorDuration);
-    case "SF":
-      return addDays(pred.start, lag - successorDuration);
-  }
-}
-
-/** predecessorId -> every {successorId, type, lag} edge depending on it. */
-function buildForwardEdges(rows: ScheduleRow[]) {
-  const forward = new Map<string, { successorId: string; type: ScheduleLinkType; lag: number }[]>();
-  rows.forEach((row) => {
-    parsePredecessorList(row.predecessorId).forEach((token) => {
-      const list = forward.get(token.id) ?? [];
-      list.push({ successorId: row.id, type: token.type, lag: token.lag });
-      forward.set(token.id, list);
-    });
-  });
-  return forward;
-}
-
 /**
  * Recomputes every id in `queue` from its predecessors' *current* dates (as
  * tracked in `dates`), and cascades to that task's own successors whenever
@@ -98,7 +38,7 @@ function buildForwardEdges(rows: ScheduleRow[]) {
 function cascade(
   rows: ScheduleRow[],
   dates: Map<string, RowDates>,
-  forward: Map<string, { successorId: string; type: ScheduleLinkType; lag: number }[]>,
+  forward: Map<string, ForwardEdge[]>,
   initialQueue: string[],
 ): Map<string, Date> {
   const rowsById = new Map(rows.map((r) => [r.id, r]));
@@ -149,15 +89,6 @@ function applyChanges(rows: ScheduleRow[], changed: Map<string, Date>): Schedule
   return rows.map((row) =>
     changed.has(row.id) ? { ...row, startDate: formatISODate(changed.get(row.id)!) } : row,
   );
-}
-
-function buildDatesMap(rows: ScheduleRow[]): Map<string, RowDates> {
-  const dates = new Map<string, RowDates>();
-  rows.forEach((row) => {
-    const d = getRowDates(row);
-    if (d) dates.set(row.id, d);
-  });
-  return dates;
 }
 
 /**
