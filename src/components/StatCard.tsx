@@ -1,13 +1,11 @@
 import React from "react";
 import type { LucideIcon } from "lucide-react";
 
-/** Shared small metric tile — a colored left accent border, label, big bold
- * value, and a muted sub-line underneath, with an optional icon chip in the
- * top-right corner. Originally the Site Activities page's card; reused on
- * the Dashboard's KPI strip so both share one design language instead of
- * two different card styles. Renders as a `<button>` when `onClick` is
+/** Shared small metric tile — label, big bold value, muted sub-line, and a
+ * plain colored icon in the corner. Used on the Dashboard's KPI strip and
+ * Site Activities' weekly summary. Renders as a `<button>` when `onClick` is
  * given (KPI cards that navigate somewhere), otherwise a plain `<div>`
- * (read-only stats, e.g. Site Activities' weekly summary). */
+ * (read-only stats). */
 const StatCard: React.FC<{
   accent: string;
   label: string;
@@ -17,29 +15,25 @@ const StatCard: React.FC<{
   iconBg?: string;
   iconText?: string;
   onClick?: () => void;
-}> = ({ accent, label, value, sub, icon: Icon, iconBg = "bg-slate-100", iconText = "text-slate-600", onClick }) => {
+}> = ({ label, value, sub, icon: Icon, iconText = "text-slate-400", onClick }) => {
   const content = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11.5px] text-slate-500">{label}</p>
-        {Icon && (
-          <div className={`flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 ring-1 ring-black/5 ${iconBg}`}>
-            <Icon className={`w-3.5 h-3.5 ${iconText}`} />
-          </div>
-        )}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12px] font-medium text-slate-500 truncate">{label}</p>
+        {Icon && <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${iconText}`} strokeWidth={2} />}
       </div>
-      <p className="mt-1 text-[22px] font-bold leading-none tracking-tight text-slate-900">{value}</p>
-      {sub && <p className="mt-1.5 text-[11.5px] text-slate-400">{sub}</p>}
+      <p className="mt-1.5 text-[21px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums">
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-[11px] text-slate-400">{sub}</p>}
     </>
   );
-  const style: React.CSSProperties = { borderLeft: `4px solid ${accent}` };
 
   if (onClick) {
     return (
       <button
         onClick={onClick}
-        className="p-4 text-left transition-shadow bg-white border rounded-xl border-slate-200 hover:shadow-md"
-        style={style}
+        className="p-3.5 text-left transition-colors bg-white border rounded-xl border-slate-200 hover:border-slate-300 hover:shadow-sm"
       >
         {content}
       </button>
@@ -47,7 +41,7 @@ const StatCard: React.FC<{
   }
 
   return (
-    <div className="p-4 bg-white border rounded-xl border-slate-200" style={style}>
+    <div className="p-3.5 bg-white border rounded-xl border-slate-200">
       {content}
     </div>
   );
