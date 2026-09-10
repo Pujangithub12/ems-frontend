@@ -646,7 +646,10 @@ export type MonthlyPerformance = {
 
 /** One day's row from the Energy Performance daily entry grid. */
 export type DailyGeneration = {
-  date: string; // AD, YYYY-MM-DD
+  date: string; // AD, YYYY-MM-DD — always the authoritative, converted value; never a raw BS string.
+  /** Free-text Bikram Sambat date note (e.g. "2083 Bhadra 13") — audit trail for when this
+   * entry was entered/uploaded as a BS date. */
+  dateBs?: string | null;
   generation?: number | string | null;
   checkMeterInitial?: number | string | null;
   checkMeterFinal?: number | string | null;

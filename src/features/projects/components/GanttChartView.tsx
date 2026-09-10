@@ -97,8 +97,6 @@ const GRID_WIDTH_RATIO = 0.35;
 // set to at init time.
 const ROW_HEIGHT = 38;
 const SCALE_HEIGHT = 50;
-const MAX_CHART_HEIGHT = 560;
-const MIN_CHART_HEIGHT = 160;
 
 const LINK_TYPE_MAP: Record<GanttLink["type"], string> = {
   e2s: "0", // finish_to_start
@@ -301,6 +299,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
 
   const finestScaleUnitRef = useRef<string>("day");
   // Scrolls the chart to today (with a few days of lead-in) exactly once per
@@ -405,12 +404,23 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     if (!containerRef.current) return;
     const el = containerRef.current;
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width) setContainerWidth(width);
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width) setContainerWidth(rect.width);
+      if (rect.height) setContainerHeight(rect.height);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // Container now fills its parent's available height (set via CSS, not a computed pixel
+  // number — see the containerRef div's style below) rather than sizing itself to fit the
+  // task count, so dhtmlx needs an explicit nudge to re-measure and relayout whenever that
+  // available height (or width) actually changes.
+  useEffect(() => {
+    if (!readyRef.current) return;
+    gantt.setSizes();
+  }, [containerWidth, containerHeight]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -435,9 +445,15 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
 
     gantt.templates.task_class = (_start: Date, _end: Date, task: unknown) => {
       const t = task as GanttTask;
-      
+
       const draggingClass = draggingTaskId === String(t.id) ? " gantt-dragging-bar" : "";
-      return `gantt-status-${t.status}${draggingClass}`;
+      const criticalClass = t.isCritical ? " gantt-critical-task" : "";
+      return `gantt-status-${t.status}${draggingClass}${criticalClass}`;
+    };
+
+    gantt.templates.link_class = (link: unknown) => {
+      const l = link as GanttLink;
+      return l.isCritical ? "gantt-critical-link" : "";
     };
 
 
@@ -859,6 +875,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       wbs: t.wbs,
       durationLabel: t.durationLabel,
       startLabel: t.startLabel,
+      isCritical: t.isCritical,
     }));
     const linkData = links.map((l) => ({
       id: l.id,
@@ -866,6 +883,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       target: l.target,
       type: LINK_TYPE_MAP[l.type],
       lag: l.lag ?? 0,
+      isCritical: l.isCritical,
     }));
 
     gantt.clearAll();
@@ -889,14 +907,6 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       renderTodayLine(containerRef.current, showChart);
     }
   }, [tasks, links, showChart]);
-
-  // Shrinks to fit small schedules, caps at MAX_CHART_HEIGHT for large ones
-  // (dhtmlx scrolls its own rows internally past that point, with the
-  // header rows staying fixed — see the "no autosize" note above).
-  const chartHeight = Math.min(
-    MAX_CHART_HEIGHT,
-    Math.max(MIN_CHART_HEIGHT, tasks.length * ROW_HEIGHT + SCALE_HEIGHT + 24),
-  );
 
   return (
     <>
@@ -938,6 +948,33 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_milestone.gantt-status-on_hold .gantt_task_content { background: #f59e0b !important; border-color: #d97706 !important; }
         .gantt_milestone.gantt-status-completed .gantt_task_content { background: #10b981 !important; border-color: #059669 !important; }
 
+        /* Critical path overlay — the whole bar turns red (replacing the
+           status tint while highlighted, same two-tone progress-fill
+           treatment as the status colors above), plus red link arrows, so
+           the critical chain reads unmistakably at a glance. Higher
+           specificity + later in the stylesheet than the status rules
+           above, so this wins over their background/border. */
+        .gantt_task_line.gantt_task_line.gantt-critical-task {
+          background: rgba(220, 38, 38, 0.65) !important;
+          border: 2px solid #dc2626 !important;
+        }
+        .gantt_task_line.gantt_task_line.gantt-critical-task .gantt_task_progress {
+          background: #dc2626 !important;
+          border-radius: 4px 0 0 4px !important;
+        }
+        .gantt_milestone.gantt-critical-task .gantt_task_content {
+          background: #dc2626 !important;
+          border: 2px solid #b91c1c !important;
+        }
+        .gantt_task_link.gantt-critical-link .gantt_line_wrapper div {
+          background: #dc2626 !important;
+        }
+        .gantt_task_link.gantt-critical-link .gantt_link_arrow_right,
+        .gantt_task_link.gantt-critical-link .gantt_link_arrow_left,
+        .gantt_task_link.gantt-critical-link .gantt_link_arrow_top,
+        .gantt_task_link.gantt-critical-link .gantt_link_arrow_bottom {
+          border-color: transparent #dc2626;
+        }
 
         .gantt_task_cell.gantt-weekend-cell {
           background: #f8fafc;
@@ -1296,7 +1333,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       <div
         ref={containerRef}
         className={editable ? "gantt-editable" : undefined}
-        style={{ width: "100%", height: chartHeight }}
+        style={{ width: "100%", height: "100%" }}
       />
     </>
   );

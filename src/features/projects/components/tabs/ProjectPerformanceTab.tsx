@@ -51,6 +51,11 @@ interface ProjectPerformanceTabProps {
   /** Hides the "Generation Trend" line chart — used when this tab is embedded somewhere that
    * only wants the tabular data (e.g. Plant Report's Energy Performance tab). */
   hideChart?: boolean;
+  /** Hides the monthly financial-fields summary table (Month/Contract Energy/Income
+   * Received/Monthly Expenditure/Spare Part Purchase), leaving just the Daily Generation
+   * Entry table — used by Plant Report's Energy Performance tab, which only wants the
+   * meter-reading table. */
+  hideMonthlySummary?: boolean;
 }
 
 const emptyForm = {
@@ -78,7 +83,7 @@ const diff = (initial: string, final: string): number | null => {
 // this is 1-based purely for display / financial-table row keys.
 const BS_MONTH_INDEXES = Array.from({ length: 12 }, (_, i) => i);
 
-const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, hideChart }) => {
+const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, hideChart, hideMonthlySummary }) => {
   const projectId = String(project.id);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
@@ -405,13 +410,38 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
   }, [chartMode, dailyQuery.data, bucketByMonth, rowsByMonth, month, year, adMonth, adYear, dateFormat, dim]);
 
   // Bulk import via .xlsx/.csv — parsed entirely client-side, matches columns
-  // from a real generation log sheet (Day, Check/Main Meter Initial/Final).
+  // from a real generation log sheet (Date, Check/Main Meter Initial/Final).
   // "Upload Sheet" opens a modal explaining the expected format before the
   // native file picker runs, since the column layout is specific.
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // Independent of the page's own BS/AD toggle (dateFormat) — the file being uploaded may use
+  // either calendar regardless of which one the page happens to be displaying right now, so
+  // this is asked explicitly at upload time (defaults to whatever the page is currently
+  // showing, since that's the common case). Mirrors Plant Report's Upload Sheet AD/BS chooser.
+  const [uploadDateFormat, setUploadDateFormat] = useState<"bs" | "ad">(dateFormat);
+
+  type PendingDailyRow = {
+    day: number;
+    dateLabel: string;
+    date: string;
+    /** Free-text BS note (e.g. "2083 Bhadra 13"), set only when the upload's chosen calendar
+     * was Nepali (BS) — audit trail for the raw value this AD date was converted from. */
+    dateBs?: string;
+    checkMeterInitial: number | null;
+    checkMeterFinal: number | null;
+    mainMeterInitial: number | null;
+    mainMeterFinal: number | null;
+    included: boolean;
+    skipReason?: string;
+  };
+  // Set once a file is parsed — shown as a preview table (what will actually be saved) before
+  // any data is written, rather than importing blind. Cleared on cancel or after confirming.
+  const [pendingImport, setPendingImport] = useState<{ rows: PendingDailyRow[]; unrecognizedHeaders: string[]; fileName: string } | null>(
+    null,
+  );
 
   const findColumn = (header: string[], needle: string) =>
     header.findIndex((h) => (h || "").toString().toLowerCase().includes(needle));
@@ -421,57 +451,141 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
     e.target.value = "";
     if (!file) return;
     setUploadModalOpen(false);
-    setImporting(true);
     setImportStatus(null);
     try {
       const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
+      // cellDates: true — a "Date" column is normally a full date (e.g. "1-Aug-26"), and
+      // without this XLSX would hand that cell back as a raw Excel date serial (e.g. 46235),
+      // which the day-of-month parsing below would misread. With it, such a cell comes through
+      // as a real JS Date instead, which is handled directly. The column may also just contain
+      // a plain 1-31 day-of-month number — both forms are handled below.
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
 
-      const headerRowIdx = rows2d.findIndex((r) => r.some((c) => String(c).trim().toLowerCase() === "day"));
+      const headerRowIdx = rows2d.findIndex((r) => r.some((c) => String(c).trim().toLowerCase() === "date"));
       if (headerRowIdx === -1) {
-        setImportStatus("Couldn't find a header row with a \"Day\" column.");
+        setImportStatus("Couldn't find a header row with a \"Date\" column.");
         return;
       }
       const header = rows2d[headerRowIdx].map((c) => String(c));
-      const dayCol = findColumn(header, "day");
+      const dayCol = findColumn(header, "date");
       const checkInitCol = findColumn(header, "check meter initial");
       const checkFinalCol = findColumn(header, "check meter final");
       const mainInitCol = findColumn(header, "main meter initial");
       const mainFinalCol = findColumn(header, "main meter final");
+      const recognizedCols = new Set([dayCol, checkInitCol, checkFinalCol, mainInitCol, mainFinalCol]);
+      const unrecognizedHeaders = header.filter((h, idx) => h.trim() && !recognizedCols.has(idx));
 
-      let imported = 0;
-      let skipped = 0;
+      // The chosen upload-time calendar (independent of the page's own BS/AD toggle) decides
+      // both how many days are valid for this month and which AD date each Day number maps to.
+      const uploadDim = uploadDateFormat === "bs" ? daysInBsMonth(year, month) : daysInAdMonth(adYear, adMonth);
+      const uploadPeriodDateForDay = (day: number) =>
+        uploadDateFormat === "bs" ? adDateForBsDay(year, month, day) : adDateForAdDay(adYear, adMonth, day);
+      const uploadPeriodDayLabel = (day: number) =>
+        uploadDateFormat === "bs"
+          ? `${bsMonthLabel(year, month)} ${day}`
+          : `${new Date(adYear, adMonth, 1).toLocaleDateString("en-US", { month: "long" })} ${day}`;
+
+      const parsedRows: PendingDailyRow[] = [];
       for (let i = headerRowIdx + 1; i < rows2d.length; i++) {
         const r = rows2d[i];
         const dayRaw = r[dayCol];
-        const day = typeof dayRaw === "number" ? dayRaw : parseInt(String(dayRaw), 10);
-        if (!Number.isInteger(day) || day < 1 || day > dim) break; // stops at TOTAL row / end of data
+        // A genuinely blank Date cell marks the end of the daily rows (e.g. a trailing TOTAL
+        // row or a blank separator row) — anything else that fails to parse (a stray typo, an
+        // out-of-range day) is just flagged as skipped so it doesn't silently drop every row
+        // after it.
+        if (dayRaw === "" || dayRaw == null) break;
+
+        // The "Date" cell is normally a full date (e.g. "1-Aug-26") — handle that directly as
+        // an AD calendar date. It may also just be a plain day-of-month number (1-31), handled
+        // via the selected-month math below.
+        let day: number;
+        let resolvedDate: string;
+        let resolvedLabel: string;
+        // Set only when the file's Date was a plain day-of-month number interpreted against the
+        // chosen BS month/year — a full date cell (the `instanceof Date` branch) is unambiguously
+        // AD, so there's no BS original to record for it.
+        let resolvedDateBs: string | undefined;
+        if (dayRaw instanceof Date) {
+          day = dayRaw.getDate();
+          resolvedDate = `${dayRaw.getFullYear()}-${String(dayRaw.getMonth() + 1).padStart(2, "0")}-${String(dayRaw.getDate()).padStart(2, "0")}`;
+          resolvedLabel = dayRaw.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        } else {
+          day = typeof dayRaw === "number" ? dayRaw : parseInt(String(dayRaw), 10);
+          if (!Number.isInteger(day) || day < 1 || day > uploadDim) {
+            parsedRows.push({
+              day: Number.isFinite(day) ? day : 0,
+              dateLabel: String(dayRaw),
+              date: "",
+              checkMeterInitial: null,
+              checkMeterFinal: null,
+              mainMeterInitial: null,
+              mainMeterFinal: null,
+              included: false,
+              skipReason: `Not a valid day (1-${uploadDim}) for this month`,
+            });
+            continue;
+          }
+          resolvedDate = uploadPeriodDateForDay(day);
+          resolvedLabel = uploadPeriodDayLabel(day);
+          if (uploadDateFormat === "bs") resolvedDateBs = `${year} ${bsMonthLabel(year, month)} ${day}`;
+        }
 
         const checkMeterInitial = checkInitCol >= 0 && r[checkInitCol] !== "" ? Number(r[checkInitCol]) : null;
         const checkMeterFinal = checkFinalCol >= 0 && r[checkFinalCol] !== "" ? Number(r[checkFinalCol]) : null;
         const mainMeterInitial = mainInitCol >= 0 && r[mainInitCol] !== "" ? Number(r[mainInitCol]) : null;
         const mainMeterFinal = mainFinalCol >= 0 && r[mainFinalCol] !== "" ? Number(r[mainFinalCol]) : null;
+        const hasAnyValue = checkMeterInitial !== null || checkMeterFinal !== null || mainMeterInitial !== null || mainMeterFinal !== null;
 
-        if (checkMeterInitial === null && checkMeterFinal === null && mainMeterInitial === null && mainMeterFinal === null) {
-          skipped += 1;
-          continue;
-        }
-
-        const input: UpsertDailyGenerationInput = {
-          date: periodDateForDay(day),
+        parsedRows.push({
+          day,
+          dateLabel: resolvedLabel,
+          date: resolvedDate,
+          dateBs: resolvedDateBs,
           checkMeterInitial,
           checkMeterFinal,
           mainMeterInitial,
           mainMeterFinal,
+          included: hasAnyValue,
+          skipReason: hasAnyValue ? undefined : "No meter readings on this row",
+        });
+      }
+
+      setPendingImport({ rows: parsedRows, unrecognizedHeaders, fileName: file.name });
+    } catch (err) {
+      setImportStatus(getErrorMessage(err, "Failed to read the file."));
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!pendingImport) return;
+    setImporting(true);
+    setImportStatus(null);
+    try {
+      let imported = 0;
+      for (const row of pendingImport.rows) {
+        if (!row.included) continue;
+        const input: UpsertDailyGenerationInput = {
+          date: row.date,
+          dateBs: row.dateBs,
+          checkMeterInitial: row.checkMeterInitial,
+          checkMeterFinal: row.checkMeterFinal,
+          mainMeterInitial: row.mainMeterInitial,
+          mainMeterFinal: row.mainMeterFinal,
         };
         // eslint-disable-next-line no-await-in-loop -- sequential upserts keep per-row error attribution simple
         await upsertDailyMutation.mutateAsync({ projectId, input });
         imported += 1;
       }
-
-      setImportStatus(`${imported} day${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.`);
+      const skipped = pendingImport.rows.length - imported;
+      const unrecognizedNote = pendingImport.unrecognizedHeaders.length
+        ? ` Columns not recognized (ignored): ${pendingImport.unrecognizedHeaders.join(", ")}.`
+        : "";
+      setImportStatus(
+        `${imported} day${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.${unrecognizedNote}`,
+      );
+      setPendingImport(null);
     } catch (err) {
       setImportStatus(getErrorMessage(err, "Failed to import the file."));
     } finally {
@@ -669,7 +783,10 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                 onChange={handleFileSelected}
               />
               <button
-                onClick={() => setUploadModalOpen(true)}
+                onClick={() => {
+                  setUploadDateFormat(dateFormat);
+                  setUploadModalOpen(true);
+                }}
                 disabled={importing}
                 className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
               >
@@ -747,7 +864,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
             </div>
             <div className="p-4 space-y-3 text-[12px] text-slate-600">
               <p>
-                The file must have a header row with a <span className="font-medium text-slate-800">Day</span>{" "}
+                The file must have a header row with a <span className="font-medium text-slate-800">Date</span>{" "}
                 column plus these four meter-reading columns (any order, extra columns are ignored):
               </p>
               <ul className="pl-4 space-y-1 list-disc marker:text-slate-400">
@@ -757,13 +874,37 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                 <li>Main Meter Final Reading</li>
               </ul>
               <p>
-                Each row's <span className="font-medium text-slate-800">Day</span> (1, 2, 3…) is matched against the
-                currently selected month —{" "}
+                Each row's <span className="font-medium text-slate-800">Date</span> can be a full date (e.g. "1-Aug-26")
+                or just a day-of-month number (1, 2, 3…), matched against the currently selected month —{" "}
                 <span className="font-medium text-slate-800">{periodLabel}</span>{" "}
                 — so make sure that's the right month before uploading. A trailing{" "}
-                <span className="font-medium text-slate-800">TOTAL</span> row (or anything after the daily rows) is
-                automatically ignored. Accepted formats: .xlsx, .xls, .csv.
+                <span className="font-medium text-slate-800">TOTAL</span> row (or a blank row) marks the end of the
+                daily rows; any other row that doesn't match is skipped rather than stopping the
+                import. Accepted formats: .xlsx, .xls, .csv.
               </p>
+              <div>
+                <p className="mb-1.5 font-medium text-slate-800">Which calendar are the Date's day-of-month numbers in?</p>
+                <div className="inline-flex overflow-hidden border rounded-lg border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setUploadDateFormat("ad")}
+                    className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                      uploadDateFormat === "ad" ? "bg-blue-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    English (AD)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadDateFormat("bs")}
+                    className={`px-3 py-1.5 text-[12px] font-medium border-l border-slate-200 transition-colors ${
+                      uploadDateFormat === "bs" ? "bg-blue-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    Nepali (BS)
+                  </button>
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setUploadModalOpen(false)}
@@ -776,7 +917,112 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                   className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
                 >
                   <Upload size={14} />
-                  Choose File & Upload
+                  Choose File
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview modal — shown after a file is parsed, before anything is actually saved, so
+          the exact rows/dates/values it will write are visible up front. */}
+      {pendingImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="flex flex-col w-full max-w-2xl overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200 max-h-[85vh]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-[14px] font-semibold text-slate-900">Preview Import</h3>
+                <p className="text-[11.5px] text-slate-500">{pendingImport.fileName}</p>
+              </div>
+              <button
+                onClick={() => setPendingImport(null)}
+                className="p-1 rounded hover:bg-slate-100 text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {pendingImport.unrecognizedHeaders.length > 0 && (
+              <div className="mx-4 mt-3 px-3 py-2 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded">
+                Columns not recognized (ignored): {pendingImport.unrecognizedHeaders.join(", ")}
+              </div>
+            )}
+
+            <div className="flex-1 p-4 overflow-auto">
+              {pendingImport.rows.length === 0 ? (
+                <p className="text-[12px] text-center text-slate-400 py-6">No daily rows found in this file.</p>
+              ) : (
+                <table className="w-full text-[12px]">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-slate-200 text-blue-900 text-[11px] uppercase tracking-wide">
+                      <th className="px-3 py-2 font-medium text-left">Date</th>
+                      <th className="px-3 py-2 font-medium text-left">Check Meter Initial Reading</th>
+                      <th className="px-3 py-2 font-medium text-left">Check Meter Final Reading</th>
+                      <th className="px-3 py-2 font-medium text-left">Check Meter Difference</th>
+                      <th className="px-3 py-2 font-medium text-left">Main Meter Initial Reading</th>
+                      <th className="px-3 py-2 font-medium text-left">Main Meter Final Reading</th>
+                      <th className="px-3 py-2 font-medium text-left">Main Meter Difference</th>
+                      <th className="px-3 py-2 font-medium text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingImport.rows.map((row, i) => {
+                      const checkDiff =
+                        row.checkMeterInitial != null && row.checkMeterFinal != null
+                          ? row.checkMeterFinal - row.checkMeterInitial
+                          : null;
+                      const mainDiff =
+                        row.mainMeterInitial != null && row.mainMeterFinal != null
+                          ? row.mainMeterFinal - row.mainMeterInitial
+                          : null;
+                      return (
+                        <tr
+                          key={i}
+                          className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? "bg-slate-100" : "bg-white"} ${row.included ? "" : "opacity-50"}`}
+                        >
+                          <td className="px-3 py-2 font-medium text-black">{row.dateLabel}</td>
+                          <td className="px-3 py-2 text-black">{row.checkMeterInitial ?? "—"}</td>
+                          <td className="px-3 py-2 text-black">{row.checkMeterFinal ?? "—"}</td>
+                          <td className="px-3 py-2 text-black">{checkDiff ?? "—"}</td>
+                          <td className="px-3 py-2 text-black">{row.mainMeterInitial ?? "—"}</td>
+                          <td className="px-3 py-2 text-black">{row.mainMeterFinal ?? "—"}</td>
+                          <td className="px-3 py-2 text-black">{mainDiff ?? "—"}</td>
+                          <td className="px-3 py-2">
+                            {row.included ? (
+                              <span className="text-emerald-700">Will import</span>
+                            ) : (
+                              <span className="text-slate-400">Skipped — {row.skipReason}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 p-4 border-t border-slate-100">
+              <span className="text-[11.5px] text-slate-500">
+                {pendingImport.rows.filter((r) => r.included).length} of {pendingImport.rows.length} rows will be
+                imported
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPendingImport(null)}
+                  disabled={importing}
+                  className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmImport}
+                  disabled={importing || pendingImport.rows.every((r) => !r.included)}
+                  className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
+                >
+                  {importing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Confirm Import
                 </button>
               </div>
             </div>
@@ -879,10 +1125,10 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <div className="overflow-y-auto max-h-96">
+            <div className="overflow-y-auto max-h-[440px]">
               <table className="w-full text-[12px] whitespace-nowrap">
                 <thead className="sticky top-0 bg-white">
-                  <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
+                  <tr className="border-b border-slate-200 text-blue-900 text-[11px] uppercase tracking-wide">
                     {isAdmin && (
                       <th className="w-8 px-3 py-2">
                         <input
@@ -904,10 +1150,13 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                   </tr>
                 </thead>
                 <tbody>
-                  {dailyEntries.map((d) => {
+                  {dailyEntries.map((d, i) => {
                     const isEditing = editingDate === d.date;
                     return (
-                      <tr key={d.date} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <tr
+                        key={d.date}
+                        className={`border-b border-slate-100 last:border-0 hover:bg-slate-100 ${i % 2 === 1 ? "bg-slate-100" : "bg-white"}`}
+                      >
                         {isAdmin && (
                           <td className="px-3 py-2">
                             <input
@@ -918,7 +1167,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                             />
                           </td>
                         )}
-                        <td className="px-3 py-2 text-slate-600">{dateLabel(d.date)}</td>
+                        <td className="px-3 py-2 text-black">{dateLabel(d.date)}</td>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-2">
@@ -940,7 +1189,7 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                                 className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
                               />
                             </td>
-                            <td className="px-3 py-2 text-slate-500">
+                            <td className="px-3 py-2 text-black">
                               {formatEnergy(diff(editMeter.checkMeterInitial, editMeter.checkMeterFinal))}
                             </td>
                             <td className="px-2 py-2">
@@ -961,18 +1210,18 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
                                 className="px-2 py-1 text-[12px] border rounded outline-none w-24 border-slate-200 focus:border-blue-400"
                               />
                             </td>
-                            <td className="px-3 py-2 text-slate-500">
+                            <td className="px-3 py-2 text-black">
                               {formatEnergy(diff(editMeter.mainMeterInitial, editMeter.mainMeterFinal))}
                             </td>
                           </>
                         ) : (
                           <>
-                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.checkMeterInitial)}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.checkMeterFinal)}</td>
-                            <td className="px-3 py-2 font-medium text-slate-800">{formatEnergy(d.checkMeterDifference)}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterInitial)}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterFinal)}</td>
-                            <td className="px-3 py-2 text-slate-600">{formatEnergy(d.mainMeterDifference)}</td>
+                            <td className="px-3 py-2 text-black">{formatEnergy(d.checkMeterInitial)}</td>
+                            <td className="px-3 py-2 text-black">{formatEnergy(d.checkMeterFinal)}</td>
+                            <td className="px-3 py-2 font-medium text-black">{formatEnergy(d.checkMeterDifference)}</td>
+                            <td className="px-3 py-2 text-black">{formatEnergy(d.mainMeterInitial)}</td>
+                            <td className="px-3 py-2 text-black">{formatEnergy(d.mainMeterFinal)}</td>
+                            <td className="px-3 py-2 text-black">{formatEnergy(d.mainMeterDifference)}</td>
                           </>
                         )}
                         {isAdmin && (
@@ -1036,64 +1285,69 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
       </div>
 
       {/* Financial fields table */}
-      <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                <th className="px-3 py-2 font-medium text-left">Month</th>
-                <th className="px-3 py-2 font-medium text-left">Contract Energy</th>
-                <th className="px-3 py-2 font-medium text-left">Actual Generation</th>
-                <th className="px-3 py-2 font-medium text-left">Income Received</th>
-                <th className="px-3 py-2 font-medium text-left">Monthly Expenditure</th>
-                <th className="px-3 py-2 font-medium text-left">Spare Part Purchase</th>
-                {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {monthRows.map((r) => {
-                const row = r.bsMonth ? rowsByMonth.get(r.bsMonth) : undefined;
-                return (
-                  <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-3 py-2 font-medium text-slate-800">{r.label}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatEnergy(row?.contractEnergy)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatEnergy(r.generation)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatCost(row?.incomeReceived)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatCost(row?.monthlyExpenditure)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatCost(row?.sparePartPurchase)}</td>
-                    {isAdmin && (
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end">
-                          {r.bsMonth && (
-                            <button
-                              onClick={() => openEditForm(r.bsMonth!)}
-                              className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                <td className="px-3 py-2">Total</td>
-                <td className="px-3 py-2">{formatEnergy(totals.contractEnergy)}</td>
-                <td className="px-3 py-2">{formatEnergy(totals.actualGeneration)}</td>
-                <td className="px-3 py-2">{formatCost(totals.incomeReceived)}</td>
-                <td className="px-3 py-2">{formatCost(totals.monthlyExpenditure)}</td>
-                <td className="px-3 py-2">{formatCost(totals.sparePartPurchase)}</td>
-                {isAdmin && <td className="px-3 py-2" />}
-              </tr>
-            </tfoot>
-          </table>
+      {!hideMonthlySummary && (
+        <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-lg border-slate-200">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-slate-200 text-blue-900 text-[11px] uppercase tracking-wide">
+                  <th className="px-3 py-2 font-medium text-left">Month</th>
+                  <th className="px-3 py-2 font-medium text-left">Contract Energy</th>
+                  <th className="px-3 py-2 font-medium text-left">Actual Generation</th>
+                  <th className="px-3 py-2 font-medium text-left">Income Received</th>
+                  <th className="px-3 py-2 font-medium text-left">Monthly Expenditure</th>
+                  <th className="px-3 py-2 font-medium text-left">Spare Part Purchase</th>
+                  {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {monthRows.map((r, i) => {
+                  const row = r.bsMonth ? rowsByMonth.get(r.bsMonth) : undefined;
+                  return (
+                    <tr
+                      key={r.key}
+                      className={`border-b border-slate-100 last:border-0 hover:bg-slate-100 ${i % 2 === 1 ? "bg-slate-100" : "bg-white"}`}
+                    >
+                      <td className="px-3 py-2 font-medium text-black">{r.label}</td>
+                      <td className="px-3 py-2 text-black">{formatEnergy(row?.contractEnergy)}</td>
+                      <td className="px-3 py-2 text-black">{formatEnergy(r.generation)}</td>
+                      <td className="px-3 py-2 text-black">{formatCost(row?.incomeReceived)}</td>
+                      <td className="px-3 py-2 text-black">{formatCost(row?.monthlyExpenditure)}</td>
+                      <td className="px-3 py-2 text-black">{formatCost(row?.sparePartPurchase)}</td>
+                      {isAdmin && (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end">
+                            {r.bsMonth && (
+                              <button
+                                onClick={() => openEditForm(r.bsMonth!)}
+                                className="flex items-center justify-center w-7 h-7 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded transition-colors"
+                                title="Edit"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
+                  <td className="px-3 py-2">Total</td>
+                  <td className="px-3 py-2">{formatEnergy(totals.contractEnergy)}</td>
+                  <td className="px-3 py-2">{formatEnergy(totals.actualGeneration)}</td>
+                  <td className="px-3 py-2">{formatCost(totals.incomeReceived)}</td>
+                  <td className="px-3 py-2">{formatCost(totals.monthlyExpenditure)}</td>
+                  <td className="px-3 py-2">{formatCost(totals.sparePartPurchase)}</td>
+                  {isAdmin && <td className="px-3 py-2" />}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Edit modal (financial fields only — Actual Generation is derived from the daily grid above) */}
       {editingMonth !== null && (

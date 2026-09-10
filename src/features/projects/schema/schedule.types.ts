@@ -58,6 +58,10 @@ export interface GanttTask {
    * itself (e.g. in buildGanttData) — those already use progress/type directly. */
   progressPercent?: number;
   isSummaryRow?: boolean;
+  /** Set by ProjectScheduleTab from computeCriticalPath (criticalPath.ts) — has
+   * zero slack in the current dependency network, or (for a summary row) has
+   * at least one critical descendant. Purely a display flag, never persisted. */
+  isCritical?: boolean;
 }
 
 export interface GanttLink {
@@ -67,6 +71,9 @@ export interface GanttLink {
   type: "e2s" | "s2s" | "e2e" | "s2e";
   /** Days of delay after the predecessor's reference point; negative = lead/overlap. Feeds the MS-Project-style auto-scheduling cascade (see scheduleAutoSchedule.ts) whenever a dependent task's dates are recomputed. */
   lag?: number;
+  /** Set by ProjectScheduleTab from computeCriticalPath (criticalPath.ts) — both
+   * endpoints are critical tasks. Purely a display flag, never persisted. */
+  isCritical?: boolean;
 }
 
 /** Colors + labels for each manual status — shared by the Status column pill,
