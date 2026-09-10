@@ -52,23 +52,27 @@ export const currentBsYearMonth = (): { year: number; month: number } => {
 /** Human-readable BS date for an AD ISO date, e.g. "Tue, Shrawan 5" — for
  * displaying rows entered against a BS day picker (see Add Entry) so the
  * calendar shown never flips back to Gregorian after saving. */
-export const bsDateLabel = (adDateIso: string, includeWeekday = true): string => {
+export const bsDateLabel = (adDateIso: string, includeWeekday = true, includeYear = false): string => {
   const ad = new Date(`${adDateIso}T00:00:00`);
   const bs = NepaliDate.fromAD(ad);
-  const monthDay = `${bsMonthLabel(bs.getYear(), bs.getMonth())} ${bs.getDate()}`;
+  const monthDay = `${bsMonthLabel(bs.getYear(), bs.getMonth())} ${bs.getDate()}${includeYear ? `, ${bs.getYear()}` : ""}`;
   if (!includeWeekday) return monthDay;
   const weekday = ad.toLocaleDateString(undefined, { weekday: "short" });
   return `${weekday}, ${monthDay}`;
 };
 
 /** English/Gregorian counterpart to bsDateLabel, e.g. "Tue, Aug 5" — for
- * display only, when the user prefers AD over BS labels. */
-export const adDateLabel = (adDateIso: string, includeWeekday = true): string => {
+ * display only, when the user prefers AD over BS labels. `includeYear` is
+ * off by default since on-screen uses already show the year/period via
+ * surrounding context (e.g. the selected month) — exports, which stand
+ * alone outside that context, turn it on. */
+export const adDateLabel = (adDateIso: string, includeWeekday = true, includeYear = false): string => {
   const ad = new Date(`${adDateIso}T00:00:00`);
   return ad.toLocaleDateString(undefined, {
     weekday: includeWeekday ? "short" : undefined,
     month: "short",
     day: "numeric",
+    year: includeYear ? "numeric" : undefined,
   });
 };
 
