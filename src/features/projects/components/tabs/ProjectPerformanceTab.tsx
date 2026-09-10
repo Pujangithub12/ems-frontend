@@ -508,9 +508,22 @@ const ProjectPerformanceTab: React.FC<ProjectPerformanceTabProps> = ({ project, 
         // AD, so there's no BS original to record for it.
         let resolvedDateBs: string | undefined;
         if (dayRaw instanceof Date) {
-          day = dayRaw.getDate();
-          resolvedDate = `${dayRaw.getFullYear()}-${String(dayRaw.getMonth() + 1).padStart(2, "0")}-${String(dayRaw.getDate()).padStart(2, "0")}`;
-          resolvedLabel = dayRaw.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          // SheetJS (with cellDates: true) always builds these Date objects anchored at UTC
+          // midnight for the cell's calendar date — reading them back with local-timezone
+          // getters (getDate/getMonth/getFullYear, toLocaleDateString) rolls the date back a
+          // day for anyone west of UTC (e.g. "1-Apr-26" showing as "Mar 31, 2026"). Read the
+          // UTC components instead so the calendar date matches exactly what the cell said,
+          // regardless of the browser's local timezone.
+          day = dayRaw.getUTCDate();
+          const utcYear = dayRaw.getUTCFullYear();
+          const utcMonth = dayRaw.getUTCMonth();
+          resolvedDate = `${utcYear}-${String(utcMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          resolvedLabel = new Date(Date.UTC(utcYear, utcMonth, day)).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            timeZone: "UTC",
+          });
         } else {
           day = typeof dayRaw === "number" ? dayRaw : parseInt(String(dayRaw), 10);
           if (!Number.isInteger(day) || day < 1 || day > uploadDim) {
