@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   Download,
   Eye,
+  Mail,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
@@ -73,6 +74,15 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
 const pdfUrl = (id: number) => `${API_BASE}/api/purchase-orders/${id}/pdf`;
 const grnPdfUrl = (id: number) => `${API_BASE}/api/goods-receipts/${id}/pdf`;
+
+/** Opens Gmail's web compose window pre-filled with To/Subject/Body. Gmail's compose URL has no
+ * way to attach a file (no browser lets a page hand another site's tab a file to attach, for
+ * obvious security reasons) — the PDF itself still has to be attached by hand from "Preview PDF"
+ * / its Download button, which is why the message text below explicitly says so. */
+const openGmailCompose = (to: string, subject: string, body: string) => {
+  const params = new URLSearchParams({ view: "cm", fs: "1", to, su: subject, body });
+  window.open(`https://mail.google.com/mail/?${params.toString()}`, "_blank", "noopener,noreferrer");
+};
 
 // ---- Status pill styling (kept local to this file, matching the rest of this feature) ----
 
@@ -476,6 +486,7 @@ const emptyAddItemForm = {
 };
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void> }> = ({ po, isAdmin, onChanged }) => {
+  const { organization } = useAuth();
   const [previewOpen, setPreviewOpen] = useState(false);
   const updateMutation = useUpdatePurchaseOrderMutation();
   const addItemMutation = useAddPurchaseOrderItemMutation();
@@ -706,6 +717,17 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
 
+  const poDisplayNumber = po.poNumber || `PO-${po.id}`;
+  const emailDefaultSubject = `Purchase Order ${poDisplayNumber}`;
+  const emailDefaultMessage = `Dear ${po.vendor?.contactPerson || po.vendor?.name || "Sir/Madam"},
+
+Please find attached Purchase Order ${poDisplayNumber} for your reference. (Attach the PDF using "Preview PDF" -> Download before sending.)
+
+Kindly review and confirm receipt at your earliest convenience.
+
+Best regards,
+${organization?.name || ""}`;
+
   return (
     <div className="flex flex-col gap-4 w-full">
       {error && (
@@ -732,6 +754,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                 onClose={() => setPreviewOpen(false)}
               />
             )}
+            <button
+              onClick={() => openGmailCompose(po.vendor?.email || "", emailDefaultSubject, emailDefaultMessage)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
+            >
+              <Mail size={13} /> Send Email
+            </button>
             {isAdmin && (
               <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
