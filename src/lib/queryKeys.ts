@@ -99,6 +99,15 @@ export const queryKeys = {
   plantReportTableDetail: (wsId: number, tableId: number) =>
     [...queryKeys.all(wsId), "plantReportTableDetail", tableId] as const,
 
+  materials: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "materials", projectId] as const,
+
+  materialCustomTables: (wsId: number, projectId: number) =>
+    [...queryKeys.all(wsId), "materialCustomTables", projectId] as const,
+  materialCustomTableDetail: (wsId: number, tableId: number) =>
+    [...queryKeys.all(wsId), "materialCustomTableDetail", tableId] as const,
+  purchaseBills: (wsId: number) => [...queryKeys.all(wsId), "purchaseBills"] as const,
+  materialFields: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "materialFields", projectId] as const,
+
   /** Parent key for all Site Activities queries on one project — invalidate
    * this (not the more specific keys below) after any save/delete so both
    * the single-day report and any open Weekly Summary range refetch. */

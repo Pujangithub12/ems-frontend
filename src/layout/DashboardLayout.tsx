@@ -30,6 +30,8 @@ import {
   ClipboardList,
   Tag,
   Wallet,
+  Boxes,
+  Receipt,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -345,6 +347,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       icon: ClipboardList,
       id: "site-activities",
     },
+    {
+      path: `${prefix}/materials`,
+      label: "Materials",
+      icon: Boxes,
+      id: "materials",
+    },
+    {
+      path: `${prefix}/purchase`,
+      label: "Purchases",
+      icon: Receipt,
+      id: "purchase",
+    },
   ];
 
   const system = [
@@ -383,6 +397,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     documents: "Browse and manage organization files",
     inventory: "Stock items across all your projects",
     "plant-report": "Daily boiler/plant operations log and monthly summary",
+    materials: "Material stock, receipts and usage, per project",
+    purchase: "Manage all purchase orders, bills and payments",
     "site-activities": "Daily site progress report — work activities, equipment, manpower and photos",
     procurement: "Purchase requests across all your projects",
     "purchase-orders": "Purchase orders across all your projects",
