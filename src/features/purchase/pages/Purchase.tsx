@@ -44,7 +44,6 @@ import type { PurchaseBill, PurchaseBillStatus, PurchasePaymentMode } from "../a
 import {
   adToBs,
   bsToAd,
-  bsDateTime,
   addDaysIso,
   daysBetweenInclusive,
   computeAmounts,
@@ -79,6 +78,33 @@ const ModePill: React.FC<{ mode: PurchasePaymentMode }> = ({ mode }) => (
   >
     {mode === "cash" ? "Cash" : "Credit"}
   </span>
+);
+
+/** A pill-styled <select> — lets admin/finance/super_admin change Bill Status
+ * or Cash/Credit straight from the table, without opening Edit. */
+const QuickSelect: React.FC<{
+  value: string;
+  options: { value: string; label: string }[];
+  pillClass: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+}> = ({ value, options, pillClass, busy, onChange }) => (
+  <div className="relative inline-flex">
+    <select
+      value={value}
+      disabled={busy}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      className={`appearance-none cursor-pointer pl-2.5 pr-6 py-1 rounded-full text-[11px] font-semibold outline-none disabled:opacity-60 disabled:cursor-wait ${pillClass}`}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+    <ChevronDown size={11} className="absolute -translate-y-1/2 pointer-events-none right-1.5 top-1/2 opacity-60" />
+  </div>
 );
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -330,6 +356,30 @@ type FormState = {
   remarks: string;
 };
 
+function billToFormState(bill: PurchaseBill, fallbackProjectId: number | ""): FormState {
+  return {
+    projectId: bill.projectId,
+    date: bill.date,
+    site: bill.site ?? "",
+    billNo: bill.billNo ?? "",
+    challanNo: bill.challanNo ?? "",
+    vendorName: bill.vendorName,
+    material: bill.material,
+    unit: bill.unit ?? "",
+    quantity: String(bill.quantity),
+    rate: String(bill.rate),
+    vatRate: String(bill.vatRate),
+    actualAmount: String(bill.actualAmount),
+    vehicleNo: bill.vehicleNo ?? "",
+    paymentMode: bill.paymentMode,
+    paidBy: bill.paidBy ?? "",
+    billStatus: bill.billStatus,
+    remarks: bill.remarks ?? "",
+  };
+  // fallbackProjectId is unused here — bill.projectId is always known for an existing row.
+  void fallbackProjectId;
+}
+
 const BillFormModal: React.FC<{
   bill: PurchaseBill | null;
   projects: { id: number; name: string }[];
@@ -535,7 +585,9 @@ const DraftRow: React.FC<{
   onSave: () => void;
   onCancel: () => void;
   rowRef: React.RefObject<HTMLTableRowElement>;
-}> = ({ form, onChange, vendorNames, error, saving, onSave, onCancel, rowRef }) => {
+  /** "New" for the Add Purchase row (default), or a row number for an existing row being edited in place. */
+  label?: string | number;
+}> = ({ form, onChange, vendorNames, error, saving, onSave, onCancel, rowRef, label = "New" }) => {
   const a = computeAmounts({
     quantity: Number(form.quantity) || 0,
     rate: Number(form.rate) || 0,
@@ -544,11 +596,49 @@ const DraftRow: React.FC<{
   });
   const cell = "px-1.5 py-2 border border-slate-200 align-middle";
   const num = "text-right text-[12px] text-slate-500";
-  const onEnter = (e: React.KeyboardEvent) => e.key === "Enter" && !e.ctrlKey && !e.metaKey && onSave();
+
+  /** Left/Right switches columns, like a spreadsheet — for a text field this
+   * only kicks in once the cursor is already at that edge, so it doesn't
+   * fight with moving the cursor through what's typed; number and select
+   * fields (no meaningful left/right cursor position) always switch. */
+  const onRowKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) return onSave();
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+
+    const target = e.target as HTMLElement;
+    const isPlainText =
+      target instanceof HTMLInputElement && (target.type === "text" || target.type === "");
+    if (isPlainText) {
+      const input = target as HTMLInputElement;
+      const pos = input.selectionStart ?? 0;
+      const atStart = pos === 0 && input.selectionEnd === 0;
+      const atEnd = pos === input.value.length && input.selectionEnd === input.value.length;
+      if ((e.key === "ArrowLeft" && !atStart) || (e.key === "ArrowRight" && !atEnd)) return;
+    } else if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    const row = rowRef.current;
+    if (!row) return;
+    const focusables = Array.from(row.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select"));
+    const idx = focusables.indexOf(target as HTMLInputElement | HTMLSelectElement);
+    if (idx === -1) return;
+    const next = focusables[e.key === "ArrowLeft" ? idx - 1 : idx + 1];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    if (next instanceof HTMLInputElement && (next.type === "text" || next.type === "")) {
+      const p = e.key === "ArrowLeft" ? next.value.length : 0;
+      next.setSelectionRange(p, p);
+    } else if (next instanceof HTMLInputElement) {
+      next.select();
+    }
+  };
+
   return (
     <>
-      <tr ref={rowRef} className="bg-blue-50/60" onKeyDown={onEnter}>
-        <td className={`${cell} text-center text-[11px] font-semibold text-blue-600`}>New</td>
+      <tr ref={rowRef} className="bg-blue-50/60" onKeyDown={onRowKeyDown}>
+        <td className={`${cell} text-center text-[11px] font-semibold text-blue-600`}>{label}</td>
         <td className={`${cell} min-w-[100px]`}>
           <BsDateInput picker valueAd={form.date} onCommit={(ad) => onChange({ date: ad })} className={draftInput} />
         </td>
@@ -777,131 +867,6 @@ const UploadSheetModal: React.FC<{ projectName: string | null; onChoose: (format
   );
 };
 
-// ---- Detail panel ----
-
-const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="flex items-start gap-3 py-1 text-[12px]">
-    <span className="w-[112px] flex-shrink-0 text-slate-500">{label}</span>
-    <span className="flex-1 min-w-0 text-slate-800 break-words">{children}</span>
-  </div>
-);
-
-const DetailPanel: React.FC<{ bill: PurchaseBill; onClose: () => void }> = ({ bill, onClose }) => {
-  const { amount, vat, total } = computeAmounts(bill);
-  const payment = paymentStatusOf(bill);
-  const heading = (t: string) => <div className="mt-5 mb-1.5 text-[13px] font-semibold text-slate-900">{t}</div>;
-  return (
-    <aside className="fixed inset-y-0 right-0 z-40 flex flex-col w-full max-w-[400px] bg-white border-l shadow-2xl border-slate-200 xl:static xl:z-auto xl:w-[380px] xl:max-w-none xl:shadow-none xl:flex-shrink-0">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-        <div className="text-[15px] font-semibold text-slate-900">Purchase Details</div>
-        <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="flex-1 px-5 py-4 overflow-y-auto">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[17px] font-semibold text-slate-900">{bill.vendorName}</div>
-          <StatusPill status={bill.billStatus} />
-        </div>
-        <div className="grid grid-cols-3 gap-2 mt-3 text-[11px] text-slate-500">
-          <div>
-            Bill No.
-            <div className="mt-0.5 text-[12.5px] font-semibold text-slate-900">{bill.billNo || "—"}</div>
-          </div>
-          <div>
-            Date
-            <div className="mt-0.5 text-[12.5px] text-slate-900">{adToBs(bill.date)}</div>
-          </div>
-          <div>
-            Challan No.
-            <div className="mt-0.5 text-[12.5px] text-slate-900">{bill.challanNo || "—"}</div>
-          </div>
-        </div>
-
-        {heading("Vendor Information")}
-        <DetailRow label="Vendor Name">{bill.vendorName}</DetailRow>
-        <DetailRow label="Contact Person">{bill.vendor?.contactPerson || "—"}</DetailRow>
-        <DetailRow label="Phone">{bill.vendor?.phone || "—"}</DetailRow>
-        <DetailRow label="Address">{bill.vendor?.address || "—"}</DetailRow>
-
-        {heading("Items")}
-        <div className="overflow-hidden border rounded-lg border-slate-200">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600">
-                <th className="px-2 py-1.5 text-left font-semibold">Particulars</th>
-                <th className="px-2 py-1.5 text-left font-semibold">Unit</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Qty</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Rate</th>
-                <th className="px-2 py-1.5 text-right font-semibold">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-slate-200">
-                <td className="px-2 py-2 font-medium">{bill.material}</td>
-                <td className="px-2 py-2">{bill.unit || "—"}</td>
-                <td className="px-2 py-2 text-right">{bill.quantity.toLocaleString()}</td>
-                <td className="px-2 py-2 text-right">{money(bill.rate)}</td>
-                <td className="px-2 py-2 text-right">{money(amount)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="text-[12px] border-t border-slate-200">
-            <div className="flex justify-between px-3 py-1.5 font-semibold">
-              <span>Sub Total</span>
-              <span>{money(amount)}</span>
-            </div>
-            <div className="flex justify-between px-3 py-1.5">
-              <span>VAT ({bill.vatRate}%)</span>
-              <span>{money(vat)}</span>
-            </div>
-            <div className="flex justify-between px-3 py-1.5 font-bold border-t border-slate-200">
-              <span>Total Amount</span>
-              <span>{money(total)}</span>
-            </div>
-            <div className="flex justify-between px-3 py-1.5 font-bold bg-blue-50">
-              <span>Actual Amount</span>
-              <span>{money(bill.actualAmount)}</span>
-            </div>
-          </div>
-        </div>
-
-        {heading("Payment & Logistics")}
-        <DetailRow label="Cash/Credit">
-          <ModePill mode={bill.paymentMode} />
-        </DetailRow>
-        <DetailRow label="Paid By">{bill.paidBy || "—"}</DetailRow>
-        <DetailRow label="Vehicle No.">{bill.vehicleNo || "—"}</DetailRow>
-        <DetailRow label="Payment Status">
-          <StatusPill status={payment} />
-        </DetailRow>
-        <DetailRow label="Bill Status">
-          <StatusPill status={bill.billStatus} />
-        </DetailRow>
-        <DetailRow label="Remarks">{bill.remarks || "—"}</DetailRow>
-
-        {heading("Additional Information")}
-        <DetailRow label="Project">{bill.projectName}</DetailRow>
-        <DetailRow label="Site">{bill.site || "—"}</DetailRow>
-        <DetailRow label="Created By">{bill.createdByName || "—"}</DetailRow>
-        <DetailRow label="Created At">{bsDateTime(bill.createdAt)}</DetailRow>
-        <DetailRow label="Last Updated">{bsDateTime(bill.updatedAt)}</DetailRow>
-      </div>
-      <div className="flex items-center gap-3 px-5 py-4 border-t border-slate-200">
-        <button
-          onClick={() => printBill(bill)}
-          className="flex items-center justify-center flex-1 gap-1.5 px-3 py-2 text-[12.5px] font-medium text-blue-700 border border-blue-200 rounded-lg bg-blue-50/40 hover:bg-blue-50"
-        >
-          <Download size={14} /> Download Bill (PDF)
-        </button>
-        <button onClick={onClose} className="px-6 py-2 text-[12.5px] font-medium border rounded-lg text-slate-700 border-slate-200 hover:bg-slate-50">
-          Close
-        </button>
-      </div>
-    </aside>
-  );
-};
-
 // ---- Page ----
 
 type SortKey =
@@ -961,6 +926,9 @@ function sortValue(b: PurchaseBill, key: SortKey): string | number {
 const Purchase: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  // Bill Status / Cash-Credit can be changed straight from the table by
+  // whoever actually manages payments, not just admins.
+  const canEditFinance = user?.role === "admin" || user?.role === "super_admin" || user?.role === "finance";
   const { data: projects = [] } = useProjects();
   const billsQuery = usePurchaseBillsQuery();
   const vendorsQuery = useOrganizationVendorsQuery();
@@ -994,7 +962,6 @@ const Purchase: React.FC = () => {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [menuId, setMenuId] = useState<number | null>(null);
   const [uploadInfoOpen, setUploadInfoOpen] = useState(false);
   const [chartsOpen, setChartsOpen] = useState(false);
@@ -1007,6 +974,11 @@ const Purchase: React.FC = () => {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const draftRowRef = useRef<HTMLTableRowElement>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<FormState | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     if (menuId == null) return;
@@ -1089,7 +1061,6 @@ const Purchase: React.FC = () => {
   const pageRows = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
   useEffect(() => setPage(1), [range, projectFilter, vendorFilter, paymentFilter, billFilter, search, pageSize]);
 
-  const selected = bills.find((b) => b.id === selectedId) ?? null;
   const defaultProjectId: number | "" = projectFilter ? Number(projectFilter) : projects[0]?.id ?? "";
 
   const toggleSort = (key: SortKey) =>
@@ -1119,10 +1090,49 @@ const Purchase: React.FC = () => {
     else await createMutation.mutateAsync(payload);
   };
 
+  /** Changes just Bill Status or Cash/Credit straight from the table — the
+   * backend update endpoint replaces the whole bill, so the rest of the
+   * existing row is sent back unchanged alongside the one edited field. */
+  const [quickEditId, setQuickEditId] = useState<number | null>(null);
+  const handleQuickUpdate = async (bill: PurchaseBill, patch: Partial<Pick<PurchaseBill, "billStatus" | "paymentMode">>) => {
+    setQuickEditId(bill.id);
+    try {
+      await updateMutation.mutateAsync({
+        id: bill.id,
+        payload: {
+          projectId: bill.projectId,
+          date: bill.date,
+          billNo: bill.billNo,
+          challanNo: bill.challanNo,
+          vendorName: bill.vendorName,
+          material: bill.material,
+          unit: bill.unit,
+          quantity: bill.quantity,
+          rate: bill.rate,
+          vatRate: bill.vatRate,
+          actualAmount: bill.actualAmount,
+          vehicleNo: bill.vehicleNo,
+          paymentMode: bill.paymentMode,
+          paidBy: bill.paidBy,
+          billStatus: bill.billStatus,
+          site: bill.site,
+          remarks: bill.remarks,
+          ...patch,
+        },
+      });
+    } catch (err) {
+      setNotice({ kind: "error", text: getErrorMessage(err, "Failed to update.") });
+    } finally {
+      setQuickEditId(null);
+    }
+  };
+
   const importProjectId = projectFilter ? Number(projectFilter) : projects.length === 1 ? projects[0].id : null;
   const importProjectName = projects.find((p) => p.id === importProjectId)?.name ?? null;
 
   const startDraft = () => {
+    setEditingId(null);
+    setEditForm(null);
     setDraftError(null);
     setDraft({
       projectId: defaultProjectId,
@@ -1143,7 +1153,6 @@ const Purchase: React.FC = () => {
       billStatus: "pending",
       remarks: "",
     });
-    setSelectedId(null);
     // Jump to the last page so the new row sits directly below the existing rows.
     setPage(Math.max(1, Math.ceil(sorted.length / pageSize)));
     setTimeout(() => draftRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
@@ -1171,9 +1180,76 @@ const Purchase: React.FC = () => {
     }
   };
 
+  const startRowEdit = (bill: PurchaseBill) => {
+    setDraft(null);
+    setEditError(null);
+    setEditingId(bill.id);
+    setEditForm(billToFormState(bill, defaultProjectId));
+    setTimeout(() => editRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+  };
+
+  /** Returns whether the edit was actually saved — false on a validation or
+   * request error, leaving the row open with its error shown. */
+  const saveRowEdit = async (): Promise<boolean> => {
+    if (!editForm || editingId == null) return false;
+    if (editSaving) return false;
+    if (!editForm.vendorName.trim()) {
+      setEditError("Vendor name is required.");
+      return false;
+    }
+    if (!editForm.material.trim()) {
+      setEditError("Material / particulars is required.");
+      return false;
+    }
+    if (editForm.quantity === "" || Number(editForm.quantity) < 0) {
+      setEditError("Enter a valid quantity.");
+      return false;
+    }
+    if (editForm.rate === "" || Number(editForm.rate) < 0) {
+      setEditError("Enter a valid rate.");
+      return false;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await handleSave(editingId, editForm);
+      setEditingId(null);
+      setEditForm(null);
+      return true;
+    } catch (err) {
+      setEditError(getErrorMessage(err, "Failed to save purchase."));
+      return false;
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  /** Clicking a different row while one is mid-edit saves it first (rather
+   * than silently discarding the changes) and only then opens the new row;
+   * if the save fails (validation or request error), the original row stays
+   * open with its error showing instead of switching away from it. */
+  const handleRowClick = async (bill: PurchaseBill) => {
+    if (editingId === bill.id) return;
+    if (editingId != null && !(await saveRowEdit())) return;
+    startRowEdit(bill);
+  };
+
   // Ctrl+Enter: open a new row; while a row is open, save it and open the next one.
+  // Escape: cancel whichever row (new or being edited) is currently open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (formOpen || uploadInfoOpen || confirmDelete) return;
+        if (draft) {
+          setDraft(null);
+          setDraftError(null);
+        } else if (editingId != null) {
+          setEditingId(null);
+          setEditForm(null);
+          setEditError(null);
+        }
+        return;
+      }
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
       if (formOpen || uploadInfoOpen || confirmDelete) return;
       e.preventDefault();
@@ -1400,14 +1476,29 @@ const Purchase: React.FC = () => {
                     </tr>
                   ) : (
                     pageRows.map((b, i) => {
+                      if (b.id === editingId && editForm) {
+                        return (
+                          <DraftRow
+                            key={b.id}
+                            form={editForm}
+                            onChange={(patch) => setEditForm((f) => (f ? { ...f, ...patch } : f))}
+                            vendorNames={vendorNames}
+                            error={editError}
+                            saving={editSaving}
+                            onSave={saveRowEdit}
+                            onCancel={() => {
+                              setEditingId(null);
+                              setEditForm(null);
+                            }}
+                            rowRef={editRowRef}
+                            label={(safePage - 1) * pageSize + i + 1}
+                          />
+                        );
+                      }
                       const a = computeAmounts(b);
                       const cell = "px-2.5 py-3 text-[12px] text-slate-800 border border-slate-200";
                       return (
-                        <tr
-                          key={b.id}
-                          onClick={() => setSelectedId(b.id)}
-                          className={`cursor-pointer hover:bg-blue-50/60 ${selectedId === b.id ? "bg-blue-50" : "bg-white"}`}
-                        >
+                        <tr key={b.id} onClick={() => handleRowClick(b)} className="bg-white cursor-pointer hover:bg-blue-50/60">
                           <td className={`${cell} font-semibold`}>{(safePage - 1) * pageSize + i + 1}</td>
                           <td className={`${cell} whitespace-nowrap`}>{adToBs(b.date)}</td>
                           <td className={`${cell} font-semibold`}>{b.billNo || "-"}</td>
@@ -1422,15 +1513,44 @@ const Purchase: React.FC = () => {
                           <td className={`${cell} text-right`}>{money(a.total)}</td>
                           <td className={`${cell} text-right`}>{money(b.actualAmount)}</td>
                           <td className={`${cell} min-w-[80px]`}>{b.vehicleNo || "-"}</td>
-                          <td className={cell}>
-                            <ModePill mode={b.paymentMode} />
+                          <td className={cell} onClick={(e) => canEditFinance && e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            {canEditFinance ? (
+                              <QuickSelect
+                                value={b.paymentMode}
+                                busy={quickEditId === b.id}
+                                options={[
+                                  { value: "credit", label: "Credit" },
+                                  { value: "cash", label: "Cash" },
+                                ]}
+                                pillClass={
+                                  b.paymentMode === "cash" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-600"
+                                }
+                                onChange={(v) => handleQuickUpdate(b, { paymentMode: v as PurchasePaymentMode })}
+                              />
+                            ) : (
+                              <ModePill mode={b.paymentMode} />
+                            )}
                           </td>
                           <td className={`${cell} min-w-[90px]`}>{b.paidBy || "-"}</td>
-                          <td className={cell}>
-                            <StatusPill status={b.billStatus} />
+                          <td className={cell} onClick={(e) => canEditFinance && e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            {canEditFinance ? (
+                              <QuickSelect
+                                value={b.billStatus}
+                                busy={quickEditId === b.id}
+                                options={[
+                                  { value: "pending", label: "Pending" },
+                                  { value: "partial", label: "Partial" },
+                                  { value: "paid", label: "Paid" },
+                                ]}
+                                pillClass={STATUS_PILL[b.billStatus]}
+                                onChange={(v) => handleQuickUpdate(b, { billStatus: v as PurchaseBillStatus })}
+                              />
+                            ) : (
+                              <StatusPill status={b.billStatus} />
+                            )}
                           </td>
                           <td className={`${cell} min-w-[90px]`}>{b.remarks || "-"}</td>
-                          <td className={`${cell} relative text-center`} onClick={(e) => e.stopPropagation()}>
+                          <td className={`${cell} relative text-center`} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => setMenuId(menuId === b.id ? null : b.id)}
                               className="p-1 rounded text-slate-500 hover:bg-slate-100"
@@ -1441,12 +1561,12 @@ const Purchase: React.FC = () => {
                               <div className="absolute right-3 z-20 w-32 py-1 mt-1 text-left bg-white border rounded-lg shadow-lg border-slate-200">
                                 <button
                                   onClick={() => {
-                                    setSelectedId(b.id);
+                                    printBill(b);
                                     setMenuId(null);
                                   }}
                                   className="block w-full px-3 py-1.5 text-[12px] text-left hover:bg-slate-50"
                                 >
-                                  View
+                                  Download PDF
                                 </button>
                                 <button
                                   onClick={() => {
@@ -1563,8 +1683,6 @@ const Purchase: React.FC = () => {
         />
       )}
 
-      {selected && <DetailPanel bill={selected} onClose={() => setSelectedId(null)} />}
-
       {formOpen && (
         <BillFormModal
           bill={editing}
@@ -1587,7 +1705,6 @@ const Purchase: React.FC = () => {
           if (!confirmDelete) return;
           try {
             await deleteMutation.mutateAsync(confirmDelete.id);
-            if (selectedId === confirmDelete.id) setSelectedId(null);
           } catch (err) {
             setNotice({ kind: "error", text: getErrorMessage(err, "Failed to delete purchase.") });
           }
