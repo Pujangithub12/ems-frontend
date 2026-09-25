@@ -20,6 +20,11 @@ export interface ProformaInvoiceInput {
   validityDate?: string;
   taxPercent?: number;
   customerPan?: string;
+  customerName?: string;
+  customerContactPerson?: string;
+  customerAddress?: string;
+  customerEmail?: string;
+  customerContact?: string;
   vendorPan?: string;
   /** Only meaningful when creating/editing a standalone (PO-less) PI. */
   vendorId?: number | null;

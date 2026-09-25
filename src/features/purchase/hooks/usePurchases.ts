@@ -6,6 +6,7 @@ import {
   createPurchaseBill,
   updatePurchaseBill,
   deletePurchaseBill,
+  bulkDeletePurchaseBills,
   importPurchaseBills,
   SavePurchaseBillPayload,
 } from "../api/purchase.api";
@@ -39,6 +40,11 @@ export function useUpdatePurchaseBill() {
     mutationFn: ({ id, payload }: { id: number; payload: SavePurchaseBillPayload }) => updatePurchaseBill(id, payload),
     onSuccess: invalidate,
   });
+}
+
+export function useBulkDeletePurchaseBills() {
+  const invalidate = useInvalidateBills();
+  return useMutation({ mutationFn: (ids: number[]) => bulkDeletePurchaseBills(ids), onSuccess: invalidate });
 }
 
 export function useDeletePurchaseBill() {
