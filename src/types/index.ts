@@ -278,6 +278,11 @@ export type ProformaInvoice = {
   status: ProformaInvoiceStatus;
   taxPercent?: number | string | null;
   customerPan?: string | null;
+  customerName?: string | null;
+  customerContactPerson?: string | null;
+  customerAddress?: string | null;
+  customerEmail?: string | null;
+  customerContact?: string | null;
   vendorPan?: string | null;
   /** Only meaningful for a PO-less PI — a linked Vendor and/or freeform vendor details, used
    * instead of purchaseOrder.vendor for the VENDOR box. */

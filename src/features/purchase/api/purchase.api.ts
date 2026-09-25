@@ -88,6 +88,12 @@ export async function deletePurchaseBill(id: number): Promise<void> {
   await api.delete(`/api/purchase-bills/${id}`);
 }
 
+/** POST /api/purchase-bills/bulk-delete */
+export async function bulkDeletePurchaseBills(ids: number[]): Promise<number> {
+  const res = await api.post("/api/purchase-bills/bulk-delete", { ids });
+  return res.data.count;
+}
+
 /** POST /api/purchase-bills/import */
 export async function importPurchaseBills(
   projectId: number,

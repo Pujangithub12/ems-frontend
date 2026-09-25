@@ -11,8 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
-  MoreVertical,
-  Download,
   Upload,
   BarChart3,
   Check,
@@ -38,6 +36,7 @@ import {
   useCreatePurchaseBill,
   useUpdatePurchaseBill,
   useDeletePurchaseBill,
+  useBulkDeletePurchaseBills,
   useImportPurchaseBills,
 } from "../hooks/usePurchases";
 import type { PurchaseBill, PurchaseBillStatus, PurchasePaymentMode } from "../api/purchase.api";
@@ -50,7 +49,6 @@ import {
   paymentStatusOf,
   money,
   parsePurchaseSheet,
-  printBill,
   type SheetDateFormat,
 } from "../lib/purchaseUtils";
 
@@ -587,7 +585,9 @@ const DraftRow: React.FC<{
   rowRef: React.RefObject<HTMLTableRowElement>;
   /** "New" for the Add Purchase row (default), or a row number for an existing row being edited in place. */
   label?: string | number;
-}> = ({ form, onChange, vendorNames, error, saving, onSave, onCancel, rowRef, label = "New" }) => {
+  /** Adds an empty leading cell so the row lines up with the checkbox column. */
+  selectable?: boolean;
+}> = ({ form, onChange, vendorNames, error, saving, onSave, onCancel, rowRef, label = "New", selectable }) => {
   const a = computeAmounts({
     quantity: Number(form.quantity) || 0,
     rate: Number(form.rate) || 0,
@@ -638,6 +638,7 @@ const DraftRow: React.FC<{
   return (
     <>
       <tr ref={rowRef} className="bg-blue-50/60" onKeyDown={onRowKeyDown}>
+        {selectable && <td className={cell} />}
         <td className={`${cell} text-center text-[11px] font-semibold text-blue-600`}>{label}</td>
         <td className={`${cell} min-w-[100px]`}>
           <BsDateInput picker valueAd={form.date} onCommit={(ad) => onChange({ date: ad })} className={draftInput} />
@@ -688,7 +689,11 @@ const DraftRow: React.FC<{
           <input className={`${draftInput} text-right`} type="number" min="0" value={form.actualAmount} onChange={(e) => onChange({ actualAmount: e.target.value })} />
         </td>
         <td className={cell}>
-          <input className={draftInput} value={form.vehicleNo} onChange={(e) => onChange({ vehicleNo: e.target.value })} />
+          <select className={draftInput} value={form.billStatus} onChange={(e) => onChange({ billStatus: e.target.value as PurchaseBillStatus })}>
+            <option value="pending">Pending</option>
+            <option value="partial">Partial</option>
+            <option value="paid">Paid</option>
+          </select>
         </td>
         <td className={cell}>
           <select className={draftInput} value={form.paymentMode} onChange={(e) => onChange({ paymentMode: e.target.value as PurchasePaymentMode })}>
@@ -700,16 +705,11 @@ const DraftRow: React.FC<{
           <input className={draftInput} value={form.paidBy} onChange={(e) => onChange({ paidBy: e.target.value })} />
         </td>
         <td className={cell}>
-          <select className={draftInput} value={form.billStatus} onChange={(e) => onChange({ billStatus: e.target.value as PurchaseBillStatus })}>
-            <option value="pending">Pending</option>
-            <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
-          </select>
+          <input className={draftInput} value={form.vehicleNo} onChange={(e) => onChange({ vehicleNo: e.target.value })} />
         </td>
-        <td className={`${cell} min-w-[110px]`}>
+        <td className={`${cell} min-w-[170px]`}>
+          <div className="flex items-center gap-1">
           <input className={draftInput} value={form.remarks} onChange={(e) => onChange({ remarks: e.target.value })} />
-        </td>
-        <td className={`${cell} text-center whitespace-nowrap`}>
           <button
             onClick={onSave}
             disabled={saving}
@@ -721,11 +721,12 @@ const DraftRow: React.FC<{
           <button onClick={onCancel} title="Cancel" className="p-1.5 border rounded text-slate-500 border-slate-300 hover:bg-white">
             <X size={13} />
           </button>
+          </div>
         </td>
       </tr>
       {error && (
         <tr className="bg-blue-50/60">
-          <td colSpan={COLUMNS.length} className="px-3 py-2 text-[12px] font-medium text-red-600 border border-slate-200">
+          <td colSpan={COLUMNS.length + (selectable ? 1 : 0)} className="px-3 py-2 text-[12px] font-medium text-red-600 border border-slate-200">
             {error}
           </td>
         </tr>
@@ -885,7 +886,7 @@ type SortKey =
   | "paymentMode"
   | "billStatus";
 
-const COLUMNS: { key: SortKey | "sno" | "vehicleNo" | "paidBy" | "remarks" | "actions"; label: string; sortable?: boolean; align?: "right" | "center" }[] = [
+const COLUMNS: { key: SortKey | "sno" | "vehicleNo" | "paidBy" | "remarks"; label: string; sortable?: boolean; align?: "right" | "center" }[] = [
   { key: "sno", label: "S.No" },
   { key: "date", label: "Date" },
   { key: "billNo", label: "Bill No.", sortable: true },
@@ -899,12 +900,11 @@ const COLUMNS: { key: SortKey | "sno" | "vehicleNo" | "paidBy" | "remarks" | "ac
   { key: "vat", label: "VAT", sortable: true, align: "right" },
   { key: "total", label: "Total Amount", sortable: true, align: "right" },
   { key: "actualAmount", label: "Actual Amount", sortable: true, align: "right" },
-  { key: "vehicleNo", label: "Vehicle No" },
+  { key: "billStatus", label: "Bill Status", sortable: true },
   { key: "paymentMode", label: "Cash/Credit", sortable: true },
   { key: "paidBy", label: "Paid By" },
-  { key: "billStatus", label: "Bill Status", sortable: true },
+  { key: "vehicleNo", label: "Vehicle No" },
   { key: "remarks", label: "Remarks" },
-  { key: "actions", label: "Actions", align: "center" },
 ];
 
 function sortValue(b: PurchaseBill, key: SortKey): string | number {
@@ -937,6 +937,7 @@ const Purchase: React.FC = () => {
   const createMutation = useCreatePurchaseBill();
   const updateMutation = useUpdatePurchaseBill();
   const deleteMutation = useDeletePurchaseBill();
+  const bulkDeleteMutation = useBulkDeletePurchaseBills();
   const importMutation = useImportPurchaseBills();
 
   // Until the user picks a range, show everything that's been recorded (so saved
@@ -962,12 +963,13 @@ const Purchase: React.FC = () => {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [menuId, setMenuId] = useState<number | null>(null);
   const [uploadInfoOpen, setUploadInfoOpen] = useState(false);
   const [chartsOpen, setChartsOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PurchaseBill | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PurchaseBill | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [notice, setNotice] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<FormState | null>(null);
@@ -979,13 +981,6 @@ const Purchase: React.FC = () => {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const editRowRef = useRef<HTMLTableRowElement>(null);
-
-  useEffect(() => {
-    if (menuId == null) return;
-    const close = () => setMenuId(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [menuId]);
 
   const siteNames = useMemo(() => [...new Set(bills.map((b) => b.site).filter((s): s is string => !!s))].sort(), [bills]);
   const vendorNames = useMemo(() => {
@@ -1059,6 +1054,28 @@ const Purchase: React.FC = () => {
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const pageRows = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Only rows still visible under the current filters count as selected, so a
+  // bulk delete can never remove bills the user can't see.
+  const visibleIds = new Set(sorted.map((b) => b.id));
+  const selectedVisible = [...selectedIds].filter((id) => visibleIds.has(id));
+  const pageSelectedCount = pageRows.filter((b) => selectedIds.has(b.id)).length;
+  const allPageSelected = pageRows.length > 0 && pageSelectedCount === pageRows.length;
+  const toggleSelected = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const togglePageSelected = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) pageRows.forEach((b) => next.delete(b.id));
+      else pageRows.forEach((b) => next.add(b.id));
+      return next;
+    });
+  const colCount = COLUMNS.length + (isAdmin ? 1 : 0);
   useEffect(() => setPage(1), [range, projectFilter, vendorFilter, paymentFilter, billFilter, search, pageSize]);
 
   const defaultProjectId: number | "" = projectFilter ? Number(projectFilter) : projects[0]?.id ?? "";
@@ -1239,7 +1256,7 @@ const Purchase: React.FC = () => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (formOpen || uploadInfoOpen || confirmDelete) return;
+        if (formOpen || uploadInfoOpen || confirmDelete || confirmBulkDelete) return;
         if (draft) {
           setDraft(null);
           setDraftError(null);
@@ -1251,7 +1268,7 @@ const Purchase: React.FC = () => {
         return;
       }
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
-      if (formOpen || uploadInfoOpen || confirmDelete) return;
+      if (formOpen || uploadInfoOpen || confirmDelete || confirmBulkDelete) return;
       e.preventDefault();
       if (draft) void saveDraft(true);
       else startDraft();
@@ -1433,6 +1450,22 @@ const Purchase: React.FC = () => {
           </button>
         </div>
 
+        {isAdmin && selectedVisible.length > 0 && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2 mb-3 text-[12.5px] border border-blue-200 rounded-lg bg-blue-50">
+            <span className="font-medium text-blue-800">{selectedVisible.length} selected</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 font-medium text-slate-600 rounded-md hover:bg-white">
+                Clear
+              </button>
+              <button
+                onClick={() => setConfirmBulkDelete(true)}
+                className="px-3 py-1.5 font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+              >
+                Delete selected
+              </button>
+            </div>
+          </div>
+        )}
         <div className="overflow-hidden bg-white border shadow-sm rounded-xl border-slate-200">
           {billsQuery.isLoading ? (
             <div className="flex items-center justify-center py-20 text-slate-400">
@@ -1443,6 +1476,21 @@ const Purchase: React.FC = () => {
               <table className="w-full text-left border-collapse min-w-[1500px]">
                 <thead>
                   <tr className="bg-[#f3f6fb]">
+                    {isAdmin && (
+                      <th className="w-8 px-2.5 py-3 text-center border border-slate-200">
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer"
+                          checked={allPageSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = pageSelectedCount > 0 && !allPageSelected;
+                          }}
+                          onChange={togglePageSelected}
+                          disabled={pageRows.length === 0}
+                          title="Select all on this page"
+                        />
+                      </th>
+                    )}
                     {COLUMNS.map((c) => {
                       const active = c.sortable && sort.key === c.key;
                       return (
@@ -1470,7 +1518,7 @@ const Purchase: React.FC = () => {
                 <tbody>
                   {pageRows.length === 0 && !draft ? (
                     <tr>
-                      <td colSpan={COLUMNS.length} className="py-14 text-[13px] text-center text-slate-400">
+                      <td colSpan={colCount} className="py-14 text-[13px] text-center text-slate-400">
                         {bills.length === 0 ? "No purchases yet — click Add Purchase or Upload Sheet." : "No purchases match the current filters."}
                       </td>
                     </tr>
@@ -1492,13 +1540,19 @@ const Purchase: React.FC = () => {
                             }}
                             rowRef={editRowRef}
                             label={(safePage - 1) * pageSize + i + 1}
+                            selectable={isAdmin}
                           />
                         );
                       }
                       const a = computeAmounts(b);
                       const cell = "px-2.5 py-3 text-[12px] text-slate-800 border border-slate-200";
                       return (
-                        <tr key={b.id} onClick={() => handleRowClick(b)} className="bg-white cursor-pointer hover:bg-blue-50/60">
+                        <tr key={b.id} onClick={() => handleRowClick(b)} className={`cursor-pointer hover:bg-blue-50/60 ${selectedIds.has(b.id) ? "bg-blue-50" : "bg-white"}`}>
+                          {isAdmin && (
+                            <td className={`${cell} text-center`} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                              <input type="checkbox" className="cursor-pointer" checked={selectedIds.has(b.id)} onChange={() => toggleSelected(b.id)} />
+                            </td>
+                          )}
                           <td className={`${cell} font-semibold`}>{(safePage - 1) * pageSize + i + 1}</td>
                           <td className={`${cell} whitespace-nowrap`}>{adToBs(b.date)}</td>
                           <td className={`${cell} font-semibold`}>{b.billNo || "-"}</td>
@@ -1512,7 +1566,23 @@ const Purchase: React.FC = () => {
                           <td className={`${cell} text-right`}>{money(a.vat)}</td>
                           <td className={`${cell} text-right`}>{money(a.total)}</td>
                           <td className={`${cell} text-right`}>{money(b.actualAmount)}</td>
-                          <td className={`${cell} min-w-[80px]`}>{b.vehicleNo || "-"}</td>
+                          <td className={cell} onClick={(e) => canEditFinance && e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            {canEditFinance ? (
+                              <QuickSelect
+                                value={b.billStatus}
+                                busy={quickEditId === b.id}
+                                options={[
+                                  { value: "pending", label: "Pending" },
+                                  { value: "partial", label: "Partial" },
+                                  { value: "paid", label: "Paid" },
+                                ]}
+                                pillClass={STATUS_PILL[b.billStatus]}
+                                onChange={(v) => handleQuickUpdate(b, { billStatus: v as PurchaseBillStatus })}
+                              />
+                            ) : (
+                              <StatusPill status={b.billStatus} />
+                            )}
+                          </td>
                           <td className={cell} onClick={(e) => canEditFinance && e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                             {canEditFinance ? (
                               <QuickSelect
@@ -1532,66 +1602,8 @@ const Purchase: React.FC = () => {
                             )}
                           </td>
                           <td className={`${cell} min-w-[90px]`}>{b.paidBy || "-"}</td>
-                          <td className={cell} onClick={(e) => canEditFinance && e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-                            {canEditFinance ? (
-                              <QuickSelect
-                                value={b.billStatus}
-                                busy={quickEditId === b.id}
-                                options={[
-                                  { value: "pending", label: "Pending" },
-                                  { value: "partial", label: "Partial" },
-                                  { value: "paid", label: "Paid" },
-                                ]}
-                                pillClass={STATUS_PILL[b.billStatus]}
-                                onChange={(v) => handleQuickUpdate(b, { billStatus: v as PurchaseBillStatus })}
-                              />
-                            ) : (
-                              <StatusPill status={b.billStatus} />
-                            )}
-                          </td>
+                          <td className={`${cell} min-w-[80px]`}>{b.vehicleNo || "-"}</td>
                           <td className={`${cell} min-w-[90px]`}>{b.remarks || "-"}</td>
-                          <td className={`${cell} relative text-center`} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => setMenuId(menuId === b.id ? null : b.id)}
-                              className="p-1 rounded text-slate-500 hover:bg-slate-100"
-                            >
-                              <MoreVertical size={15} />
-                            </button>
-                            {menuId === b.id && (
-                              <div className="absolute right-3 z-20 w-32 py-1 mt-1 text-left bg-white border rounded-lg shadow-lg border-slate-200">
-                                <button
-                                  onClick={() => {
-                                    printBill(b);
-                                    setMenuId(null);
-                                  }}
-                                  className="block w-full px-3 py-1.5 text-[12px] text-left hover:bg-slate-50"
-                                >
-                                  Download PDF
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setEditing(b);
-                                    setFormOpen(true);
-                                    setMenuId(null);
-                                  }}
-                                  className="block w-full px-3 py-1.5 text-[12px] text-left hover:bg-slate-50"
-                                >
-                                  Edit
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={() => {
-                                      setConfirmDelete(b);
-                                      setMenuId(null);
-                                    }}
-                                    className="block w-full px-3 py-1.5 text-[12px] text-left text-red-600 hover:bg-red-50"
-                                  >
-                                    Delete
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </td>
                         </tr>
                       );
                     })
@@ -1606,6 +1618,7 @@ const Purchase: React.FC = () => {
                       onSave={() => saveDraft()}
                       onCancel={() => setDraft(null)}
                       rowRef={draftRowRef}
+                      selectable={isAdmin}
                     />
                   )}
                 </tbody>
@@ -1714,6 +1727,28 @@ const Purchase: React.FC = () => {
         message={`Delete bill ${confirmDelete?.billNo || `#${confirmDelete?.id}`} from ${confirmDelete?.vendorName}? This can't be undone.`}
         confirmText="Delete"
         isLoading={deleteMutation.isPending}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={async () => {
+          try {
+            await bulkDeleteMutation.mutateAsync(selectedVisible);
+            setSelectedIds(new Set());
+            if (editingId != null && selectedVisible.includes(editingId)) {
+              setEditingId(null);
+              setEditForm(null);
+            }
+          } catch (err) {
+            setNotice({ kind: "error", text: getErrorMessage(err, "Failed to delete purchases.") });
+          }
+          setConfirmBulkDelete(false);
+        }}
+        title="Delete Purchases"
+        message={`Delete ${selectedVisible.length} selected purchase${selectedVisible.length === 1 ? "" : "s"}? This can't be undone.`}
+        confirmText="Delete"
+        isLoading={bulkDeleteMutation.isPending}
       />
     </div>
   );

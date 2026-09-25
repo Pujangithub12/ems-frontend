@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   Ban,
   ChevronRight,
-  Download,
+  Eye,
   Pencil,
 } from "lucide-react";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
@@ -28,7 +28,8 @@ import { formatCost, toNumber } from "../../../lib/currency";
 import { ProformaInvoice, ProformaInvoiceStatus } from "../../../types";
 import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useCreateStandaloneProformaInvoiceMutation, useUpdateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
 import { useOrganizationPurchaseOrdersQuery } from "../hooks/usePurchaseOrder";
-import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
+import PdfPreviewModal from "../components/PdfPreviewModal";
+import type { ProformaInvoiceInput } from "../api/proformaInvoice.api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
@@ -111,12 +112,11 @@ const emptyPiItemRow: PiItemRow = { itemName: "", quantity: "1", unit: "", unitP
 const ProformaInvoicesPage: React.FC = () => {
   const organizationId = useOrganizationId();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const piQuery = useAllProformaInvoicesQuery();
   const poQuery = useOrganizationPurchaseOrdersQuery();
-  const vendorsQuery = useOrganizationVendorsQuery();
   const createMutation = useCreateProformaInvoiceMutation();
   const createStandaloneMutation = useCreateStandaloneProformaInvoiceMutation();
   const updateMutation = useUpdateProformaInvoiceMutation();
@@ -125,7 +125,6 @@ const ProformaInvoicesPage: React.FC = () => {
 
   const proformaInvoices = piQuery.data ?? [];
   const purchaseOrders = poQuery.data ?? [];
-  const vendors = vendorsQuery.data ?? [];
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -133,6 +132,10 @@ const ProformaInvoicesPage: React.FC = () => {
   const [rowBusyId, setRowBusyId] = useState<number | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [previewPi, setPreviewPi] = useState<ProformaInvoice | null>(null);
+  /** Popup shown when the form is submitted with details missing: `blocking` ones must be filled in
+   * (Cancel only), `optional` ones can be skipped via "Create anyway" (which submits `input`). */
+  const [missingInfo, setMissingInfo] = useState<{ blocking: string[]; optional: string[]; input?: ProformaInvoiceInput } | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -160,7 +163,8 @@ const ProformaInvoicesPage: React.FC = () => {
       return (
         (pi.piNumber || "").toLowerCase().includes(q) ||
         (pi.purchaseOrder?.poNumber || "").toLowerCase().includes(q) ||
-        (pi.purchaseOrder?.vendor?.name || pi.vendor?.name || pi.vendorName || "").toLowerCase().includes(q) ||
+        (pi.customerName || "").toLowerCase().includes(q) ||
+        (pi.purchaseOrder?.vendor?.name || "").toLowerCase().includes(q) ||
         (pi.purchaseOrder?.project?.name || "").toLowerCase().includes(q)
       );
     });
@@ -189,14 +193,19 @@ const ProformaInvoicesPage: React.FC = () => {
   const [taxPercent, setTaxPercent] = useState("13");
   const [customerPan, setCustomerPan] = useState("");
   const [vendorPan, setVendorPan] = useState("");
-  // Only used for a standalone (no purchase order) PI — the PO-backed path pulls vendor info
-  // from the purchase order itself.
-  const [vendorId, setVendorId] = useState<number | "">("");
-  const [vendorName, setVendorName] = useState("");
+  // The customer being invoiced — the CUSTOMER box on the PDF. The VENDOR box is always us
+  // (the organization), so there is nothing to enter for it beyond our PAN.
+  const [customerName, setCustomerName] = useState("");
+  const [customerContactPerson, setCustomerContactPerson] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerContact, setCustomerContact] = useState("");
+  // The VENDOR box is us: prefilled from the organization's own details, editable per invoice.
+  const [vendorName, setVendorName] = useState(organization?.name ?? "");
   const [vendorContactPerson, setVendorContactPerson] = useState("");
-  const [vendorAddress, setVendorAddress] = useState("");
-  const [vendorContact, setVendorContact] = useState("");
-  const [vendorEmail, setVendorEmail] = useState("");
+  const [vendorAddress, setVendorAddress] = useState(organization?.address ?? "");
+  const [vendorEmail, setVendorEmail] = useState(organization?.email ?? "");
+  const [vendorContact, setVendorContact] = useState(organization?.contact ?? "");
   const [bankBeneficiaryName, setBankBeneficiaryName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
   const [bankName, setBankName] = useState("");
@@ -223,12 +232,16 @@ const ProformaInvoicesPage: React.FC = () => {
     setTaxPercent("13");
     setCustomerPan("");
     setVendorPan("");
-    setVendorId("");
-    setVendorName("");
+    setCustomerName("");
+    setCustomerContactPerson("");
+    setCustomerAddress("");
+    setCustomerEmail("");
+    setCustomerContact("");
+    setVendorName(organization?.name ?? "");
     setVendorContactPerson("");
-    setVendorAddress("");
-    setVendorContact("");
-    setVendorEmail("");
+    setVendorAddress(organization?.address ?? "");
+    setVendorEmail(organization?.email ?? "");
+    setVendorContact(organization?.contact ?? "");
     setBankBeneficiaryName("");
     setBankAccountNumber("");
     setBankName("");
@@ -262,12 +275,16 @@ const ProformaInvoicesPage: React.FC = () => {
     setTaxPercent(pi.taxPercent != null ? String(toNumber(pi.taxPercent)) : "13");
     setCustomerPan(pi.customerPan ?? "");
     setVendorPan(pi.vendorPan ?? "");
-    setVendorId(pi.vendorId ?? "");
-    setVendorName(pi.vendorName ?? "");
+    setCustomerName(pi.customerName ?? "");
+    setCustomerContactPerson(pi.customerContactPerson ?? "");
+    setCustomerAddress(pi.customerAddress ?? "");
+    setCustomerEmail(pi.customerEmail ?? "");
+    setCustomerContact(pi.customerContact ?? "");
+    setVendorName(pi.vendorName || organization?.name || "");
     setVendorContactPerson(pi.vendorContactPerson ?? "");
-    setVendorAddress(pi.vendorAddress ?? "");
-    setVendorContact(pi.vendorContact ?? "");
-    setVendorEmail(pi.vendorEmail ?? "");
+    setVendorAddress(pi.vendorAddress || organization?.address || "");
+    setVendorEmail(pi.vendorEmail || organization?.email || "");
+    setVendorContact(pi.vendorContact || organization?.contact || "");
     setBankBeneficiaryName(pi.bankBeneficiaryName ?? "");
     setBankAccountNumber(pi.bankAccountNumber ?? "");
     setBankName(pi.bankName ?? "");
@@ -294,19 +311,21 @@ const ProformaInvoicesPage: React.FC = () => {
     setShowForm(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingId && !targetPoId && !vendorId && !vendorName.trim()) {
-      setFormError("Select a purchase order, or select/enter a vendor for a standalone PI.");
-      return;
-    }
+
+    // Things the invoice can't be saved without.
+    const blocking: string[] = [];
+    if (!editingId && !customerName.trim()) blocking.push("Customer name");
     const payloadItems = [];
+    let namedItems = 0;
     for (const row of items) {
       if (!row.itemName.trim()) continue;
+      namedItems++;
       const quantity = parseFloat(row.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        setFormError("Every item needs a valid quantity.");
-        return;
+        blocking.push(`A valid quantity for item "${row.itemName.trim()}"`);
+        continue;
       }
       payloadItems.push({
         itemName: row.itemName.trim(),
@@ -317,11 +336,13 @@ const ProformaInvoicesPage: React.FC = () => {
         taxable: row.taxable,
       });
     }
-    if (payloadItems.length === 0) {
-      setFormError("Add at least one item.");
+    if (namedItems === 0) blocking.push("At least one item");
+    if (blocking.length > 0) {
+      setMissingInfo({ blocking, optional: [] });
       return;
     }
-    const input = {
+
+    const input: ProformaInvoiceInput = {
       piNumber: piNumber.trim() || undefined,
       piDate: piDate || undefined,
       currency: currency.trim() || "NPR",
@@ -331,16 +352,16 @@ const ProformaInvoicesPage: React.FC = () => {
       taxPercent: numOrUndef(taxPercent),
       customerPan: customerPan.trim() || undefined,
       vendorPan: vendorPan.trim() || undefined,
-      ...(!targetPoId
-        ? {
-            vendorId: vendorId || null,
-            vendorName: vendorName.trim() || undefined,
-            vendorContactPerson: vendorContactPerson.trim() || undefined,
-            vendorAddress: vendorAddress.trim() || undefined,
-            vendorContact: vendorContact.trim() || undefined,
-            vendorEmail: vendorEmail.trim() || undefined,
-          }
-        : {}),
+      customerName: customerName.trim() || undefined,
+      customerContactPerson: customerContactPerson.trim() || undefined,
+      customerAddress: customerAddress.trim() || undefined,
+      customerEmail: customerEmail.trim() || undefined,
+      customerContact: customerContact.trim() || undefined,
+      vendorName: vendorName.trim() || undefined,
+      vendorContactPerson: vendorContactPerson.trim() || undefined,
+      vendorAddress: vendorAddress.trim() || undefined,
+      vendorEmail: vendorEmail.trim() || undefined,
+      vendorContact: vendorContact.trim() || undefined,
       bankBeneficiaryName: bankBeneficiaryName.trim() || undefined,
       bankAccountNumber: bankAccountNumber.trim() || undefined,
       bankName: bankName.trim() || undefined,
@@ -354,6 +375,33 @@ const ProformaInvoicesPage: React.FC = () => {
       items: payloadItems,
     };
 
+    // Details that would print as "--" on the PDF — worth a heads-up when creating, but not a hard stop.
+    if (!editingId) {
+      const optional: string[] = [];
+      const check = (value: string, label: string) => {
+        if (!value.trim()) optional.push(label);
+      };
+      check(customerContactPerson, "Customer — name of contact person");
+      check(customerAddress, "Customer — address");
+      check(customerPan, "Customer — PAN no.");
+      check(customerEmail, "Customer — email id");
+      check(customerContact, "Customer — contact number");
+      check(vendorName, "Vendor — company name");
+      check(vendorContactPerson, "Vendor — name of contact person");
+      check(vendorAddress, "Vendor — address");
+      check(vendorPan, "Vendor — PAN no.");
+      check(vendorEmail, "Vendor — email id");
+      check(vendorContact, "Vendor — contact number");
+      if (optional.length > 0) {
+        setMissingInfo({ blocking: [], optional, input });
+        return;
+      }
+    }
+
+    void submitPi(input);
+  };
+
+  const submitPi = async (input: ProformaInvoiceInput) => {
     setSubmitting(true);
     setFormError(null);
     try {
@@ -411,7 +459,7 @@ const ProformaInvoicesPage: React.FC = () => {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search PI#, PO#, vendor, project..."
+                  placeholder="Search PI#, PO#, customer, project..."
                   className="pl-8 pr-3 py-2 w-72 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
                 />
               </div>
@@ -485,45 +533,68 @@ const ProformaInvoicesPage: React.FC = () => {
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-slate-400">
-                    {targetPoId
-                      ? "Vendor details for the VENDOR box come from the selected purchase order."
-                      : "No purchase order selected — pick or enter a vendor below for the VENDOR box."}
+                    Optional — link this invoice to a purchase order. The VENDOR box on the PDF is always your own organization.
                   </p>
                 </div>
 
-                {!targetPoId && (
-                  <div className="p-3 space-y-2 border rounded-lg border-slate-200">
-                    <p className="text-[11px] font-semibold text-slate-900">Vendor (standalone PI)</p>
-                    <select
-                      value={vendorId}
-                      onChange={(e) => {
-                        const id = e.target.value ? Number(e.target.value) : "";
-                        setVendorId(id);
-                        const v = vendors.find((x) => x.id === id);
-                        if (v) {
-                          setVendorName(v.name ?? "");
-                          setVendorContactPerson(v.contactPerson ?? "");
-                          setVendorAddress(v.address ?? v.location ?? "");
-                          setVendorContact(v.contact ?? "");
-                          setVendorEmail(v.email ?? "");
-                        }
-                      }}
-                      className="appearance-none w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400"
-                    >
-                      <option value="">Enter vendor details freeform (no existing vendor)…</option>
-                      {vendors.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <div data-arrow-row className="grid grid-cols-2 gap-2">
-                      <input value={vendorName} onChange={(e) => setVendorName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Vendor / company name" />
-                      <input value={vendorContactPerson} onChange={(e) => setVendorContactPerson(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact person" />
-                      <input value={vendorAddress} onChange={(e) => setVendorAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Address" />
-                      <input value={vendorContact} onChange={(e) => setVendorContact(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact no." />
-                      <input value={vendorEmail} onChange={(e) => setVendorEmail(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Email" />
+                <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                  <p className="text-[11px] font-semibold text-slate-900">Customer</p>
+                  <div data-arrow-row className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelCls}>Customer Name</label>
+                      <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Company / customer name" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Name of Contact Person</label>
+                      <input value={customerContactPerson} onChange={(e) => setCustomerContactPerson(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact person" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Customer Address</label>
+                      <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Address" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>PAN No.</label>
+                      <input value={customerPan} onChange={(e) => setCustomerPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Customer PAN" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Customer Email Id</label>
+                      <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Email" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Customer Contact Number</label>
+                      <input value={customerContact} onChange={(e) => setCustomerContact(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact no." />
                     </div>
                   </div>
-                )}
+                </div>
+                <div className="p-3 space-y-2 border rounded-lg border-slate-200">
+                  <p className="text-[11px] font-semibold text-slate-900">Vendor (your company)</p>
+                  <div data-arrow-row className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelCls}>Company Name</label>
+                      <input value={vendorName} onChange={(e) => setVendorName(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Company name" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Name of Contact Person</label>
+                      <input value={vendorContactPerson} onChange={(e) => setVendorContactPerson(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact person" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Address</label>
+                      <input value={vendorAddress} onChange={(e) => setVendorAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Address" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>PAN No.</label>
+                      <input value={vendorPan} onChange={(e) => setVendorPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Vendor PAN" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Email Id</label>
+                      <input type="email" value={vendorEmail} onChange={(e) => setVendorEmail(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Email" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Contact Number</label>
+                      <input value={vendorContact} onChange={(e) => setVendorContact(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Contact no." />
+                    </div>
+                  </div>
+                </div>
                 <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
                     <label className={labelCls}>PI Number</label>
@@ -552,14 +623,6 @@ const ProformaInvoicesPage: React.FC = () => {
                   <div>
                     <label className={labelCls}>VAT %</label>
                     <input type="number" step="0.01" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Customer PAN No.</label>
-                    <input value={customerPan} onChange={(e) => setCustomerPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Vendor PAN No.</label>
-                    <input value={vendorPan} onChange={(e) => setVendorPan(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                   </div>
                 </div>
 
@@ -684,7 +747,7 @@ const ProformaInvoicesPage: React.FC = () => {
               <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
                 {search || statusFilter
                   ? "Try adjusting your filters."
-                  : "Add one above — link it to a purchase order, or create a standalone PI for a vendor."}
+                  : "Add one above — link it to a purchase order, or create a standalone PI for a customer."}
               </p>
             </div>
           ) : (
@@ -729,14 +792,14 @@ const ProformaInvoicesPage: React.FC = () => {
                                     {pi.purchaseOrder.poNumber || `PO #${pi.purchaseOrder.id}`}
                                   </button>
                                   <div className="text-[11px] text-slate-400">
-                                    {pi.purchaseOrder.vendor?.name || "Unknown vendor"} · {pi.purchaseOrder.project?.name || "Unknown project"}
+                                    {pi.customerName || "No customer"} · {pi.purchaseOrder.project?.name || "Unknown project"}
                                   </div>
                                 </>
                               ) : (
                                 <>
                                   <span className="text-slate-500 italic">Standalone</span>
                                   <div className="text-[11px] text-slate-400">
-                                    {pi.vendor?.name || pi.vendorName || "No vendor"}
+                                    {pi.customerName || "No customer"}
                                   </div>
                                 </>
                               )}
@@ -772,14 +835,12 @@ const ProformaInvoicesPage: React.FC = () => {
                               )}
                             </td>
                             <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                              <a
-                                href={pdfUrl(pi.id)}
-                                target="_blank"
-                                rel="noreferrer"
+                              <button
+                                onClick={() => setPreviewPi(pi)}
                                 className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
                               >
-                                <Download size={11} /> Download PDF
-                              </a>
+                                <Eye size={11} /> Preview PDF
+                              </button>
                             </td>
                             {isAdmin && (
                               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -866,6 +927,61 @@ const ProformaInvoicesPage: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {missingInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="w-full max-w-md bg-white shadow-xl rounded-xl">
+            <div className="flex items-start gap-3 px-5 pt-5">
+              <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-amber-600 rounded-full bg-amber-50">
+                <AlertCircle size={18} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[14px] font-semibold text-slate-900">
+                  {missingInfo.blocking.length > 0 ? "Required details are missing" : "Some details are missing"}
+                </h3>
+                <p className="mt-0.5 text-[12px] text-slate-500">
+                  {missingInfo.blocking.length > 0
+                    ? "Please fill these in before creating the proforma invoice:"
+                    : "These will show as “--” on the PDF:"}
+                </p>
+              </div>
+            </div>
+            <ul className="px-5 py-3 ml-5 space-y-1 text-[12.5px] list-disc list-inside text-slate-700 max-h-64 overflow-y-auto">
+              {(missingInfo.blocking.length > 0 ? missingInfo.blocking : missingInfo.optional).map((label) => (
+                <li key={label}>{label}</li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-100">
+              <button
+                onClick={() => setMissingInfo(null)}
+                className="px-4 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              {missingInfo.blocking.length === 0 && missingInfo.input && (
+                <button
+                  onClick={() => {
+                    const input = missingInfo.input!;
+                    setMissingInfo(null);
+                    void submitPi(input);
+                  }}
+                  className={primaryBtnCls}
+                >
+                  Create anyway
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewPi && (
+        <PdfPreviewModal
+          url={pdfUrl(previewPi.id)}
+          fileName={`${(previewPi.piNumber || `PI-${previewPi.id}`).replace(/\//g, "-")}.pdf`}
+          onClose={() => setPreviewPi(null)}
+        />
       )}
     </div>
   );
