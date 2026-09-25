@@ -613,10 +613,6 @@ const ProformaInvoicesPage: React.FC = () => {
                     <input type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className={inputCls} />
                   </div>
                   <div>
-                    <label className={labelCls}>Payment Terms</label>
-                    <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
-                  </div>
-                  <div>
                     <label className={labelCls}>Validity Date</label>
                     <input type="date" value={validityDate} onChange={(e) => setValidityDate(e.target.value)} className={inputCls} />
                   </div>
@@ -707,6 +703,11 @@ const ProformaInvoicesPage: React.FC = () => {
                     <input value={placeOfDischarge} onChange={(e) => setPlaceOfDischarge(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Place of Discharge" />
                     <input value={modeOfShipment} onChange={(e) => setModeOfShipment(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Mode & Duration of Shipment" />
                   </div>
+                </div>
+
+                <div>
+                  <label className={labelCls}>Payment Terms</label>
+                  <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} placeholder="Optional" />
                 </div>
 
                 <div>
