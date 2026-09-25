@@ -610,14 +610,14 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         input: {
           poNumber: trimmedPoNumber,
           poDate: form.poDate || null,
-          paymentTerms: form.paymentTerms.trim() || undefined,
-          incoterms: form.incoterms.trim() || undefined,
+          paymentTerms: form.paymentTerms.trim() || null,
+          incoterms: form.incoterms.trim() || null,
           taxPercent: numOrUndef(form.taxPercent) ?? null,
-          terms: form.terms.trim() || undefined,
-          deliveryPeriod: form.deliveryPeriod.trim() || undefined,
-          finalDestination: form.finalDestination.trim() || undefined,
-          customerContactPerson: form.customerContactPerson.trim() || undefined,
-          customerPanVatNumber: form.customerPanVatNumber.trim() || undefined,
+          terms: form.terms.trim() || null,
+          deliveryPeriod: form.deliveryPeriod.trim() || null,
+          finalDestination: form.finalDestination.trim() || null,
+          customerContactPerson: form.customerContactPerson.trim() || null,
+          customerPanVatNumber: form.customerPanVatNumber.trim() || null,
           currency: form.currency.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
         },
@@ -802,7 +802,7 @@ ${organization?.name || ""}`;
             <label className={labelCls}>Notes</label>
             <textarea
               disabled={!isAdmin}
-              rows={2}
+              rows={5}
               value={form.terms}
               onChange={(e) => setForm({ ...form, terms: e.target.value })}
               className={`${inputCls} resize-none`}

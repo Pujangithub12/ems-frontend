@@ -4,7 +4,7 @@ import { Project, ProjectTask } from "../../../types";
 export type ProjectPayload = Partial<{
   name: string;
   description: string;
-  dueDate: string;
+  dueDate: string | null;
   status: string;
   assigneeIds: number[];
   contractDate: string | null;
