@@ -307,21 +307,23 @@ const InventoryPage: React.FC = () => {
     setSubmitting(true);
     setFormError(null);
     try {
+      // Editing: send null for a cleared field (undefined is dropped from the JSON, leaving the old value in place).
+      const blank = editingItem ? null : undefined;
       const payload: InventoryItemInput = {
         itemName: form.itemName.trim(),
         itemId: form.itemId,
         category: form.category || "hardware",
         quantity: form.quantity && form.quantity > 0 ? form.quantity : 0,
-        unit: form.unit?.trim() || undefined,
+        unit: form.unit?.trim() || blank,
         status: form.status || "in_stock",
         lastRestockedDate: form.lastRestockedDate || null,
-        notes: form.notes?.trim() || undefined,
-        sku: form.sku?.trim() || undefined,
+        notes: form.notes?.trim() || blank,
+        sku: form.sku?.trim() || blank,
         warehouseId: form.warehouseId || null,
         reservedQuantity: form.reservedQuantity || 0,
         incomingQuantity: form.incomingQuantity || 0,
         averageCost: form.averageCost != null && `${form.averageCost}` !== "" ? Number(form.averageCost) : null,
-        supplier: form.supplier?.trim() || undefined,
+        supplier: form.supplier?.trim() || blank,
         vendorId: form.vendorId || null,
         warrantyExpiryDate: form.warrantyExpiryDate || null,
       };

@@ -11,7 +11,7 @@ export interface ProformaInvoiceItemInput {
   taxable?: boolean;
 }
 
-export interface ProformaInvoiceInput {
+interface ProformaInvoiceInputBase {
   piNumber?: string;
   piDate?: string;
   currency?: string;
@@ -45,6 +45,11 @@ export interface ProformaInvoiceInput {
   notes?: string;
   items?: ProformaInvoiceItemInput[];
 }
+
+/** Every field but `items` may be null: on edit, null clears a saved value (undefined is dropped from the JSON, so the backend would leave it untouched). */
+export type ProformaInvoiceInput = {
+  [K in keyof ProformaInvoiceInputBase]?: K extends "items" ? ProformaInvoiceInputBase[K] : ProformaInvoiceInputBase[K] | null;
+};
 
 /** GET every proforma invoice across every purchase order in the organization, for the sidebar Proforma Invoices page. */
 export async function fetchAllProformaInvoices(): Promise<ProformaInvoice[]> {

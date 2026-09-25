@@ -342,36 +342,38 @@ const ProformaInvoicesPage: React.FC = () => {
       return;
     }
 
+    // Editing: send null for a cleared field (undefined is dropped from the JSON, leaving the old value in place).
+    const blank = editingId ? null : undefined;
     const input: ProformaInvoiceInput = {
-      piNumber: piNumber.trim() || undefined,
-      piDate: piDate || undefined,
+      piNumber: piNumber.trim() || blank,
+      piDate: piDate || blank,
       currency: currency.trim() || "NPR",
       exchangeRate: numOrUndef(exchangeRate) ?? 1,
-      paymentTerms: paymentTerms.trim() || undefined,
-      validityDate: validityDate || undefined,
-      taxPercent: numOrUndef(taxPercent),
-      customerPan: customerPan.trim() || undefined,
-      vendorPan: vendorPan.trim() || undefined,
-      customerName: customerName.trim() || undefined,
-      customerContactPerson: customerContactPerson.trim() || undefined,
-      customerAddress: customerAddress.trim() || undefined,
-      customerEmail: customerEmail.trim() || undefined,
-      customerContact: customerContact.trim() || undefined,
-      vendorName: vendorName.trim() || undefined,
-      vendorContactPerson: vendorContactPerson.trim() || undefined,
-      vendorAddress: vendorAddress.trim() || undefined,
-      vendorEmail: vendorEmail.trim() || undefined,
-      vendorContact: vendorContact.trim() || undefined,
-      bankBeneficiaryName: bankBeneficiaryName.trim() || undefined,
-      bankAccountNumber: bankAccountNumber.trim() || undefined,
-      bankName: bankName.trim() || undefined,
-      bankSwiftCode: bankSwiftCode.trim() || undefined,
-      bankAddress: bankAddress.trim() || undefined,
-      deliveryTerms: deliveryTerms.trim() || undefined,
-      placeOfLoading: placeOfLoading.trim() || undefined,
-      placeOfDischarge: placeOfDischarge.trim() || undefined,
-      modeOfShipment: modeOfShipment.trim() || undefined,
-      notes: notes.trim() || undefined,
+      paymentTerms: paymentTerms.trim() || blank,
+      validityDate: validityDate || blank,
+      taxPercent: numOrUndef(taxPercent) ?? blank,
+      customerPan: customerPan.trim() || blank,
+      vendorPan: vendorPan.trim() || blank,
+      customerName: customerName.trim() || blank,
+      customerContactPerson: customerContactPerson.trim() || blank,
+      customerAddress: customerAddress.trim() || blank,
+      customerEmail: customerEmail.trim() || blank,
+      customerContact: customerContact.trim() || blank,
+      vendorName: vendorName.trim() || blank,
+      vendorContactPerson: vendorContactPerson.trim() || blank,
+      vendorAddress: vendorAddress.trim() || blank,
+      vendorEmail: vendorEmail.trim() || blank,
+      vendorContact: vendorContact.trim() || blank,
+      bankBeneficiaryName: bankBeneficiaryName.trim() || blank,
+      bankAccountNumber: bankAccountNumber.trim() || blank,
+      bankName: bankName.trim() || blank,
+      bankSwiftCode: bankSwiftCode.trim() || blank,
+      bankAddress: bankAddress.trim() || blank,
+      deliveryTerms: deliveryTerms.trim() || blank,
+      placeOfLoading: placeOfLoading.trim() || blank,
+      placeOfDischarge: placeOfDischarge.trim() || blank,
+      modeOfShipment: modeOfShipment.trim() || blank,
+      notes: notes.trim() || blank,
       items: payloadItems,
     };
 
@@ -707,12 +709,12 @@ const ProformaInvoicesPage: React.FC = () => {
 
                 <div>
                   <label className={labelCls}>Payment Terms</label>
-                  <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} placeholder="Optional" />
+                  <textarea value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} rows={4} placeholder="Optional" />
                 </div>
 
                 <div>
                   <label className={labelCls}>Notes</label>
-                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} rows={2} placeholder="Optional" />
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} rows={4} placeholder="Optional" />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-1">

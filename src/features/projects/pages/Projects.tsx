@@ -215,7 +215,7 @@ const ProjectsPage: React.FC = () => {
         payload: {
           name: editName,
           description: editDescription,
-          dueDate: editDueDate || undefined,
+          dueDate: editDueDate || null,
           status: editStatus,
           assigneeIds: editSelectedAssigneeIds,
         },
