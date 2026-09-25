@@ -653,8 +653,9 @@ const ProformaInvoicesPage: React.FC = () => {
                           onChange={(e) => updateItemRow(i, { quantity: e.target.value })}
                           placeholder="Qty"
                           type="number"
-                          min="1"
-                          className="w-16 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+                          min="0"
+                          step="any"
+                          className="w-20 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <input
                           value={row.unit}
@@ -669,6 +670,7 @@ const ProformaInvoicesPage: React.FC = () => {
                           placeholder="Unit price"
                           type="number"
                           min="0"
+                          step="any"
                           className="w-24 px-2 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
                         />
                         <label className="flex items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap">
