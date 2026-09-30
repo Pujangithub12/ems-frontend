@@ -340,6 +340,31 @@ const emptyAddItemForm = {
   description: "",
 };
 
+/** A free-form spec table on the Overview tab (PDF, right above Payment Terms) — title, column
+ * headers and rows are all admin-defined, so it can match any spec sheet shape (a simple
+ * S.N./label/value table, or a wider multi-column table with its own footer note). */
+type SpecTableForm = {
+  title: string;
+  columns: string[];
+  footerNote: string;
+  rows: string[][];
+};
+
+const emptySpecTable = (): SpecTableForm => ({
+  title: "",
+  columns: ["S.N.", "Particulars", "Description"],
+  footerNote: "",
+  rows: [["", "", ""]],
+});
+
+const specTablesFromPo = (po: PurchaseOrder): SpecTableForm[] =>
+  (po.specTables || []).map((t) => ({
+    title: t.title,
+    columns: [...t.columns],
+    footerNote: t.footerNote || "",
+    rows: t.rows.map((r) => [...r.cells]),
+  }));
+
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void>; onBack: () => void }> = ({ po, isAdmin, onChanged, onBack }) => {
   const { organization } = useAuth();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -355,6 +380,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
     Object.fromEntries(po.items.map((item) => [item.id, item.hsnCode || ""])),
   );
+  /** Free-form spec tables (PDF, right above Payment Terms) — a table is dropped from the PDF
+   * entirely when it has no title or no non-blank rows (see PurchaseOrderController). */
+  const [specTables, setSpecTables] = useState<SpecTableForm[]>(() => specTablesFromPo(po));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Asked before leaving (Esc) so in-progress edits aren't lost by accident — mirrors the
@@ -619,8 +647,50 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   useEffect(() => {
     setForm(formFromPo(po));
     setHsnCodes(Object.fromEntries(po.items.map((item) => [item.id, item.hsnCode || ""])));
+    setSpecTables(specTablesFromPo(po));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.id]);
+
+  // ---- Free-form spec table editing (add/remove table, rename/add/remove column, add/remove
+  // row, edit a cell) — see SpecTableForm above. ----
+  const addSpecTable = () => setSpecTables((prev) => [...prev, emptySpecTable()]);
+  const removeSpecTable = (tableIdx: number) => setSpecTables((prev) => prev.filter((_, i) => i !== tableIdx));
+  const updateSpecTableTitle = (tableIdx: number, title: string) =>
+    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, title } : t)));
+  const updateSpecTableFooter = (tableIdx: number, footerNote: string) =>
+    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, footerNote } : t)));
+  const updateSpecColumn = (tableIdx: number, colIdx: number, value: string) =>
+    setSpecTables((prev) =>
+      prev.map((t, i) => (i === tableIdx ? { ...t, columns: t.columns.map((c, ci) => (ci === colIdx ? value : c)) } : t)),
+    );
+  const addSpecColumn = (tableIdx: number) =>
+    setSpecTables((prev) =>
+      prev.map((t, i) =>
+        i === tableIdx
+          ? { ...t, columns: [...t.columns, `Column ${t.columns.length + 1}`], rows: t.rows.map((r) => [...r, ""]) }
+          : t,
+      ),
+    );
+  const removeSpecColumn = (tableIdx: number, colIdx: number) =>
+    setSpecTables((prev) =>
+      prev.map((t, i) =>
+        i === tableIdx
+          ? { ...t, columns: t.columns.filter((_, ci) => ci !== colIdx), rows: t.rows.map((r) => r.filter((_, ci) => ci !== colIdx)) }
+          : t,
+      ),
+    );
+  const addSpecRow = (tableIdx: number) =>
+    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, rows: [...t.rows, t.columns.map(() => "")] } : t)));
+  const removeSpecRow = (tableIdx: number, rowIdx: number) =>
+    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, rows: t.rows.filter((_, ri) => ri !== rowIdx) } : t)));
+  const updateSpecCell = (tableIdx: number, rowIdx: number, colIdx: number, value: string) =>
+    setSpecTables((prev) =>
+      prev.map((t, i) =>
+        i === tableIdx
+          ? { ...t, rows: t.rows.map((r, ri) => (ri === rowIdx ? r.map((c, ci) => (ci === colIdx ? value : c)) : r)) }
+          : t,
+      ),
+    );
 
   // Carry the Customer Details fields over from the most recently saved PO that has them, so a
   // brand-new PO (this one has never had any of its own customer info saved) starts pre-filled
@@ -676,6 +746,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           customerPhone: form.customerPhone.trim() || null,
           currency: form.currency.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
+          specTables: specTables.map((t) => ({
+            title: t.title.trim(),
+            columns: t.columns.map((c) => c.trim()),
+            footerNote: t.footerNote.trim() || null,
+            rows: t.rows.map((r) => ({ cells: r.map((c) => c.trim()) })),
+          })),
         },
       });
       await onChanged();
@@ -1314,6 +1390,141 @@ ${organization?.name || ""}`;
           </div>
         </div>
       )}
+
+      <div className={sectionCardCls}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-[13px] font-semibold text-slate-900">Specification Tables</h3>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Shown on the PDF right above Payment Terms (e.g. "Technical Specification", "Electricity Requirement", "Electrical Motor data...") — a table with no title or no rows doesn't appear at all. Add as many as you need, each with its own columns.
+            </p>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={addSpecTable}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 w-fit"
+            >
+              <Plus size={13} /> Add Table
+            </button>
+          )}
+        </div>
+        {specTables.length === 0 ? (
+          <p className="text-[12px] text-slate-400">No spec tables added.</p>
+        ) : (
+          <div className="space-y-4">
+            {specTables.map((table, tIdx) => (
+              <div key={tIdx} className="p-3 border rounded-lg border-slate-200">
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <label className={labelCls}>Table Title</label>
+                    <input
+                      disabled={!isAdmin}
+                      value={table.title}
+                      onChange={(e) => updateSpecTableTitle(tIdx, e.target.value)}
+                      placeholder="e.g. Technical Specification"
+                      className={inputCls}
+                    />
+                  </div>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => removeSpecTable(tIdx)}
+                      title="Remove table"
+                      className="flex-shrink-0 p-1.5 mt-5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <label className={labelCls}>Columns</label>
+                <div className="flex items-start gap-1.5 mb-2">
+                  {table.columns.map((col, cIdx) => (
+                    <div key={cIdx} className="flex items-center flex-1 min-w-0 gap-1">
+                      <input
+                        disabled={!isAdmin}
+                        value={col}
+                        onChange={(e) => updateSpecColumn(tIdx, cIdx, e.target.value)}
+                        className={`${inputCls} font-medium`}
+                      />
+                      {isAdmin && table.columns.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSpecColumn(tIdx, cIdx)}
+                          title="Remove column"
+                          className="flex-shrink-0 p-1 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => addSpecColumn(tIdx)}
+                      title="Add column"
+                      className="flex-shrink-0 p-2 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <label className={labelCls}>Rows</label>
+                <div className="space-y-1.5">
+                  {table.rows.map((row, rIdx) => (
+                    <div key={rIdx} data-arrow-row className="flex items-center gap-1.5">
+                      {table.columns.map((col, cIdx) => (
+                        <input
+                          key={cIdx}
+                          disabled={!isAdmin}
+                          value={row[cIdx] ?? ""}
+                          onChange={(e) => updateSpecCell(tIdx, rIdx, cIdx, e.target.value)}
+                          onKeyDown={handleRowArrowNav}
+                          placeholder={col}
+                          className={`${inputCls} flex-1 min-w-0`}
+                        />
+                      ))}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => removeSpecRow(tIdx, rIdx)}
+                          title="Remove row"
+                          className="flex-shrink-0 p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => addSpecRow(tIdx)}
+                    className="flex items-center gap-1 mt-2 text-[11px] font-medium text-blue-700 hover:underline"
+                  >
+                    <Plus size={12} /> Add Row
+                  </button>
+                )}
+
+                <div className="mt-3">
+                  <label className={labelCls}>Footer Note (optional)</label>
+                  <input
+                    disabled={!isAdmin}
+                    value={table.footerNote}
+                    onChange={(e) => updateSpecTableFooter(tIdx, e.target.value)}
+                    placeholder="e.g. Motors Make – Havells (RPM 1440)"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className={sectionCardCls}>
         <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Status History</h3>

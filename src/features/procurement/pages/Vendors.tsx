@@ -10,7 +10,6 @@ import {
   Pencil,
   Trash2,
   MapPin,
-  CalendarClock,
   Hash,
   Phone,
 } from "lucide-react";
@@ -85,15 +84,9 @@ const VendorsPage: React.FC = () => {
   }, [vendors, search]);
 
   const kpis = useMemo(() => {
-    const now = Date.now();
-    const soon = now + 30 * 24 * 60 * 60 * 1000;
-    const expiringSoon = vendors.filter(
-      (v) => v.contractExpiryDate && new Date(v.contractExpiryDate).getTime() <= soon,
-    ).length;
     return {
       total: vendors.length,
       withContact: vendors.filter((v) => !!v.contact).length,
-      expiringSoon,
     };
   }, [vendors]);
 
@@ -155,10 +148,9 @@ const VendorsPage: React.FC = () => {
       ) : (
         <div className="flex flex-col w-full min-w-0 gap-4">
           {/* KPI strip */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <KpiCard label="Total Vendors" value={String(kpis.total)} icon={<Building2 className="w-4 h-4 text-blue-700" />} iconBg="bg-blue-50" />
             <KpiCard label="With Phone Number" value={String(kpis.withContact)} icon={<Phone className="w-4 h-4 text-emerald-600" />} iconBg="bg-emerald-50" />
-            <KpiCard label="Contracts Expiring (30d)" value={String(kpis.expiringSoon)} icon={<CalendarClock className="w-4 h-4 text-red-700" />} iconBg="bg-red-50" />
           </div>
 
           {/* Toolbar */}
@@ -226,14 +218,17 @@ const VendorsPage: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-left">Location</th>
                       <th className="px-3 py-2 font-medium text-left">Phone</th>
                       <th className="px-3 py-2 font-medium text-left">Email</th>
-                      <th className="px-3 py-2 font-medium text-left">Contract Expiry</th>
                       <th className="px-3 py-2 font-medium text-left">Added</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredVendors.map((v) => (
-                      <tr key={v.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <tr
+                        key={v.id}
+                        onClick={() => isAdmin && openEditForm(v)}
+                        className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${isAdmin ? "cursor-pointer" : ""}`}
+                      >
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2.5">
                             <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-blue-900 rounded-full bg-blue-50">
@@ -276,20 +271,25 @@ const VendorsPage: React.FC = () => {
                           )}
                         </td>
                         <td className="px-3 py-2 text-slate-600">{v.email || "--"}</td>
-                        <td className="px-3 py-2 text-slate-600">{formatDate(v.contractExpiryDate)}</td>
                         <td className="px-3 py-2 text-slate-500">{formatDate(v.createdAt)}</td>
                         {isAdmin && (
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-end gap-1">
                               <button
-                                onClick={() => openEditForm(v)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditForm(v);
+                                }}
                                 title="Edit"
                                 className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                               >
                                 <Pencil size={13} />
                               </button>
                               <button
-                                onClick={() => setDeleteTarget(v)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteTarget(v);
+                                }}
                                 title="Delete"
                                 className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
                               >
