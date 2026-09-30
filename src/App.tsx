@@ -23,6 +23,7 @@ const Inventory = lazy(() => import("./features/inventory/pages/Inventory"));
 const PurchaseOrders = lazy(() => import("./features/procurement/pages/PurchaseOrders"));
 const PurchaseOrderDetail = lazy(() => import("./features/procurement/pages/PurchaseOrderDetail"));
 const ProformaInvoices = lazy(() => import("./features/procurement/pages/ProformaInvoices"));
+const Quotations = lazy(() => import("./features/procurement/pages/Quotations"));
 const Vendors = lazy(() => import("./features/procurement/pages/Vendors"));
 const Items = lazy(() => import("./features/procurement/pages/Items"));
 const Finance = lazy(() => import("./features/procurement/pages/Finance"));
@@ -207,6 +208,14 @@ function App() {
               element={
                 <RequireProcurementAccess>
                   <ProformaInvoices />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/quotations"
+              element={
+                <RequireProcurementAccess>
+                  <Quotations />
                 </RequireProcurementAccess>
               }
             />

@@ -49,6 +49,17 @@ export const currentBsYearMonth = (): { year: number; month: number } => {
   return { year: bs.getYear(), month: bs.getMonth() };
 };
 
+/** Nepali fiscal year runs Shrawan 1 -> Ashar end (BS months are zero-based:
+ * Baishakh=0 ... Shrawan=3 ... Chaitra=11), which does NOT line up with the BS
+ * calendar year (Baishakh 1). So Baishakh/Jestha/Ashar (months 0-2) still
+ * belong to the fiscal year that started the previous BS year — mirrors the
+ * backend's nepaliFiscalYear.ts (used for the Quotations page's Q. No. suggestion). */
+export const currentNepaliFiscalYearLabel = (): string => {
+  const { year: bsYear, month: bsMonth } = currentBsYearMonth();
+  const startYear = bsMonth >= 3 ? bsYear : bsYear - 1;
+  return `${startYear % 100}/${(startYear + 1) % 100}`;
+};
+
 /** Human-readable BS date for an AD ISO date, e.g. "Tue, Shrawan 5" — for
  * displaying rows entered against a BS day picker (see Add Entry) so the
  * calendar shown never flips back to Gregorian after saving. */

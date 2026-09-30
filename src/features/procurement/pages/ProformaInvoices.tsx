@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FileText,
@@ -8,31 +8,28 @@ import {
   AlertCircle,
   ChevronDown,
   Plus,
-  Check,
-  XCircle,
-  Upload,
-  Paperclip,
   Trash2,
-  X,
   Clock,
   CheckCircle2,
   Ban,
   ChevronRight,
   Eye,
   Pencil,
+  X,
+  Mail,
 } from "lucide-react";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { formatCost, toNumber } from "../../../lib/currency";
+import { openGmailCompose } from "../../../lib/gmail";
 import { ProformaInvoice, ProformaInvoiceStatus } from "../../../types";
-import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useCreateStandaloneProformaInvoiceMutation, useUpdateProformaInvoiceMutation, useChangeProformaInvoiceStatusMutation, useUploadProformaInvoiceFileMutation } from "../hooks/useProformaInvoice";
+import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useCreateStandaloneProformaInvoiceMutation, useUpdateProformaInvoiceMutation } from "../hooks/useProformaInvoice";
 import { useOrganizationPurchaseOrdersQuery } from "../hooks/usePurchaseOrder";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import type { ProformaInvoiceInput } from "../api/proformaInvoice.api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
 const pdfUrl = (id: number) => `${API_BASE}/api/proforma-invoices/${id}/pdf`;
 
 const PI_STATUS_STYLES: Record<ProformaInvoiceStatus, { bg: string; fg: string; label: string }> = {
@@ -120,17 +117,27 @@ const ProformaInvoicesPage: React.FC = () => {
   const createMutation = useCreateProformaInvoiceMutation();
   const createStandaloneMutation = useCreateStandaloneProformaInvoiceMutation();
   const updateMutation = useUpdateProformaInvoiceMutation();
-  const changeStatusMutation = useChangeProformaInvoiceStatusMutation();
-  const uploadFileMutation = useUploadProformaInvoiceFileMutation();
 
   const proformaInvoices = piQuery.data ?? [];
+
+  const PI_NUMBER_RE = /^PI-(\d+)$/i;
+  /** Next default PI Number, shown pre-filled when opening a fresh (non-edit) form: PI-<n+1>,
+   * zero-padded to at least 3 digits, where n is the highest number among existing "PI-###"
+   * invoices. Mirrors ProformaInvoiceController.nextPiNumber, which is what's actually used if
+   * this is left as-is (or cleared) on submit — this is just what the field shows meanwhile. */
+  const nextPiNumberSuggestion = () => {
+    let max = 0;
+    for (const pi of proformaInvoices) {
+      const match = pi.piNumber?.match(PI_NUMBER_RE);
+      if (match) max = Math.max(max, parseInt(match[1]!, 10));
+    }
+    return `PI-${String(max + 1).padStart(3, "0")}`;
+  };
   const purchaseOrders = poQuery.data ?? [];
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProformaInvoiceStatus | "">("");
-  const [rowBusyId, setRowBusyId] = useState<number | null>(null);
-  const [rowError, setRowError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [previewPi, setPreviewPi] = useState<ProformaInvoice | null>(null);
   /** Popup shown when the form is submitted with details missing: `blocking` ones must be filled in
@@ -141,18 +148,6 @@ const ProformaInvoicesPage: React.FC = () => {
     setRefreshing(true);
     await Promise.all([piQuery.refetch(), poQuery.refetch()]);
     setRefreshing(false);
-  };
-
-  const runRowAction = async (fn: () => Promise<unknown>) => {
-    setRowError(null);
-    try {
-      await fn();
-      await piQuery.refetch();
-    } catch (err) {
-      setRowError(getErrorMessage(err, "Action failed."));
-    } finally {
-      setRowBusyId(null);
-    }
   };
 
   const filtered = useMemo(() => {
@@ -182,6 +177,11 @@ const ProformaInvoicesPage: React.FC = () => {
 
   // ---- Add/Edit PI form ----
   const [showForm, setShowForm] = useState(false);
+  /** Asked before the form is discarded (Esc, X or Cancel) so typed data isn't lost by accident. */
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const keepEditingRef = useRef<HTMLButtonElement>(null);
+  const confirmCancelRef = useRef<HTMLButtonElement>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [targetPoId, setTargetPoId] = useState<number | "">("");
   const [piNumber, setPiNumber] = useState("");
@@ -223,7 +223,7 @@ const ProformaInvoicesPage: React.FC = () => {
   const resetForm = () => {
     setEditingId(null);
     setTargetPoId("");
-    setPiNumber("");
+    setPiNumber(nextPiNumberSuggestion());
     setPiDate("");
     setCurrency("NPR");
     setExchangeRate("1");
@@ -310,6 +310,32 @@ const ProformaInvoicesPage: React.FC = () => {
     setFormError(null);
     setShowForm(true);
   };
+
+  // Esc = Cancel (after a confirmation), Enter = Save. Enter inside a text area still adds a new
+  // line (Ctrl/Cmd+Enter saves from there), and a focused button keeps its own Enter behaviour.
+  useEffect(() => {
+    if (!showForm) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (missingInfo) {
+        // The "missing details" popup: Esc is its Cancel button.
+        if (e.key === "Escape") setMissingInfo(null);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setConfirmCancel((open) => !open);
+        return;
+      }
+      if (e.key !== "Enter" || confirmCancel) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "BUTTON" || target.tagName === "A") return;
+      if (target.tagName === "TEXTAREA" && !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      if (!submitting) formRef.current?.requestSubmit();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showForm, missingInfo, confirmCancel, submitting]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -490,34 +516,35 @@ const ProformaInvoicesPage: React.FC = () => {
               {isAdmin && (
                 <button
                   onClick={() => {
-                    if (showForm) {
-                      resetForm();
-                      setShowForm(false);
-                    } else {
-                      setShowForm(true);
-                    }
+                    resetForm();
+                    setShowForm(true);
                   }}
                   className={primaryBtnCls}
                 >
-                  <Plus size={14} /> {showForm ? "Cancel" : "New Proforma Invoice"}
+                  <Plus size={14} /> New Proforma Invoice
                 </button>
               )}
             </div>
           </div>
 
-          {rowError && (
-            <div className="flex items-center justify-between px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">
-              <span>{rowError}</span>
-              <button onClick={() => setRowError(null)}><X size={14} /></button>
-            </div>
-          )}
-
           {isAdmin && showForm && (
-            <div className={sectionCardCls}>
-              <h3 className="text-[13px] font-semibold text-slate-900 mb-3">
-                {editingId ? `Edit Proforma Invoice${piNumber ? ` — ${piNumber}` : ""}` : "Add Proforma Invoice"}
-              </h3>
-              <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-900/50">
+              <div className="flex flex-col w-full max-w-4xl max-h-full bg-white shadow-2xl rounded-xl">
+                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
+                  <h3 className="text-[14px] font-semibold text-slate-900">
+                    {editingId ? `Edit Proforma Invoice${piNumber ? ` — ${piNumber}` : ""}` : "Add Proforma Invoice"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(true)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
+                    title="Close"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 p-5 overflow-y-auto">
+              <form id="proforma-invoice-form" ref={formRef} onSubmit={handleSubmit} className="space-y-3">
                 {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
                 <div>
                   <label className={labelCls}>Purchase Order</label>
@@ -537,6 +564,17 @@ const ProformaInvoicesPage: React.FC = () => {
                   <p className="mt-1 text-[11px] text-slate-400">
                     Optional — link this invoice to a purchase order. The VENDOR box on the PDF is always your own organization.
                   </p>
+                </div>
+
+                <div data-arrow-row className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>PI Number</label>
+                    <input value={piNumber} onChange={(e) => setPiNumber(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>PI Date</label>
+                    <input type="date" value={piDate} onChange={(e) => setPiDate(e.target.value)} className={inputCls} />
+                  </div>
                 </div>
 
                 <div className="p-3 space-y-2 border rounded-lg border-slate-200">
@@ -598,14 +636,6 @@ const ProformaInvoicesPage: React.FC = () => {
                   </div>
                 </div>
                 <div data-arrow-row className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div>
-                    <label className={labelCls}>PI Number</label>
-                    <input value={piNumber} onChange={(e) => setPiNumber(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>PI Date</label>
-                    <input type="date" value={piDate} onChange={(e) => setPiDate(e.target.value)} className={inputCls} />
-                  </div>
                   <div>
                     <label className={labelCls}>Currency</label>
                     <input value={currency} onChange={(e) => setCurrency(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} />
@@ -719,25 +749,32 @@ const ProformaInvoicesPage: React.FC = () => {
                   <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} rows={4} placeholder="Optional" />
                 </div>
 
-                <div className="flex justify-end gap-2 pt-1">
-                  {editingId && (
+              </form>
+                </div>
+                <div className="flex flex-col flex-shrink-0 gap-2 px-5 py-3 border-t border-slate-100 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-[11.5px] text-slate-500 sm:whitespace-nowrap">
+                    <p>
+                      Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Tab</kbd> to switch to the next field · Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Enter</kbd> to save · Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Esc</kbd> to cancel
+                    </p>
+                    <p className="mt-1">
+                      <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Ctrl</kbd>+<kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Enter</kbd> to save from Payment Terms / Notes
+                    </p>
+                  </div>
+                  <div className="flex flex-shrink-0 gap-2 ml-auto">
                     <button
                       type="button"
-                      onClick={() => {
-                        resetForm();
-                        setShowForm(false);
-                      }}
+                      onClick={() => setConfirmCancel(true)}
                       className="px-4 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
                     >
                       Cancel
                     </button>
-                  )}
-                  <button type="submit" disabled={submitting} className={primaryBtnCls}>
-                    {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    {editingId ? "Save Changes" : "Create Proforma Invoice"}
-                  </button>
+                    <button type="submit" form="proforma-invoice-form" disabled={submitting} className={primaryBtnCls}>
+                      {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      {editingId ? "Save Changes" : "Create Proforma Invoice"}
+                    </button>
+                  </div>
                 </div>
-              </form>
+              </div>
             </div>
           )}
 
@@ -769,7 +806,6 @@ const ProformaInvoicesPage: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-left">Currency</th>
                       <th className="px-3 py-2 font-medium text-right">Exchange Rate</th>
                       <th className="px-3 py-2 font-medium text-left">Validity</th>
-                      <th className="px-3 py-2 font-medium text-left">File</th>
                       <th className="px-3 py-2 font-medium text-left">PDF</th>
                       {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
                     </tr>
@@ -815,37 +851,26 @@ const ProformaInvoicesPage: React.FC = () => {
                             <td className="px-3 py-2 text-right text-slate-600">{toNumber(pi.exchangeRate)}</td>
                             <td className="px-3 py-2 text-slate-600">{formatDate(pi.validityDate)}</td>
                             <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                              {pi.filePath ? (
-                                <a href={fileUrl(pi.filePath)} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline">
-                                  <Paperclip size={11} /> {pi.fileName || "View file"}
-                                </a>
-                              ) : isAdmin ? (
-                                <label className="flex items-center gap-1 text-[11px] font-medium text-blue-700 cursor-pointer hover:underline">
-                                  <Upload size={11} /> Upload PDF
-                                  <input
-                                    type="file"
-                                    accept="application/pdf"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      e.target.value = "";
-                                      if (!file) return;
-                                      setRowBusyId(pi.id);
-                                      await runRowAction(() => uploadFileMutation.mutateAsync({ id: pi.id, file }));
-                                    }}
-                                  />
-                                </label>
-                              ) : (
-                                <span className="text-slate-300">--</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                onClick={() => setPreviewPi(pi)}
-                                className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
-                              >
-                                <Eye size={11} /> Preview PDF
-                              </button>
+                              <div className="flex flex-col items-start gap-1">
+                                <button
+                                  onClick={() => setPreviewPi(pi)}
+                                  className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
+                                >
+                                  <Eye size={11} /> Preview PDF
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    openGmailCompose(
+                                      pi.customerEmail || "",
+                                      `Proforma Invoice ${pi.piNumber || `PI-${pi.id}`}`,
+                                      `Dear ${pi.customerContactPerson || pi.customerName || "Sir/Madam"},\n\nPlease find attached Proforma Invoice ${pi.piNumber || `PI-${pi.id}`} for your reference.\n\nKindly review and confirm receipt at your earliest convenience.\n\nBest regards,`,
+                                    )
+                                  }
+                                  className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
+                                >
+                                  <Mail size={11} /> Send Email
+                                </button>
+                              </div>
                             </td>
                             {isAdmin && (
                               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -856,31 +881,6 @@ const ProformaInvoicesPage: React.FC = () => {
                                   >
                                     <Pencil size={12} /> Edit
                                   </button>
-                                  {pi.status === "waiting" && (
-                                    <>
-                                      <button
-                                        disabled={rowBusyId === pi.id}
-                                        onClick={() => {
-                                          setRowBusyId(pi.id);
-                                          runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "approved" }));
-                                        }}
-                                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
-                                      >
-                                        <Check size={12} /> Approve
-                                      </button>
-                                      <button
-                                        disabled={rowBusyId === pi.id}
-                                        onClick={() => {
-                                          setRowBusyId(pi.id);
-                                          runRowAction(() => changeStatusMutation.mutateAsync({ id: pi.id, status: "rejected" }));
-                                        }}
-                                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-60"
-                                      >
-                                        <XCircle size={12} /> Reject
-                                      </button>
-                                    </>
-                                  )}
-                                  {rowBusyId === pi.id && <Loader2 className="w-3.5 h-3.5 text-blue-900 animate-spin" />}
                                 </div>
                               </td>
                             )}
@@ -888,7 +888,7 @@ const ProformaInvoicesPage: React.FC = () => {
                           {isExpanded && (
                             <tr className="border-b border-slate-100 last:border-0 bg-slate-50/60">
                               <td />
-                              <td colSpan={isAdmin ? 9 : 8} className="px-3 py-3">
+                              <td colSpan={isAdmin ? 8 : 7} className="px-3 py-3">
                                 {pi.paymentTerms && (
                                   <p className="mb-2 text-[12px] text-slate-600">
                                     <span className="text-slate-400">Payment Terms:</span> {pi.paymentTerms}
@@ -931,6 +931,50 @@ const ProformaInvoicesPage: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {confirmCancel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
+          <div
+            className="w-full max-w-sm bg-white shadow-xl rounded-xl"
+            // Left/Right toggles between the two buttons (Enter then presses the focused one).
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                keepEditingRef.current?.focus();
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                confirmCancelRef.current?.focus();
+              }
+            }}
+          >
+            <div className="px-5 pt-5">
+              <h3 className="text-[14px] font-semibold text-slate-900">Cancel this proforma invoice?</h3>
+              <p className="mt-1 text-[12px] text-slate-500">Anything you've entered in the form will be discarded.</p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4">
+              <button
+                ref={keepEditingRef}
+                autoFocus
+                onClick={() => setConfirmCancel(false)}
+                className="px-4 py-2 text-[12px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                Keep editing
+              </button>
+              <button
+                ref={confirmCancelRef}
+                onClick={() => {
+                  setConfirmCancel(false);
+                  resetForm();
+                  setShowForm(false);
+                }}
+                className="px-4 py-2 text-[12px] font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
+              >
+                Yes, cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
