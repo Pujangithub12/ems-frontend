@@ -490,6 +490,8 @@ export type PurchaseOrder = {
   customerPanVatNumber?: string | null;
   /** Overrides the organization's own email in the PDF's CUSTOMER box for just this PO — the organization's email itself now only appears in the letterhead line. */
   customerEmail?: string | null;
+  /** Overrides the organization's own phone in the PDF's CUSTOMER box for just this PO — the organization's phone itself still also appears in the letterhead line. */
+  customerPhone?: string | null;
   /** Currency label for the PDF's "Amount in Words" line (e.g. "Indian Rupees", "US Dollar") — falls back to "Rupees" when unset. */
   currency?: string | null;
   purchaseType: PurchaseType;
