@@ -30,6 +30,7 @@ import {
   useAddPurchaseOrderItemMutation,
   useEditPurchaseOrderItemMutation,
   useDeletePurchaseOrderItemMutation,
+  useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
 import ItemNameField from "../../inventory/components/ItemNameField";
 import CatalogItemFormModal from "../../inventory/components/CatalogItemFormModal";
@@ -310,6 +311,7 @@ type OverviewForm = {
   customerContactPerson: string;
   customerPanVatNumber: string;
   customerEmail: string;
+  customerPhone: string;
   currency: string;
 };
 
@@ -325,6 +327,7 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   customerContactPerson: po.customerContactPerson || "",
   customerPanVatNumber: po.customerPanVatNumber || "",
   customerEmail: po.customerEmail || "",
+  customerPhone: po.customerPhone || "",
   currency: po.currency || "",
 });
 
@@ -346,6 +349,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const deleteItemMutation = useDeletePurchaseOrderItemMutation();
   const catalogQuery = useOrganizationItemCatalogQuery();
   const catalogItems = catalogQuery.data ?? [];
+  const ordersQuery = useOrganizationPurchaseOrdersQuery();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
@@ -618,6 +622,34 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.id]);
 
+  // Carry the Customer Details fields over from the most recently saved PO that has them, so a
+  // brand-new PO (this one has never had any of its own customer info saved) starts pre-filled
+  // instead of blank — same info tends to repeat PO after PO. Only fills fields this PO doesn't
+  // already have its own saved value for, and never overwrites anything the admin has already
+  // typed into the form.
+  useEffect(() => {
+    const hasOwnCustomerInfo = po.customerContactPerson || po.customerPanVatNumber || po.customerEmail || po.customerPhone;
+    if (hasOwnCustomerInfo) return;
+    const orders = ordersQuery.data;
+    if (!orders || orders.length === 0) return;
+    const sorted = [...orders]
+      .filter((o) => o.id !== po.id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const latestContactPerson = sorted.find((o) => o.customerContactPerson)?.customerContactPerson || "";
+    const latestPanVatNumber = sorted.find((o) => o.customerPanVatNumber)?.customerPanVatNumber || "";
+    const latestEmail = sorted.find((o) => o.customerEmail)?.customerEmail || "";
+    const latestPhone = sorted.find((o) => o.customerPhone)?.customerPhone || "";
+    if (!latestContactPerson && !latestPanVatNumber && !latestEmail && !latestPhone) return;
+    setForm((prev) => ({
+      ...prev,
+      customerContactPerson: prev.customerContactPerson || latestContactPerson,
+      customerPanVatNumber: prev.customerPanVatNumber || latestPanVatNumber,
+      customerEmail: prev.customerEmail || latestEmail,
+      customerPhone: prev.customerPhone || latestPhone,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [po.id, ordersQuery.data]);
+
   const handleSave = async () => {
     const trimmedPoNumber = form.poNumber.trim();
     if (!trimmedPoNumber) {
@@ -641,6 +673,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           customerContactPerson: form.customerContactPerson.trim() || null,
           customerPanVatNumber: form.customerPanVatNumber.trim() || null,
           customerEmail: form.customerEmail.trim() || null,
+          customerPhone: form.customerPhone.trim() || null,
           currency: form.currency.trim() || undefined,
           items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
         },
@@ -715,6 +748,56 @@ ${organization?.name || ""}`;
       </div>
 
       <div className={sectionCardCls}>
+        <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Customer Details</h3>
+        <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className={labelCls}>Customer Contact Person</label>
+            <input
+              disabled={!isAdmin}
+              value={form.customerContactPerson}
+              onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
+              onKeyDown={handleRowArrowNav}
+              placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer PAN/VAT No.</label>
+            <input
+              disabled={!isAdmin}
+              value={form.customerPanVatNumber}
+              onChange={(e) => setForm({ ...form, customerPanVatNumber: e.target.value })}
+              onKeyDown={handleRowArrowNav}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer Email</label>
+            <input
+              type="email"
+              disabled={!isAdmin}
+              value={form.customerEmail}
+              onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
+              onKeyDown={handleRowArrowNav}
+              placeholder="Shown as EMAIL ADDRESS under CUSTOMER on the PDF — defaults to the organization's own email"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Customer Phone</label>
+            <input
+              disabled={!isAdmin}
+              value={form.customerPhone}
+              onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
+              onKeyDown={handleRowArrowNav}
+              placeholder="Shown as PHONE under CUSTOMER on the PDF — defaults to the organization's own phone"
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className={sectionCardCls}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[13px] font-semibold text-slate-900">Purchase Order Details</h3>
           <div className="flex items-center gap-2">
@@ -775,16 +858,6 @@ ${organization?.name || ""}`;
             />
           </div>
           <div>
-            <label className={labelCls}>Payment Terms</label>
-            <input
-              disabled={!isAdmin}
-              value={form.paymentTerms}
-              onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              className={inputCls}
-            />
-          </div>
-          <div>
             <label className={labelCls}>Incoterms</label>
             <input
               disabled={!isAdmin}
@@ -827,39 +900,6 @@ ${organization?.name || ""}`;
             />
           </div>
           <div>
-            <label className={labelCls}>Customer Contact Person</label>
-            <input
-              disabled={!isAdmin}
-              value={form.customerContactPerson}
-              onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Customer PAN/VAT No.</label>
-            <input
-              disabled={!isAdmin}
-              value={form.customerPanVatNumber}
-              onChange={(e) => setForm({ ...form, customerPanVatNumber: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Customer Email</label>
-            <input
-              type="email"
-              disabled={!isAdmin}
-              value={form.customerEmail}
-              onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="Shown as EMAIL ADDRESS under CUSTOMER on the PDF — defaults to the organization's own email"
-              className={inputCls}
-            />
-          </div>
-          <div>
             <label className={labelCls}>Currency</label>
             <input
               disabled={!isAdmin}
@@ -868,6 +908,16 @@ ${organization?.name || ""}`;
               onKeyDown={handleRowArrowNav}
               placeholder="e.g. Indian Rupees — used in the PDF's Amount in Words line"
               className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className={labelCls}>Payment Terms</label>
+            <textarea
+              disabled={!isAdmin}
+              rows={5}
+              value={form.paymentTerms}
+              onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
+              className={`${inputCls} resize-none`}
             />
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
