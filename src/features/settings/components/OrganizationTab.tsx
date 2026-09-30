@@ -26,6 +26,8 @@ import {
   deleteOrganizationSignature,
   uploadOrganizationStamp,
   deleteOrganizationStamp,
+  uploadOrganizationLogo,
+  deleteOrganizationLogo,
 } from "../api/organizations.api";
 
 const MAX_LETTERHEAD_IMAGE_BYTES = 200 * 1024;
@@ -392,6 +394,37 @@ const OrganizationTab: React.FC = () => {
     }
   };
 
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  const handleUploadLogo = async (file: File) => {
+    if (file.size > MAX_LETTERHEAD_IMAGE_BYTES) {
+      setLogoError("Image must be 200KB or smaller.");
+      return;
+    }
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      applyOrganizationUpdate(await uploadOrganizationLogo(file));
+    } catch (err: any) {
+      setLogoError(err?.response?.data?.message || "Failed to upload logo.");
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      applyOrganizationUpdate(await deleteOrganizationLogo());
+    } catch (err: any) {
+      setLogoError(err?.response?.data?.message || "Failed to remove logo.");
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   const [wsName, setWsName] = useState(organization?.name || "");
   const [wsDescription, setWsDescription] = useState(organization?.description || "");
   const [wsAddress, setWsAddress] = useState(organization?.address || "");
@@ -597,8 +630,18 @@ const OrganizationTab: React.FC = () => {
           </div>
 
           <div className="pt-2 space-y-3 border-t border-slate-200">
-            <Eyebrow>Letterhead images (used on generated Purchase Order PDFs)</Eyebrow>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Eyebrow>Letterhead images (used on generated Purchase Order / Quotation PDFs)</Eyebrow>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <ImageUploadField
+                label="Company Logo"
+                hint="PNG or JPG, up to 200KB. Shown top-left on Quotation PDFs."
+                imagePath={organization?.logoImagePath}
+                isAdmin={isAdmin}
+                busy={logoBusy}
+                error={logoError}
+                onUpload={handleUploadLogo}
+                onRemove={handleRemoveLogo}
+              />
               <ImageUploadField
                 label="Signature"
                 hint="PNG or JPG, up to 200KB."

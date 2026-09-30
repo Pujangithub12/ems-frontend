@@ -42,6 +42,7 @@ export type Organization = {
   /** Storage keys for the letterhead signature/stamp images used on generated Purchase Order PDFs — null when not uploaded. */
   signatureImagePath?: string | null;
   stampImagePath?: string | null;
+  logoImagePath?: string | null;
   createdAt: string;
 };
 

@@ -51,6 +51,7 @@ export const queryKeys = {
   purchaseOrderCostSheet: (wsId: number, id: number) =>
     [...queryKeys.all(wsId), "purchaseOrderCostSheet", id] as const,
   allProformaInvoices: (wsId: number) => [...queryKeys.all(wsId), "allProformaInvoices"] as const,
+  allQuotations: (wsId: number) => [...queryKeys.all(wsId), "allQuotations"] as const,
   /** year/month here are Bikram Sambat values (see MonthlyPerformance type). */
   monthlyPerformance: (wsId: number, projectId: string | number, year: number) =>
     [...queryKeys.all(wsId), "monthlyPerformance", projectId, year] as const,

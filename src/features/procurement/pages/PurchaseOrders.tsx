@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   Package,
   Search,
@@ -12,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
-import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { getErrorMessage } from "../../../lib/errors";
 import { PurchaseOrderStatus, PurchaseType } from "../../../types";
 import {
@@ -23,6 +21,7 @@ import { useProjects } from "../../projects/hooks/useProjects";
 import VendorField from "../../inventory/components/VendorField";
 import VendorFormModal from "../../inventory/components/VendorFormModal";
 import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
+import { PurchaseOrderDetailModal } from "./PurchaseOrderDetail";
 
 const STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; label: string }> = {
   created: { bg: "#f1f5f9", fg: "#475569", label: "Created" },
@@ -229,8 +228,6 @@ const CreatePurchaseOrderModal: React.FC<{ onClose: () => void; onCreated: () =>
  * (see roleMiddleware on the create route); there is no approval step.
  */
 const PurchaseOrdersPage: React.FC = () => {
-  const organizationId = useOrganizationId();
-  const navigate = useNavigate();
   const { user } = useAuth();
 
   const ordersQuery = useOrganizationPurchaseOrdersQuery();
@@ -244,6 +241,7 @@ const PurchaseOrdersPage: React.FC = () => {
   const [projectFilter, setProjectFilter] = useState<number | "">("");
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedPoId, setSelectedPoId] = useState<number | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -396,7 +394,7 @@ const PurchaseOrdersPage: React.FC = () => {
                       {filtered.map((o) => (
                         <tr
                           key={o.id}
-                          onClick={() => navigate(`/${organizationId}/purchase-orders/${o.id}`)}
+                          onClick={() => setSelectedPoId(o.id)}
                           className="border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer"
                         >
                           <td className="px-3 py-3 font-medium text-slate-800">{o.poNumber || `#${o.id}`}</td>
@@ -414,7 +412,7 @@ const PurchaseOrdersPage: React.FC = () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/${organizationId}/purchase-orders/${o.id}`);
+                                  setSelectedPoId(o.id);
                                 }}
                                 title="Edit"
                                 className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded text-slate-500 hover:bg-slate-100 hover:text-blue-900 transition-colors"
@@ -436,6 +434,10 @@ const PurchaseOrdersPage: React.FC = () => {
 
       {showCreateModal && (
         <CreatePurchaseOrderModal onClose={() => setShowCreateModal(false)} onCreated={refresh} />
+      )}
+
+      {selectedPoId != null && (
+        <PurchaseOrderDetailModal poId={selectedPoId} onClose={() => setSelectedPoId(null)} />
       )}
 
     </div>

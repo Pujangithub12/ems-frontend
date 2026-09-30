@@ -82,7 +82,8 @@ const ProjectsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Default to hiding completed/on-hold projects — most work is on active and pending ones.
+  const [statusFilter, setStatusFilter] = useState<string>("in_progress,pending");
   // Debounce search so every keystroke doesn't fire a new request.
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
@@ -278,6 +279,7 @@ const ProjectsPage: React.FC = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="w-full py-2 pr-8 text-[13px] font-medium bg-slate-50 border border-slate-200 rounded-lg appearance-none cursor-pointer pl-9 outline-none focus:border-blue-400 focus:bg-white transition-colors"
           >
+            <option value="in_progress,pending">Active &amp; Pending</option>
             <option value="all">All Status</option>
             <option value="in_progress">Active</option>
             <option value="pending">Pending</option>
@@ -505,7 +507,7 @@ const ProjectsPage: React.FC = () => {
             No projects found
           </h3>
           <p className="text-slate-500 text-[12px] max-w-xs mx-auto">
-            {searchQuery || statusFilter !== "all"
+            {searchQuery || statusFilter !== "in_progress,pending"
               ? "We couldn't find any projects matching your current filters."
               : "Your projects list is currently empty."}
           </p>

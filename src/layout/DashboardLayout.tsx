@@ -32,6 +32,7 @@ import {
   Wallet,
   Boxes,
   Receipt,
+  FileSignature,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -305,6 +306,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "proforma-invoices",
     },
     {
+      path: `${prefix}/quotations`,
+      label: "Quotations",
+      icon: FileSignature,
+      id: "quotations",
+    },
+    {
       path: `${prefix}/finance`,
       label: "Finance",
       icon: Wallet,
@@ -395,7 +402,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const sectionDescriptions: Record<string, string> = {
     project: "Track and manage all your projects",
     documents: "Browse and manage organization files",
-    inventory: "Stock items across all your projects",
+    inventory: "Material stock, receipts and usage, per project",
     "plant-report": "Daily boiler/plant operations log and monthly summary",
     materials: "Material stock, receipts and usage, per project",
     purchase: "Manage all purchase orders, bills and payments",
@@ -405,6 +412,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     vendors: "Suppliers and vendors across all your projects",
     items: "Shared item catalog across all your projects",
     "proforma-invoices": "Proforma invoices across all your purchase orders",
+    quotations: "Price quotations sent to prospective customers",
     finance: "Payments, balances and cost tracking across all your purchase orders",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
@@ -449,14 +457,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="h-1.5" />
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
-              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items" || it.id === "finance") return null;
+              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance") return null;
               if (it.id === "purchase-orders") {
-                // The whole Procurement dropdown (Purchase Orders, Proforma Invoices, Vendors,
-                // Items, Finance) is available to admin/super_admin/finance (see
-                // RequireProcurementAccess in App.tsx).
+                // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
+                // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
+                // (see RequireProcurementAccess in App.tsx).
                 if (!isAdmin && !isFinance) return null;
                 const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                 const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
+                const quotationsItem = navItems.find((n) => n.id === "quotations")!;
                 const itemsItem = navItems.find((n) => n.id === "items")!;
                 const financeItem = navItems.find((n) => n.id === "finance")!;
                 return (
@@ -467,6 +476,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     items={[
                       { to: it.path, label: "Purchase Orders" },
                       { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
+                      { to: quotationsItem.path, label: "Quotations" },
                       { to: vendorsItem.path, label: "Vendors" },
                       { to: itemsItem.path, label: "Items" },
                       { to: financeItem.path, label: "Finance" },
@@ -525,14 +535,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="h-1.5" />
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
-                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "items" || it.id === "finance") return null;
+                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance") return null;
                   if (it.id === "purchase-orders") {
                     // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
-                    // Vendors, Items, Finance) is available to admin/super_admin/finance (see
-                    // RequireProcurementAccess in App.tsx).
+                    // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
+                    // (see RequireProcurementAccess in App.tsx).
                     if (!isAdmin && !isFinance) return null;
                     const vendorsItem = navItems.find((n) => n.id === "vendors")!;
                     const proformaInvoicesItem = navItems.find((n) => n.id === "proforma-invoices")!;
+                    const quotationsItem = navItems.find((n) => n.id === "quotations")!;
                     const itemsItem = navItems.find((n) => n.id === "items")!;
                     const financeItem = navItems.find((n) => n.id === "finance")!;
                     return (
@@ -543,6 +554,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                         items={[
                           { to: it.path, label: "Purchase Orders" },
                           { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
+                          { to: quotationsItem.path, label: "Quotations" },
                           { to: vendorsItem.path, label: "Vendors" },
                           { to: itemsItem.path, label: "Items" },
                           { to: financeItem.path, label: "Finance" },

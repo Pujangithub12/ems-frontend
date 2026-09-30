@@ -310,6 +310,40 @@ export type ProformaInvoice = {
   updatedAt: string;
 };
 
+export type QuotationItem = {
+  id: number;
+  itemName: string;
+  description?: string | null;
+  quantity: number;
+  unit?: string | null;
+  rate?: number | string | null;
+};
+
+export type Quotation = {
+  id: number;
+  quotationNumber?: string | null;
+  quotationDate?: string | null;
+  title?: string | null;
+  currency: string;
+  fromPan?: string | null;
+  regNo?: string | null;
+  customerName?: string | null;
+  customerAddress?: string | null;
+  customerContact?: string | null;
+  customerEmail?: string | null;
+  customerPan?: string | null;
+  priceBasis?: string | null;
+  deliveryPeriod?: string | null;
+  paymentTerms?: string | null;
+  validityPeriod?: string | null;
+  taxPercent?: number | string | null;
+  signatoryName?: string | null;
+  signatoryDesignation?: string | null;
+  items: QuotationItem[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ShipmentTransportMode = "road" | "sea" | "air";
 export type ShipmentStatus = "booked" | "in_transit" | "arrived" | "delivered";
 
@@ -454,6 +488,8 @@ export type PurchaseOrder = {
   customerContactPerson?: string | null;
   /** PAN/VAT registration number for the PDF's CUSTOMER box — the buying organization's own PAN/VAT, distinct from the vendor's panVatNumber. */
   customerPanVatNumber?: string | null;
+  /** Overrides the organization's own email in the PDF's CUSTOMER box for just this PO — the organization's email itself now only appears in the letterhead line. */
+  customerEmail?: string | null;
   /** Currency label for the PDF's "Amount in Words" line (e.g. "Indian Rupees", "US Dollar") — falls back to "Rupees" when unset. */
   currency?: string | null;
   purchaseType: PurchaseType;

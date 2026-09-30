@@ -78,6 +78,7 @@ export interface PurchaseOrderInput {
   finalDestination?: string | null;
   customerContactPerson?: string | null;
   customerPanVatNumber?: string | null;
+  customerEmail?: string | null;
   currency?: string;
   purchaseType?: PurchaseType;
   status?: PurchaseOrderStatus;
