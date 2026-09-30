@@ -502,12 +502,30 @@ export type PurchaseOrder = {
   project?: { id: number; name: string } | null;
   projectId?: number;
   items: PurchaseOrderItem[];
+  /** Any number of free-form tables shown right above Payment Terms on the PDF (e.g. "Technical
+   * Specification", "Electricity Requirement", "Electrical Motor data...") — each with its own
+   * title, column headers and rows. Omitted from the PDF entirely when there are none. */
+  specTables?: PurchaseOrderSpecTable[];
   statusHistory?: PurchaseOrderStatusHistoryEntry[];
   proformaInvoices?: ProformaInvoice[];
   shipment?: Shipment | null;
   goodsReceipts?: GoodsReceipt[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type PurchaseOrderSpecTableRow = {
+  id: number;
+  cells: string[];
+};
+
+export type PurchaseOrderSpecTable = {
+  id: number;
+  title: string;
+  columns: string[];
+  /** Optional line shown as a merged full-width row at the bottom of the table. */
+  footerNote?: string | null;
+  rows: PurchaseOrderSpecTableRow[];
 };
 
 export type PurchaseOrderDetail = {

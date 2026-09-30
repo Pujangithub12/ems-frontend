@@ -9,7 +9,6 @@ type VendorForm = {
   code: string;
   location: string;
   contact: string;
-  contractExpiryDate: string;
   contactPerson: string;
   address: string;
   email: string;
@@ -21,7 +20,6 @@ const emptyForm: VendorForm = {
   code: "",
   location: "",
   contact: "",
-  contractExpiryDate: "",
   contactPerson: "",
   address: "",
   email: "",
@@ -52,7 +50,6 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
           code: editingVendor.code || "",
           location: editingVendor.location || "",
           contact: editingVendor.contact || "",
-          contractExpiryDate: editingVendor.contractExpiryDate ? editingVendor.contractExpiryDate.slice(0, 10) : "",
           contactPerson: editingVendor.contactPerson || "",
           address: editingVendor.address || "",
           email: editingVendor.email || "",
@@ -81,7 +78,6 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
               code: form.code.trim(),
               location: form.location.trim(),
               contact: form.contact.trim(),
-              contractExpiryDate: form.contractExpiryDate || null,
               contactPerson: form.contactPerson.trim(),
               address: form.address.trim(),
               email: form.email.trim(),
@@ -93,7 +89,6 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
             code: form.code.trim() || undefined,
             location: form.location.trim() || undefined,
             contact: form.contact.trim() || undefined,
-            ...(form.contractExpiryDate ? { contractExpiryDate: form.contractExpiryDate } : {}),
             contactPerson: form.contactPerson.trim() || undefined,
             address: form.address.trim() || undefined,
             email: form.email.trim() || undefined,
@@ -184,7 +179,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
             </div>
           </div>
           <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">PAN/VAT No.</label>
+            <label className="block mb-1 text-[11px] font-medium text-slate-900">PAN/VAT No./GSTIN No.</label>
             <input
               value={form.panVatNumber}
               onChange={(e) => setForm({ ...form, panVatNumber: e.target.value })}
@@ -200,15 +195,6 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({ editingVendor, onClos
               rows={2}
               placeholder="Used on generated Purchase Order PDFs"
               className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none resize-none focus:border-blue-400"
-            />
-          </div>
-          <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">Contract expiry date</label>
-            <input
-              type="date"
-              value={form.contractExpiryDate}
-              onChange={(e) => setForm({ ...form, contractExpiryDate: e.target.value })}
-              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400"
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">

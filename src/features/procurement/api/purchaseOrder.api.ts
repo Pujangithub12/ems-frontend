@@ -84,6 +84,9 @@ export interface PurchaseOrderInput {
   purchaseType?: PurchaseType;
   status?: PurchaseOrderStatus;
   items?: { id: number; hsnCode?: string | null }[];
+  /** Full replace when present — any table missing a title or ending up with no non-blank rows
+   * is dropped, so the PDF only ever shows tables that were actually filled in. */
+  specTables?: { title: string; columns: string[]; footerNote?: string | null; rows: { cells: string[] }[] }[];
 }
 
 /** GET purchase orders for one project's tab. */
