@@ -30,6 +30,7 @@ import {
   useAddPurchaseOrderItemMutation,
   useEditPurchaseOrderItemMutation,
   useDeletePurchaseOrderItemMutation,
+  useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
 import ItemNameField from "../../inventory/components/ItemNameField";
 import CatalogItemFormModal from "../../inventory/components/CatalogItemFormModal";
@@ -348,6 +349,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const deleteItemMutation = useDeletePurchaseOrderItemMutation();
   const catalogQuery = useOrganizationItemCatalogQuery();
   const catalogItems = catalogQuery.data ?? [];
+  const ordersQuery = useOrganizationPurchaseOrdersQuery();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
@@ -619,6 +621,34 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     setHsnCodes(Object.fromEntries(po.items.map((item) => [item.id, item.hsnCode || ""])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.id]);
+
+  // Carry the Customer Details fields over from the most recently saved PO that has them, so a
+  // brand-new PO (this one has never had any of its own customer info saved) starts pre-filled
+  // instead of blank — same info tends to repeat PO after PO. Only fills fields this PO doesn't
+  // already have its own saved value for, and never overwrites anything the admin has already
+  // typed into the form.
+  useEffect(() => {
+    const hasOwnCustomerInfo = po.customerContactPerson || po.customerPanVatNumber || po.customerEmail || po.customerPhone;
+    if (hasOwnCustomerInfo) return;
+    const orders = ordersQuery.data;
+    if (!orders || orders.length === 0) return;
+    const sorted = [...orders]
+      .filter((o) => o.id !== po.id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const latestContactPerson = sorted.find((o) => o.customerContactPerson)?.customerContactPerson || "";
+    const latestPanVatNumber = sorted.find((o) => o.customerPanVatNumber)?.customerPanVatNumber || "";
+    const latestEmail = sorted.find((o) => o.customerEmail)?.customerEmail || "";
+    const latestPhone = sorted.find((o) => o.customerPhone)?.customerPhone || "";
+    if (!latestContactPerson && !latestPanVatNumber && !latestEmail && !latestPhone) return;
+    setForm((prev) => ({
+      ...prev,
+      customerContactPerson: prev.customerContactPerson || latestContactPerson,
+      customerPanVatNumber: prev.customerPanVatNumber || latestPanVatNumber,
+      customerEmail: prev.customerEmail || latestEmail,
+      customerPhone: prev.customerPhone || latestPhone,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [po.id, ordersQuery.data]);
 
   const handleSave = async () => {
     const trimmedPoNumber = form.poNumber.trim();
