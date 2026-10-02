@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   Upload,
   AlertCircle,
-  Pencil,
   CloudUpload,
   Check,
   Filter,
@@ -46,6 +44,7 @@ import ConfirmationModal from "../../../../components/ConfirmationModal";
 import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalScrollbar";
 import Drawer from "../../../../components/Drawer";
 import { useRowSelection } from "../../../../hooks/useRowSelection";
+import { useAuth } from "../../../../context/AuthProvider";
 
 /**
  * ProjectScheduleTab
@@ -628,6 +627,10 @@ function dedupeRowIds(rows: ScheduleRow[]): ScheduleRow[] {
 // ---- Component -------------------------------------------------------------
 
 const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onScheduleUpdate }) => {
+  const { user } = useAuth();
+  // Admin/super_admin/finance can edit the chart directly, no separate "Edit Schedule" step —
+  // everyone else sees it read-only.
+  const canEditSchedule = user?.role === "admin" || user?.role === "super_admin" || user?.role === "finance";
   const [scheduleRows, setScheduleRows] = useState<ScheduleRow[]>([]);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("day");
   // Fixed to "gantt" — the List view toggle was removed, so this is no longer user-switchable,
@@ -696,10 +699,10 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
       observer?.disconnect();
     };
   }, []);
-  // Master edit switch for the chart itself — off by default so the Gantt is
-  // read-only until "Edit Schedule" is clicked. Inline text editing,
+  // Master edit switch for the chart itself — derived straight from the role check above rather
+  // than a manual toggle, so admin/super_admin/finance can edit immediately. Inline text editing,
   // drag-to-link, and drag-resize on the chart all key off this.
-  const [editMode, setEditMode] = useState(false);
+  const editMode = canEditSchedule;
   // Task id awaiting delete confirmation (via ConfirmationModal, see below)
   // — set by the row menu's "Delete task" click, cleared on cancel/confirm.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -982,6 +985,10 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         id: "progress",
         header: "Progress",
         width: 120,
+        // Fixed so this never gets squeezed by the proportional width split on a narrow
+        // viewport — a clipped "20%" reading "2 " is far worse than Task Name/Status giving up
+        // a few pixels instead.
+        fixedWidth: true,
         align: "center" as const,
         render: (t) => {
           // t.progress here is dhtmlx's own 0-1 bar-fill fraction, not our
@@ -1126,31 +1133,52 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
   // Appends a new task row, defaulting it to start right after the last
   // existing task ends so it lands somewhere visible on the chart. The user
   // renames it inline and can drag its bar to adjust the duration.
+  //
+  // The new row's id is computed up front (reading scheduleRows directly, rather than inside the
+  // setState updater) and returned, so callers that need it right away — the Ctrl+Enter shortcut
+  // below, to focus the new row's name — don't have to wait for a render to find out what it was.
   const handleAddTask = useCallback(() => {
-    setScheduleRows((rows) => {
-      const existingIds = new Set(rows.map((r) => r.id));
-      let n = rows.length + 1;
-      // "temp-" prefixed (same convention TaskController.ts already uses for
-      // unsaved subtasks) so a brand-new row's id can never collide with a
-      // real Task.id once schedule rows are loaded from the backend — see
-      // schedule.service.ts's saveSchedule, which treats any id that doesn't
-      // resolve to an existing Task as a new row to create.
-      let newId = `temp-${n}`;
-      while (existingIds.has(newId)) newId = `temp-${++n}`;
+    const existingIds = new Set(scheduleRows.map((r) => r.id));
+    let n = scheduleRows.length + 1;
+    // "temp-" prefixed (same convention TaskController.ts already uses for
+    // unsaved subtasks) so a brand-new row's id can never collide with a
+    // real Task.id once schedule rows are loaded from the backend — see
+    // schedule.service.ts's saveSchedule, which treats any id that doesn't
+    // resolve to an existing Task as a new row to create.
+    let newId = `temp-${n}`;
+    while (existingIds.has(newId)) newId = `temp-${++n}`;
 
-      const { tasks } = buildGanttData(rows as NormalizedRow[]);
-      const lastEnd = tasks.length > 0 ? tasks[tasks.length - 1].end : new Date();
+    const { tasks } = buildGanttData(scheduleRows as NormalizedRow[]);
+    const lastEnd = tasks.length > 0 ? tasks[tasks.length - 1].end : new Date();
 
-      const newRow: ScheduleRow = {
-        ...emptyScheduleRow(),
-        id: newId,
-        taskName: "New Task",
-        duration: "1",
-        startDate: formatDateInput(lastEnd),
-      };
-      return [...rows, newRow];
-    });
-  }, []);
+    const newRow: ScheduleRow = {
+      ...emptyScheduleRow(),
+      id: newId,
+      taskName: "New Task",
+      duration: "1",
+      startDate: formatDateInput(lastEnd),
+    };
+    setScheduleRows((rows) => [...rows, newRow]);
+    return newId;
+  }, [scheduleRows]);
+
+  // Ctrl+Enter (Cmd+Enter on Mac) appends a new task row at the bottom, same as clicking "+ Add
+  // Task" — a global shortcut rather than one scoped to a specific field, so it works no matter
+  // which cell currently has focus. The new row's id is handed to GanttChartView via
+  // focusTaskId so it can scroll to it and open its Task Name cell's inline editor immediately —
+  // see GanttChartView's focusTaskId prop.
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const handleTaskFocusHandled = useCallback(() => setFocusTaskId(null), []);
+  useEffect(() => {
+    if (!canEditSchedule) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      setFocusTaskId(handleAddTask());
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleAddTask, canEditSchedule]);
 
   // Adds a subtask under the task whose "+" (next to its # id) was clicked.
   // parentId drives both the tree nesting and the auto WBS numbering
@@ -1462,18 +1490,11 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
     [projectId, saveScheduleMutation, onScheduleUpdate],
   );
 
-  // "Edit Schedule" just flips the local edit-mode switch; "Done Editing"
-  // additionally persists whatever changed while editing, so there's no
-  // separate save step to remember. Save status still surfaces via the
+  // The chart is editable immediately (see canEditSchedule above), so this is now a plain explicit
+  // save — no more mode toggle to flip off first. Save status still surfaces via the
   // backendError banner below and the button's own label (see saveStatus).
-  const handleToggleEditMode = useCallback(() => {
-    setEditMode((m) => {
-      const next = !m;
-      if (!next) {
-        persistSchedule(scheduleRows).catch(() => {});
-      }
-      return next;
-    });
+  const handleSaveSchedule = useCallback(() => {
+    persistSchedule(scheduleRows).catch(() => {});
   }, [persistSchedule, scheduleRows]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1584,21 +1605,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
 
   return (
     <div className="-mt-3 space-y-6">
-      {/* Dims the rest of the page while editing, so the (still-crisp, since
-          it sits above this overlay in z-index) chart reads as the one thing
-          that's currently interactive. pointer-events-none so it's purely
-          visual — nothing underneath loses clickability. Portaled to
-          document.body rather than rendered inline: this component's root is
-          a `space-y-6` flex column, and Tailwind's space-y margin applies to
-          any child with a preceding sibling regardless of that sibling's
-          `position` — so mounting/unmounting this fixed overlay as the first
-          child was adding/removing a spurious margin-top on the content
-          below it, visible as the chart jumping down on entering edit mode. */}
-      {editMode &&
-        createPortal(
-          <div className="fixed inset-0 z-30 bg-slate-900/10 pointer-events-none transition-opacity duration-200" />,
-          document.body,
-        )}
       <div>
           {/* Wraps everything above the chart card (toolbar + any banners) so its
               ResizeObserver (see chartCardHeight above) picks up height changes from any of
@@ -1705,12 +1711,12 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
               </button>
 
               <button
-                onClick={handleToggleEditMode}
+                onClick={handleSaveSchedule}
                 disabled={saveStatus === "saving"}
-                className={`flex items-center justify-center gap-1.5 ml-0.5 px-2.5 py-1.5 min-w-[128px] text-[12px] font-medium rounded-md transition-colors disabled:opacity-60 ${
-                  editMode
-                    ? "text-white bg-blue-900 hover:bg-blue-800"
-                    : "text-white bg-slate-800 hover:bg-slate-900"
+                tabIndex={editMode ? 0 : -1}
+                aria-hidden={!editMode}
+                className={`flex items-center justify-center gap-1.5 ml-0.5 px-2.5 py-1.5 min-w-[96px] text-[12px] font-medium rounded-md transition-colors disabled:opacity-60 text-white bg-blue-900 hover:bg-blue-800 ${
+                  editMode ? "" : "invisible"
                 }`}
               >
                 {saveStatus === "saving" ? (
@@ -1718,15 +1724,15 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
                     <CloudUpload className="w-3 h-3 animate-pulse" />
                     Saving...
                   </>
-                ) : !editMode && saveStatus === "saved" ? (
+                ) : saveStatus === "saved" ? (
                   <>
                     <Check className="w-3 h-3" />
                     Saved
                   </>
                 ) : (
                   <>
-                    <Pencil className="w-3 h-3" />
-                    {editMode ? "Done Editing" : "Edit Schedule"}
+                    <CloudUpload className="w-3 h-3" />
+                    Save
                   </>
                 )}
               </button>
@@ -1813,6 +1819,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
                   onSelectToggle={rowSelection.toggle}
                   onReorder={handleReorder}
                   onGridHeaderClick={handleGridHeaderClick}
+                  focusTaskId={focusTaskId}
+                  onTaskFocusHandled={handleTaskFocusHandled}
                 />
               </div>
             </div>
