@@ -75,6 +75,14 @@ interface GanttChartViewProps {
    * HTML (e.g. a button) in a column's `header` string and react to clicks
    * on it, the same way row-level buttons are embedded via `render`. */
   onGridHeaderClick?: (columnId: string, target: HTMLElement) => void;
+  /** Set (e.g. right after adding a task) to scroll that task into view and open its Task Name
+   * cell's inline editor automatically, as if it had just been clicked — used by
+   * ProjectScheduleTab's Ctrl+Enter "add task" shortcut so the name is immediately typeable. */
+  focusTaskId?: string | null;
+  /** Fires once the focusTaskId request above has been acted on (or found not actionable, e.g.
+   * the task no longer exists) — callers clear their focusTaskId state here so the same id can be
+   * requested again later (React won't re-fire an effect for an unchanged prop value). */
+  onTaskFocusHandled?: () => void;
 }
 
 /** Payload for onLinkEdit — everything a caller needs to render a type/lag edit popover anchored at the click position. */
@@ -118,6 +126,58 @@ const TYPE_MAP: Record<GanttTask["type"], string> = {
   summary: "project",
   milestone: "milestone",
 };
+
+/** Opens the hand-rolled inline text editor on a Task Name grid cell (replacing its
+ * `.gantt_tree_content` with an `<input>`, committing on blur/Enter, canceling on Escape) — shared
+ * by onTaskClick's click-to-edit path and GanttChartView's focusTaskId prop (the Ctrl+Enter
+ * "add task" shortcut, which wants the new row's name focused with no click involved). Returns
+ * false (and does nothing) if the cell isn't a valid, not-already-editing Task Name cell. */
+function openTaskNameEditor(cell: HTMLElement | null, id: string | number): boolean {
+  if (!cell || cell.querySelector("input")) return false;
+  const contentEl = cell.querySelector<HTMLElement>(".gantt_tree_content");
+  if (!contentEl) return false;
+
+  const originalText = String(gantt.getTask(id).text ?? "");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = originalText;
+  input.className = "gantt-inline-text-editor";
+  contentEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const nextText = input.value.trim() || originalText;
+    if (nextText !== originalText) {
+      gantt.getTask(id).text = nextText;
+      gantt.updateTask(id);
+    } else {
+      gantt.render();
+    }
+  };
+  const cancel = () => {
+    if (settled) return;
+    settled = true;
+    gantt.render();
+  };
+
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      input.blur();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      input.removeEventListener("blur", commit);
+      cancel();
+    }
+  });
+
+  return true;
+}
 
 /** "YYYY-MM-DD 00:00" — matches gantt.config.date_format below. */
 function toDhtmlxDate(date: Date): string {
@@ -295,6 +355,8 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   onSelectToggle,
   onReorder,
   onGridHeaderClick,
+  focusTaskId,
+  onTaskFocusHandled,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
@@ -321,6 +383,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   const onSelectToggleRef = useRef(onSelectToggle);
   const onReorderRef = useRef(onReorder);
   const onGridHeaderClickRef = useRef(onGridHeaderClick);
+  const onTaskFocusHandledRef = useRef(onTaskFocusHandled);
   const editableRef = useRef(editable);
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
@@ -336,8 +399,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     onSelectToggleRef.current = onSelectToggle;
     onReorderRef.current = onReorder;
     onGridHeaderClickRef.current = onGridHeaderClick;
+    onTaskFocusHandledRef.current = onTaskFocusHandled;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onAddTaskBelow, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onSelectToggle, onReorder, onGridHeaderClick, editable]);
+  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onAddTaskBelow, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onSelectToggle, onReorder, onGridHeaderClick, onTaskFocusHandled, editable]);
 
 
   // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
@@ -512,51 +576,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         const cell = target.closest<HTMLElement>(
           ".gantt_cell[data-column-name='text']",
         );
-        if (!cell || cell.querySelector("input")) return true;
-        const contentEl = cell.querySelector<HTMLElement>(
-          ".gantt_tree_content",
-        );
-        if (!contentEl) return true;
-
-        const originalText = String(gantt.getTask(id).text ?? "");
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = originalText;
-        input.className = "gantt-inline-text-editor";
-        contentEl.replaceWith(input);
-        input.focus();
-        input.select();
-
-        let settled = false;
-        const commit = () => {
-          if (settled) return;
-          settled = true;
-          const nextText = input.value.trim() || originalText;
-          if (nextText !== originalText) {
-            gantt.getTask(id).text = nextText;
-            gantt.updateTask(id);
-          } else {
-            gantt.render();
-          }
-        };
-        const cancel = () => {
-          if (settled) return;
-          settled = true;
-          gantt.render();
-        };
-
-        input.addEventListener("blur", commit);
-        input.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter") {
-            ev.preventDefault();
-            input.blur();
-          } else if (ev.key === "Escape") {
-            ev.preventDefault();
-            input.removeEventListener("blur", commit);
-            cancel();
-          }
-        });
-
+        if (!openTaskNameEditor(cell, id)) return true;
         return false;
       }),
     );
@@ -796,7 +816,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       0,
     );
 
-    gantt.config.columns = columns.map((col) => ({
+    const resolvedColumns = columns.map((col) => ({
       name: col.id,
       label: col.header,
       width: showChart
@@ -813,9 +833,17 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         ? (task: unknown) => col.render!(task as GanttTask)
         : undefined,
     }));
+    gantt.config.columns = resolvedColumns;
     gantt.config.show_chart = showChart;
     gantt.config.autofit = !showChart;
-    if (showChart && gridWidthPx > 0) gantt.config.grid_width = gridWidthPx;
+    // Sum of the actual per-column pixel widths just computed above, not the original
+    // containerWidth*ratio estimate — rounding each column's share independently (Math.round,
+    // per column) means that sum can come out a few px short of gridWidthPx, and a grid_width
+    // set to the (too-small) estimate clips the rightmost column's content against the grid's
+    // own edge (seen as the trailing "..." row-menu button or a Progress value losing its last
+    // digit). Sizing grid_width to match what was actually allocated guarantees nothing is cut.
+    const resolvedGridWidthPx = resolvedColumns.reduce((sum, c) => sum + (c.width ?? 0), 0);
+    if (showChart && resolvedGridWidthPx > 0) gantt.config.grid_width = resolvedGridWidthPx;
     if (readyRef.current) gantt.render();
     renderTodayLine(containerRef.current, showChart);
   }, [columns, showChart, containerWidth]);
@@ -908,6 +936,30 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     }
   }, [tasks, links, showChart]);
 
+  // Handles a focusTaskId request (set by ProjectScheduleTab right after adding a task via
+  // Ctrl+Enter) — scrolls the task into view and opens its Task Name cell's inline editor, as if
+  // it had just been clicked. Runs after the data-parse effect above (declared later, so React
+  // fires it after — both respond to the same `tasks` change), since the newly added task has to
+  // actually exist in gantt's dataset first. The grid virtualizes rows, so the target row's DOM
+  // cell may not exist until showTask has scrolled it into view — hence the rAF before querying
+  // for it.
+  useEffect(() => {
+    if (!focusTaskId) return;
+    if (!readyRef.current || !gantt.isTaskExists(focusTaskId)) {
+      onTaskFocusHandledRef.current?.();
+      return;
+    }
+    gantt.showTask(focusTaskId);
+    const raf = requestAnimationFrame(() => {
+      const cell = containerRef.current?.querySelector<HTMLElement>(
+        `.gantt_grid_data .gantt_row[data-task-id="${CSS.escape(String(focusTaskId))}"] .gantt_cell[data-column-name='text']`,
+      );
+      openTaskNameEditor(cell ?? null, focusTaskId);
+      onTaskFocusHandledRef.current?.();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusTaskId, tasks]);
+
   return (
     <>
       <style>{`
@@ -931,18 +983,11 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         .gantt_task_line.gantt-status-on_hold .gantt_task_progress { background: #f59e0b !important; }
         .gantt_task_line.gantt-status-completed .gantt_task_progress { background: #10b981 !important; }
         
-        /* Summary (project) bars are a slimmer, vertically-centered pill —
-           matching the reference's thin bracket-style summary marker, still
-           colored by status like every other bar. */
-           
-        .gantt_task_line.gantt_project {
-          height: 10px !important;
-          margin-top: 12px !important;
-          border-radius: 5px !important;
-        }
-        .gantt_task_line.gantt_project .gantt_task_progress {
-          border-radius: 5px 0 0 5px !important;
-        }
+        /* Summary (project) bars used to render as a thin 10px bracket-style pill, offset from
+           the row's own vertical centering via an extra margin-top stacked on dhtmlx's own
+           inline positioning — next to every other full-height bar in the chart, that just read
+           as "this bar is cut in half", not as a deliberate bracket marker. Summary bars are now
+           full-height, same as every other bar — no special-casing needed. */
         .gantt_milestone.gantt-status-to_do .gantt_task_content { background: rgba(96, 165, 250, 0.7) !important; border-color: #3b82f6 !important; }
         .gantt_milestone.gantt-status-in_progress .gantt_task_content { background: #8b5cf6 !important; border-color: #7c3aed !important; }
         .gantt_milestone.gantt-status-on_hold .gantt_task_content { background: #f59e0b !important; border-color: #d97706 !important; }
@@ -976,8 +1021,14 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           border-color: transparent #dc2626;
         }
 
+        /* Timeline (right side, where the bars live) reads as a slightly darker plane than the
+           white grid on the left — a subtle visual split between the two halves. Weekend columns
+           get a touch darker still, on top of that base tint. */
+        .gantt_task_bg {
+          background: #fbfcfd;
+        }
         .gantt_task_cell.gantt-weekend-cell {
-          background: #f8fafc;
+          background: #f5f8fa;
         }
         .gantt-today-line {
           position: absolute;
@@ -1112,11 +1163,14 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           z-index: 1;
         }
 
+        /* Absolutely centered against .gantt_cell (position:relative, see above) rather than
+           width:100% + flex-centering — the cell's own padding isn't perfectly symmetric, which
+           left width:100%'s centered content a few px off from the cell's true visual center. */
         .gantt-row-menu-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 100%;
+          width: 26px;
           height: 20px;
           padding: 0;
           box-sizing: border-box;
@@ -1130,6 +1184,10 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
           background: transparent;
           color: #64748b;
           cursor: pointer;
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
         }
         .gantt-row-menu-btn:hover {
           background: #eff6ff;
