@@ -20,9 +20,10 @@ import {
   Settings as SettingsIcon,
   Network,
   Lock,
+  Globe2,
 } from "lucide-react";
 import { getErrorMessage } from "../../../lib/errors";
-import { useUsers, useUpdateUser } from "../../users/hooks/useUsers";
+import { useUsers, useUpdateUser, useUpdateUserRoleEverywhere } from "../../users/hooks/useUsers";
 import { usePermissions, useUpdatePermissions } from "../hooks/usePermissions";
 import {
   Eyebrow,
@@ -86,10 +87,13 @@ const RolesPermissionsTab: React.FC = () => {
     ? getErrorMessage(membersQueryError, "Unable to load members.")
     : null;
   const updateUserMutation = useUpdateUser();
+  const updateUserRoleEverywhereMutation = useUpdateUserRoleEverywhere();
 
   const [selectedRole, setSelectedRole] = useState<RoleKey>("admin");
   const [roleSavingId, setRoleSavingId] = useState<number | null>(null);
   const [roleChangeError, setRoleChangeError] = useState<string | null>(null);
+  const [roleChangeNotice, setRoleChangeNotice] = useState<string | null>(null);
+  const [applyEverywhere, setApplyEverywhere] = useState<Record<number, boolean>>({});
   const [memberSearch, setMemberSearch] = useState("");
   const [permissionSearch, setPermissionSearch] = useState("");
 
@@ -173,8 +177,17 @@ const RolesPermissionsTab: React.FC = () => {
   const handleRoleChange = async (memberId: number, role: string) => {
     setRoleSavingId(memberId);
     setRoleChangeError(null);
+    setRoleChangeNotice(null);
     try {
-      await updateUserMutation.mutateAsync({ id: memberId, payload: { role } });
+      if (applyEverywhere[memberId]) {
+        const result = await updateUserRoleEverywhereMutation.mutateAsync({
+          id: memberId,
+          role,
+        });
+        setRoleChangeNotice(result.message);
+      } else {
+        await updateUserMutation.mutateAsync({ id: memberId, payload: { role } });
+      }
     } catch (err) {
       setRoleChangeError(getErrorMessage(err, "Unable to update role."));
     } finally {
@@ -445,6 +458,12 @@ const RolesPermissionsTab: React.FC = () => {
             {membersError || roleChangeError}
           </div>
         )}
+        {!roleChangeError && roleChangeNotice && (
+          <div className="m-5 p-3 text-[12px] font-medium border text-blue-900 bg-blue-50 rounded border-blue-100 flex items-center gap-2">
+            <Globe2 className="flex-shrink-0 w-4 h-4" />
+            {roleChangeNotice}
+          </div>
+        )}
 
         {membersLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16">
@@ -492,22 +511,42 @@ const RolesPermissionsTab: React.FC = () => {
                       </td>
                       <td className="px-5 py-3">
                         {canEdit ? (
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={m.role}
-                              onChange={(e) => handleRoleChange(m.id, e.target.value)}
-                              disabled={roleSavingId === m.id}
-                              className="px-2.5 py-1.5 text-[12px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={m.role}
+                                onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                                disabled={roleSavingId === m.id}
+                                className="px-2.5 py-1.5 text-[12px] font-medium bg-white border border-slate-200 rounded appearance-none cursor-pointer outline-none focus:border-blue-900 transition-colors"
+                              >
+                                {roleOptionsFor(user?.role).map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {roleSavingId === m.id && (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                              )}
+                            </div>
+                            <label
+                              className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer select-none"
+                              title="When you change this member's role, apply it in every organization you both belong to — not just this one."
                             >
-                              {roleOptionsFor(user?.role).map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                            {roleSavingId === m.id && (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                            )}
+                              <input
+                                type="checkbox"
+                                checked={!!applyEverywhere[m.id]}
+                                onChange={(e) =>
+                                  setApplyEverywhere((prev) => ({
+                                    ...prev,
+                                    [m.id]: e.target.checked,
+                                  }))
+                                }
+                                className="w-3 h-3 accent-blue-900"
+                              />
+                              <Globe2 className="w-3 h-3" />
+                              Apply to all organizations
+                            </label>
                           </div>
                         ) : (
                           <span

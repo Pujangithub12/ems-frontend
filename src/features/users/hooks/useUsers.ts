@@ -5,6 +5,7 @@ import {
   getUsers,
   inviteUser,
   updateUser,
+  updateUserRoleEverywhere,
   deleteUser,
   changeMyPassword,
   updateMyProfile,
@@ -42,6 +43,18 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: UpdateUserPayload }) =>
       updateUser(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users(wsId) });
+    },
+  });
+}
+
+export function useUpdateUserRoleEverywhere() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, role }: { id: number; role: string }) =>
+      updateUserRoleEverywhere(id, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users(wsId) });
     },

@@ -24,6 +24,8 @@ import type {
   SaveCustomTableRowPayload,
   ImportCustomTableSheetPayload,
   ImportCustomTableSheetResult,
+  CustomTableImportTemplate,
+  SaveCustomTableImportTemplatePayload,
 } from "../types";
 
 /** Reused by every page built on this component (project selector, table-name
@@ -527,14 +529,17 @@ const Cell: React.FC<{
  *    computed value stored as 852.830188679245. Importing the raw double
  *    surfaced as "random" extra decimals the user never saw in Excel.
  */
-async function parseSheetFile(
-  file: File,
-): Promise<{ headers: string[]; rows: Record<string, unknown>[]; dateColumnNames: Set<string> }> {
+async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
   const isCsv = file.name.toLowerCase().endsWith(".csv");
   const data = isCsv ? await file.text() : await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: isCsv ? "string" : "array", cellNF: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet["!ref"]) return { headers: [], rows: [], dateColumnNames: new Set() };
+  return XLSX.read(data, { type: isCsv ? "string" : "array", cellNF: true });
+}
+
+type ParsedSheet = { headers: string[]; rows: Record<string, unknown>[]; dateColumnNames: Set<string> };
+
+function parseSheetFromWorkbook(workbook: XLSX.WorkBook, sheetName: string): ParsedSheet {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet || !sheet["!ref"]) return { headers: [], rows: [], dateColumnNames: new Set() };
 
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   type SheetCell = { t?: string; v?: unknown; w?: string; z?: string };
@@ -647,16 +652,19 @@ function coerceToColumnType(raw: unknown, dataType: CustomTableColumnDataType, d
   }
 }
 
+/** Header text -> target column id, or "skip" for "Don't Import". */
+type ColumnMapping = Record<string, number | "skip">;
+
 type PendingImport = {
   fileName: string;
-  /** Columns from the file that matched an existing column by name — these
-   * are the only ones that will actually be imported. */
+  /** Columns the user's mapping points at — these are the only ones that will actually be imported. */
   matchedColumns: { id: number; name: string; dataType: CustomTableColumnDataType }[];
-  /** Header text from the file with no matching existing column — shown as
-   * a warning; their data is simply not imported. */
+  /** Header text the user mapped to "Don't Import" — shown as a reminder; their data is simply not imported. */
   unmatchedHeaders: string[];
   /** Keyed by column id (string), matching CustomTableRow.values. */
   rows: Record<string, CustomTableCellValue>[];
+  /** Rows where at least one mapped cell had a value that couldn't be coerced to its target column's type (e.g. text in a number column). */
+  warningRowCount: number;
 };
 
 const PREVIEW_ROW_LIMIT = 15;
@@ -670,9 +678,10 @@ const ImportPreviewModal: React.FC<{
   pending: PendingImport;
   onConfirm: () => void;
   onCancel: () => void;
+  onBack?: () => void;
   isSubmitting: boolean;
   error: string | null;
-}> = ({ pending, onConfirm, onCancel, isSubmitting, error }) => {
+}> = ({ pending, onConfirm, onCancel, onBack, isSubmitting, error }) => {
   const previewRows = pending.rows.slice(0, PREVIEW_ROW_LIMIT);
   const nothingToImport = pending.matchedColumns.length === 0;
 
@@ -681,7 +690,7 @@ const ImportPreviewModal: React.FC<{
       <div className="w-full max-w-3xl overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/60">
           <div>
-            <div className="font-semibold text-[14px] text-slate-900">Preview Import</div>
+            <div className="font-semibold text-[14px] text-slate-900">Preview & Import</div>
             <div className="text-[11.5px] text-slate-500 mt-0.5">{pending.fileName}</div>
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
@@ -690,11 +699,20 @@ const ImportPreviewModal: React.FC<{
         </div>
 
         <div className="p-4">
-          <p className="mb-3 text-[12.5px] text-slate-600">
-            {pending.rows.length} row{pending.rows.length === 1 ? "" : "s"} · {pending.matchedColumns.length} matched column
-            {pending.matchedColumns.length === 1 ? "" : "s"}
-            {pending.rows.length > PREVIEW_ROW_LIMIT ? ` — showing first ${PREVIEW_ROW_LIMIT}` : ""}
-          </p>
+          <div className="mb-3 space-y-1">
+            <p className="text-[12.5px] text-emerald-700 font-medium flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5" />
+              {pending.rows.length} row{pending.rows.length === 1 ? "" : "s"} ready to import · {pending.matchedColumns.length} mapped
+              column{pending.matchedColumns.length === 1 ? "" : "s"}
+              {pending.rows.length > PREVIEW_ROW_LIMIT ? ` — showing first ${PREVIEW_ROW_LIMIT}` : ""}
+            </p>
+            {pending.warningRowCount > 0 && (
+              <p className="text-[12.5px] text-amber-600 font-medium">
+                ⚠ {pending.warningRowCount} row{pending.warningRowCount === 1 ? "" : "s"} contain warnings — a value didn't match its
+                column's type and will be left blank.
+              </p>
+            )}
+          </div>
 
           {nothingToImport ? (
             <div className="flex flex-col items-center gap-1.5 py-10 text-center border border-dashed rounded-lg border-slate-200">
@@ -732,14 +750,22 @@ const ImportPreviewModal: React.FC<{
           )}
 
           {pending.unmatchedHeaders.length > 0 && (
-            <p className="mt-2 text-[11.5px] text-amber-600">
-              No matching column for: {pending.unmatchedHeaders.join(", ")} — that data will be skipped. Add columns with these exact
-              names first if you want them imported.
+            <p className="mt-2 text-[11.5px] text-slate-500">
+              Not imported (set to "Don't Import"): {pending.unmatchedHeaders.join(", ")}
             </p>
           )}
           {error && <p className="mt-2 text-[11.5px] text-red-600">{error}</p>}
 
           <div className="flex items-center gap-2 mt-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                disabled={isSubmitting}
+                className="px-3 py-2 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Back
+              </button>
+            )}
             <button
               onClick={onCancel}
               disabled={isSubmitting}
@@ -750,11 +776,11 @@ const ImportPreviewModal: React.FC<{
             <button
               onClick={onConfirm}
               disabled={isSubmitting || nothingToImport}
-              title={nothingToImport ? "No matched columns to import" : undefined}
+              title={nothingToImport ? "No mapped columns to import" : undefined}
               className="flex items-center justify-center flex-1 gap-1.5 px-3 py-2 text-[12.5px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              Confirm Upload
+              Import {pending.rows.length} Record{pending.rows.length === 1 ? "" : "s"}
             </button>
           </div>
         </div>
@@ -809,8 +835,8 @@ const FileFormatInfoModal: React.FC<{
           <li>.csv, .xlsx or .xls</li>
           <li>Needs a header row — one header per column, no blank/merged header cells — a report title row above it (e.g. "WORK PROGRESS REPORT") is fine and gets skipped automatically</li>
           <li>Every row after the header row is one entry</li>
-          <li>A header must exactly match an existing column's name (case-insensitive) to be imported — this never creates new columns, so add a matching column first if one doesn't exist yet</li>
-          <li>Any header with no matching column is skipped — you'll see which ones in the preview</li>
+          <li>If the file has more than one sheet, you'll be asked which one to use</li>
+          <li>Next you'll map each of the file's columns to a column in this table (or "Don't Import") — this never creates new columns, so add a matching column first if one doesn't exist yet</li>
           <li>You'll see a preview before anything is actually uploaded</li>
         </ul>
         <div>
@@ -863,96 +889,324 @@ const FileFormatInfoModal: React.FC<{
   </div>
 );
 
+/** Shown when the uploaded workbook has more than one sheet — picked before
+ * anything is parsed, since headers/rows depend on which sheet is read. */
+const SheetPickerModal: React.FC<{ fileName: string; sheetNames: string[]; onChoose: (sheetName: string) => void; onCancel: () => void }> = ({
+  fileName,
+  sheetNames,
+  onChoose,
+  onCancel,
+}) => (
+  <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div className="w-full max-w-sm overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/60">
+        <div>
+          <div className="font-semibold text-[14px] text-slate-900">Choose a Sheet</div>
+          <div className="text-[11.5px] text-slate-500 mt-0.5">{fileName}</div>
+        </div>
+        <button onClick={onCancel} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="p-3 space-y-1 max-h-72 overflow-y-auto">
+        {sheetNames.map((name) => (
+          <button
+            key={name}
+            onClick={() => onChoose(name)}
+            className="w-full px-3 py-2.5 text-left text-[13px] font-medium rounded-lg text-slate-700 hover:bg-blue-50 hover:text-blue-900 transition-colors"
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const DONT_IMPORT = "skip" as const;
+
+/** Shown after a sheet is parsed — the file's columns on the left, a
+ * dropdown per row to pick which existing column (or "Don't Import") each
+ * one maps to. Pre-filled by exact-name auto-match, or by a recognized
+ * saved template if this file's headers match one exactly. */
+const ColumnMappingModal: React.FC<{
+  fileName: string;
+  headers: string[];
+  existingColumns: CustomTableColumn[];
+  mapping: ColumnMapping;
+  onChangeMapping: (header: string, value: number | "skip") => void;
+  recognizedTemplateName: string | null;
+  templates: CustomTableImportTemplate[];
+  onApplyTemplate: (template: CustomTableImportTemplate) => void;
+  onBack?: () => void;
+  onCancel: () => void;
+  onContinue: () => void;
+}> = ({ fileName, headers, existingColumns, mapping, onChangeMapping, recognizedTemplateName, templates, onApplyTemplate, onBack, onCancel, onContinue }) => (
+  <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+    <div className="w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/60">
+        <div>
+          <div className="font-semibold text-[14px] text-slate-900">Map Columns</div>
+          <div className="text-[11.5px] text-slate-500 mt-0.5">{fileName}</div>
+        </div>
+        <button onClick={onCancel} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="p-4">
+        {recognizedTemplateName && (
+          <div className="flex items-start gap-2 p-2.5 mb-3 text-[12px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg">
+            <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span>
+              We recognized this file format. Template: <span className="font-semibold">{recognizedTemplateName}</span>
+            </span>
+          </div>
+        )}
+
+        {templates.length > 0 && (
+          <div className="mb-3">
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                const t = templates.find((tpl) => String(tpl.id) === e.target.value);
+                if (t) onApplyTemplate(t);
+                e.target.value = "";
+              }}
+              className="px-2.5 py-1.5 text-[12px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400"
+            >
+              <option value="" disabled>
+                Load a saved template...
+              </option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <p className="mb-2 text-[11px] font-medium tracking-wide uppercase text-slate-400">Map your columns</p>
+        <div className="space-y-1.5 max-h-80 overflow-y-auto">
+          {headers.map((h) => {
+            const value = mapping[h] ?? DONT_IMPORT;
+            return (
+              <div key={h} className="flex items-center gap-2">
+                <span className="flex-1 text-[12.5px] font-medium text-slate-700 truncate" title={h}>
+                  {h}
+                </span>
+                <select
+                  value={String(value)}
+                  onChange={(e) => onChangeMapping(h, e.target.value === DONT_IMPORT ? DONT_IMPORT : Number(e.target.value))}
+                  className="px-2.5 py-1.5 text-[12px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 w-44 flex-shrink-0"
+                >
+                  <option value={DONT_IMPORT}>Don't Import</option>
+                  {existingColumns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {value !== DONT_IMPORT && <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 mt-4">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="px-3 py-2 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
+            >
+              Back
+            </button>
+          )}
+          <button
+            onClick={onCancel}
+            className="flex-1 px-3 py-2 text-[12.5px] font-medium border rounded-lg text-slate-600 border-slate-200 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onContinue}
+            className="flex items-center justify-center flex-1 gap-1.5 px-3 py-2 text-[12.5px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800"
+          >
+            Continue →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+type WizardStep = "formatInfo" | "sheetPicker" | "mapping" | "preview";
+
 const UploadSheetButton: React.FC<{
   tableId: number;
   existingColumns: CustomTableColumn[];
   onCreateColumn: (payload: SaveCustomTableColumnPayload) => Promise<CustomTableColumn>;
   onImportSheet: (payload: ImportCustomTableSheetPayload) => Promise<ImportCustomTableSheetResult>;
-}> = ({ tableId, existingColumns, onCreateColumn, onImportSheet }) => {
+  importTemplates?: CustomTableImportTemplate[];
+  onSaveImportTemplate?: (payload: SaveCustomTableImportTemplatePayload) => Promise<unknown>;
+}> = ({ tableId, existingColumns, onCreateColumn, onImportSheet, importTemplates, onSaveImportTemplate }) => {
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const [formatInfoOpen, setFormatInfoOpen] = useState(false);
+  const [step, setStep] = useState<WizardStep | null>(null);
+  const [dateFormat, setDateFormat] = useState<"AD" | "BS">("AD");
+  const [fileName, setFileName] = useState("");
+  const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [parsed, setParsed] = useState<ParsedSheet | null>(null);
+  const [mapping, setMapping] = useState<ColumnMapping>({});
+  const [recognizedTemplateName, setRecognizedTemplateName] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [dateFormat, setDateFormat] = useState<"AD" | "BS">("AD");
+  const [lastMapping, setLastMapping] = useState<{ headers: string[]; mapping: ColumnMapping } | null>(null);
+  const [saveTemplateName, setSaveTemplateName] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const inputId = `custom-table-upload-${tableId}`;
 
-  const handleFile = async (file: File | undefined) => {
+  const resetWizard = () => {
+    setStep(null);
+    setWorkbook(null);
+    setSheetNames([]);
+    setParsed(null);
+    setMapping({});
+    setRecognizedTemplateName(null);
+    setPending(null);
+    setPreviewError(null);
+  };
+
+  const openMappingForSheet = (wb: XLSX.WorkBook, sheetName: string) => {
+    const result = parseSheetFromWorkbook(wb, sheetName);
+    if (result.headers.length === 0) {
+      setMessage({ kind: "error", text: "Couldn't find a header row in that sheet." });
+      return;
+    }
+    setParsed(result);
+
+    const autoMapping: ColumnMapping = {};
+    for (const h of result.headers) {
+      const existing = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(h));
+      autoMapping[h] = existing ? existing.id : DONT_IMPORT;
+    }
+
+    const normalizedFileHeaders = new Set(result.headers.map(normalizeHeaderText));
+    const recognized = (importTemplates ?? []).find((t) => {
+      const templateHeaders = new Set(t.headers.map(normalizeHeaderText));
+      return templateHeaders.size === normalizedFileHeaders.size && [...templateHeaders].every((h) => normalizedFileHeaders.has(h));
+    });
+
+    if (recognized) {
+      applyTemplateToMapping(recognized, result.headers, autoMapping);
+    } else {
+      setMapping(autoMapping);
+      setRecognizedTemplateName(null);
+    }
+    setStep("mapping");
+  };
+
+  const applyTemplateToMapping = (template: CustomTableImportTemplate, headers: string[], fallback: ColumnMapping) => {
+    const next: ColumnMapping = { ...fallback };
+    for (const h of headers) {
+      const matchingHeader = Object.keys(template.mapping).find((th) => normalizeHeaderText(th) === normalizeHeaderText(h));
+      if (matchingHeader) {
+        const colId = template.mapping[matchingHeader];
+        next[h] = existingColumns.some((c) => c.id === colId) ? colId : DONT_IMPORT;
+      }
+    }
+    setMapping(next);
+    setRecognizedTemplateName(template.name);
+  };
+
+  const handleFileChosen = async (file: File | undefined) => {
     if (!file) return;
     setMessage(null);
-    setFormatInfoOpen(false);
     try {
-      const { headers, rows } = await parseSheetFile(file);
-      if (headers.length === 0) {
-        setMessage({ kind: "error", text: "Couldn't find a header row in that file." });
-        return;
+      const wb = await readWorkbook(file);
+      setFileName(file.name);
+      setWorkbook(wb);
+      if (wb.SheetNames.length > 1) {
+        setSheetNames(wb.SheetNames);
+        setStep("sheetPicker");
+      } else {
+        openMappingForSheet(wb, wb.SheetNames[0]);
       }
-
-      const matchedColumns: { id: number; name: string; dataType: CustomTableColumnDataType }[] = [];
-      const unmatchedHeaders: string[] = [];
-      const headerToColumn = new Map<string, CustomTableColumn>();
-      for (const h of headers) {
-        const existing = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(h));
-        if (existing) {
-          matchedColumns.push({ id: existing.id, name: existing.name, dataType: existing.dataType });
-          headerToColumn.set(h, existing);
-        } else {
-          unmatchedHeaders.push(h);
-        }
-      }
-
-      // Converting a BS date to AD before storage is right (see coerceToColumnType above) —
-      // but the raw BS text shouldn't just be discarded once converted. For every "date"
-      // column being imported as BS, mirror it into a companion "<Column> (BS)" text column
-      // (reusing one if it already exists) holding the original as-uploaded BS string, so the
-      // conversion has an audit trail and BS dates can still be shown to users directly instead
-      // of only ever re-derived from the AD value.
-      const bsColumnIdByDateColumnId = new Map<number, number>();
-      if (dateFormat === "BS") {
-        for (const column of matchedColumns) {
-          if (column.dataType !== "date") continue;
-          const bsName = `${column.name} (BS)`;
-          const existingBsColumn = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(bsName));
-          // eslint-disable-next-line no-await-in-loop -- only runs for the few date columns in a sheet, sequential keeps it simple
-          const bsColumn = existingBsColumn ?? (await onCreateColumn({ name: bsName, dataType: "text" }));
-          bsColumnIdByDateColumnId.set(column.id, bsColumn.id);
-          if (!matchedColumns.some((c) => c.id === bsColumn.id)) {
-            matchedColumns.push({ id: bsColumn.id, name: bsColumn.name, dataType: "text" });
-          }
-        }
-      }
-
-      const normalizedRows = rows.map((row) => {
-        const out: Record<string, CustomTableCellValue> = {};
-        for (const [header, column] of headerToColumn) {
-          out[String(column.id)] = coerceToColumnType(row[header], column.dataType, dateFormat);
-          const bsColumnId = bsColumnIdByDateColumnId.get(column.id);
-          if (bsColumnId != null) {
-            const raw = row[header];
-            out[String(bsColumnId)] = raw == null || raw === "" ? null : String(raw);
-          }
-        }
-        return out;
-      });
-
-      setPreviewError(null);
-      setPending({ fileName: file.name, matchedColumns, unmatchedHeaders, rows: normalizedRows });
     } catch (err) {
       setMessage({ kind: "error", text: getErrorMessage(err, "Failed to read that file.") });
     }
   };
 
-  const handleConfirm = async () => {
+  const handleConfirmMapping = async () => {
+    if (!parsed) return;
+    setPreviewError(null);
+
+    const unmatchedHeaders = parsed.headers.filter((h) => (mapping[h] ?? DONT_IMPORT) === DONT_IMPORT);
+    const matchedColumns: { id: number; name: string; dataType: CustomTableColumnDataType }[] = [];
+    const headerToColumn = new Map<string, CustomTableColumn>();
+    for (const h of parsed.headers) {
+      const colId = mapping[h];
+      if (colId === undefined || colId === DONT_IMPORT) continue;
+      const col = existingColumns.find((c) => c.id === colId);
+      if (!col) continue;
+      if (!matchedColumns.some((c) => c.id === col.id)) matchedColumns.push({ id: col.id, name: col.name, dataType: col.dataType });
+      headerToColumn.set(h, col);
+    }
+
+    // Converting a BS date to AD before storage is right (see coerceToColumnType above) —
+    // but the raw BS text shouldn't just be discarded once converted. For every "date"
+    // column being imported as BS, mirror it into a companion "<Column> (BS)" text column
+    // (reusing one if it already exists) holding the original as-uploaded BS string, so the
+    // conversion has an audit trail and BS dates can still be shown to users directly instead
+    // of only ever re-derived from the AD value.
+    const bsColumnIdByDateColumnId = new Map<number, number>();
+    if (dateFormat === "BS") {
+      for (const column of [...matchedColumns]) {
+        if (column.dataType !== "date") continue;
+        const bsName = `${column.name} (BS)`;
+        const existingBsColumn = existingColumns.find((c) => normalizeHeaderText(c.name) === normalizeHeaderText(bsName));
+        // eslint-disable-next-line no-await-in-loop -- only runs for the few date columns in a sheet, sequential keeps it simple
+        const bsColumn = existingBsColumn ?? (await onCreateColumn({ name: bsName, dataType: "text" }));
+        bsColumnIdByDateColumnId.set(column.id, bsColumn.id);
+        if (!matchedColumns.some((c) => c.id === bsColumn.id)) {
+          matchedColumns.push({ id: bsColumn.id, name: bsColumn.name, dataType: "text" });
+        }
+      }
+    }
+
+    let warningRowCount = 0;
+    const normalizedRows = parsed.rows.map((row) => {
+      const out: Record<string, CustomTableCellValue> = {};
+      let rowHasWarning = false;
+      for (const [header, column] of headerToColumn) {
+        const raw = row[header];
+        const coerced = coerceToColumnType(raw, column.dataType, dateFormat);
+        out[String(column.id)] = coerced;
+        if (coerced == null && column.dataType !== "text" && raw != null && String(raw).trim() !== "") rowHasWarning = true;
+        const bsColumnId = bsColumnIdByDateColumnId.get(column.id);
+        if (bsColumnId != null) {
+          out[String(bsColumnId)] = raw == null || raw === "" ? null : String(raw);
+        }
+      }
+      if (rowHasWarning) warningRowCount++;
+      return out;
+    });
+
+    setLastMapping({ headers: parsed.headers, mapping });
+    setPending({ fileName, matchedColumns, unmatchedHeaders, rows: normalizedRows, warningRowCount });
+    setStep("preview");
+  };
+
+  const handleConfirmImport = async () => {
     if (!pending) return;
     setPreviewError(null);
     setSubmitting(true);
     try {
       const result = await onImportSheet({ rows: pending.rows });
-      setPending(null);
-      setMessage({
-        kind: "success",
-        text: `Imported ${result.rowsCreated} row${result.rowsCreated === 1 ? "" : "s"}.`,
-      });
+      resetWizard();
+      setMessage({ kind: "success", text: `Imported ${result.rowsCreated} row${result.rowsCreated === 1 ? "" : "s"}.` });
     } catch (err) {
       setPreviewError(getErrorMessage(err, "Failed to import that file."));
     } finally {
@@ -960,10 +1214,30 @@ const UploadSheetButton: React.FC<{
     }
   };
 
+  const handleSaveTemplate = async () => {
+    if (!onSaveImportTemplate || !lastMapping) return;
+    const name = saveTemplateName.trim();
+    if (!name) return;
+    setSavingTemplate(true);
+    try {
+      const mappingPayload: Record<string, number> = {};
+      for (const [h, v] of Object.entries(lastMapping.mapping)) {
+        if (v !== DONT_IMPORT) mappingPayload[h] = v;
+      }
+      await onSaveImportTemplate({ name, headers: lastMapping.headers, mapping: mappingPayload });
+      setLastMapping(null);
+      setSaveTemplateName("");
+    } catch (err) {
+      setMessage({ kind: "error", text: getErrorMessage(err, "Failed to save template.") });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   return (
     <div className="flex flex-col items-end gap-1.5">
       <button
-        onClick={() => setFormatInfoOpen(true)}
+        onClick={() => setStep("formatInfo")}
         className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium border rounded-lg cursor-pointer text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
       >
         <Upload size={13} />
@@ -973,21 +1247,71 @@ const UploadSheetButton: React.FC<{
         <p className={`text-[11.5px] ${message.kind === "success" ? "text-emerald-600" : "text-red-600"}`}>{message.text}</p>
       )}
 
-      {formatInfoOpen && (
+      {lastMapping && onSaveImportTemplate && (
+        <div className="flex items-center gap-1.5">
+          <input
+            value={saveTemplateName}
+            onChange={(e) => setSaveTemplateName(e.target.value)}
+            placeholder="Save this mapping as..."
+            className="px-2.5 py-1.5 text-[11.5px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 w-44"
+          />
+          <button
+            onClick={handleSaveTemplate}
+            disabled={savingTemplate || !saveTemplateName.trim()}
+            className="px-2.5 py-1.5 text-[11.5px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 disabled:opacity-60"
+          >
+            {savingTemplate ? <Loader2 size={12} className="animate-spin" /> : "Save Template"}
+          </button>
+          <button onClick={() => setLastMapping(null)} className="p-1 rounded text-slate-400 hover:bg-slate-100">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {step === "formatInfo" && (
         <FileFormatInfoModal
           inputId={inputId}
-          onFileChosen={handleFile}
-          onClose={() => setFormatInfoOpen(false)}
+          onFileChosen={handleFileChosen}
+          onClose={() => setStep(null)}
           dateFormat={dateFormat}
           onDateFormatChange={setDateFormat}
         />
       )}
 
-      {pending && (
+      {step === "sheetPicker" && workbook && (
+        <SheetPickerModal
+          fileName={fileName}
+          sheetNames={sheetNames}
+          onChoose={(sheetName) => openMappingForSheet(workbook, sheetName)}
+          onCancel={resetWizard}
+        />
+      )}
+
+      {step === "mapping" && parsed && (
+        <ColumnMappingModal
+          fileName={fileName}
+          headers={parsed.headers}
+          existingColumns={existingColumns}
+          mapping={mapping}
+          onChangeMapping={(h, v) => {
+            setMapping((m) => ({ ...m, [h]: v }));
+            setRecognizedTemplateName(null);
+          }}
+          recognizedTemplateName={recognizedTemplateName}
+          templates={importTemplates ?? []}
+          onApplyTemplate={(t) => applyTemplateToMapping(t, parsed.headers, mapping)}
+          onBack={sheetNames.length > 1 ? () => setStep("sheetPicker") : undefined}
+          onCancel={resetWizard}
+          onContinue={handleConfirmMapping}
+        />
+      )}
+
+      {step === "preview" && pending && (
         <ImportPreviewModal
           pending={pending}
-          onConfirm={handleConfirm}
-          onCancel={() => setPending(null)}
+          onConfirm={handleConfirmImport}
+          onCancel={resetWizard}
+          onBack={() => setStep("mapping")}
           isSubmitting={submitting}
           error={previewError}
         />
@@ -1148,6 +1472,11 @@ export interface TableSheetProps {
   onUpdateRow: (id: number, payload: SaveCustomTableRowPayload) => Promise<CustomTableRow>;
   onDeleteRow: (id: number) => Promise<void>;
   onImportSheet: (payload: ImportCustomTableSheetPayload) => Promise<ImportCustomTableSheetResult>;
+  /** Saved column mappings from previous imports, for one-click re-import of
+   * a recognized repeated file format. Optional — omit to leave the import
+   * wizard's "templates" step out entirely (e.g. Materials doesn't use this). */
+  importTemplates?: CustomTableImportTemplate[];
+  onSaveImportTemplate?: (payload: SaveCustomTableImportTemplatePayload) => Promise<unknown>;
 }
 
 /** The reusable per-table spreadsheet UI shared by Plant Report and Materials
@@ -1170,6 +1499,8 @@ export const TableSheet: React.FC<TableSheetProps> = ({
   onUpdateRow,
   onDeleteRow,
   onImportSheet,
+  importTemplates,
+  onSaveImportTemplate,
 }) => {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<CustomTableColumn | null>(null);
@@ -1292,7 +1623,14 @@ export const TableSheet: React.FC<TableSheetProps> = ({
             {editMode ? "Editing" : "Edit"}
           </button>
           <ExportSheetButton tableName={tableName} columns={columns} rows={rows} />
-          <UploadSheetButton tableId={tableId} existingColumns={columns} onCreateColumn={onCreateColumn} onImportSheet={onImportSheet} />
+          <UploadSheetButton
+            tableId={tableId}
+            existingColumns={columns}
+            onCreateColumn={onCreateColumn}
+            onImportSheet={onImportSheet}
+            importTemplates={importTemplates}
+            onSaveImportTemplate={onSaveImportTemplate}
+          />
         </div>
       </div>
 

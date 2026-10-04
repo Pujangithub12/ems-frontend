@@ -39,7 +39,6 @@ const Settings = lazy(() => import("./features/settings/pages/Settings"));
 const Profile = lazy(() => import("./features/users/pages/Profile"));
 const TasksPage = lazy(() => import("./features/tasks/pages/Tasks"));
 const PlantReport = lazy(() => import("./features/plantReport/pages/PlantReport"));
-const Materials = lazy(() => import("./features/materials/pages/Materials"));
 const Purchase = lazy(() => import("./features/purchase/pages/Purchase"));
 const SiteActivities = lazy(() => import("./features/siteActivities/pages/SiteActivities"));
 
@@ -269,7 +268,6 @@ function App() {
             />
             <Route path="/:organizationId/task" element={<TasksPage />} />
             <Route path="/:organizationId/plant-report" element={<PlantReport />} />
-            <Route path="/:organizationId/materials" element={<Materials />} />
             <Route path="/:organizationId/purchase" element={<Purchase />} />
             <Route path="/:organizationId/site-activities" element={<SiteActivities />} />
             <Route path="/:organizationId/users" element={<Users />} />

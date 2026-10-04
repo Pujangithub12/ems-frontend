@@ -51,6 +51,8 @@ import {
   useUpdatePlantReportRow,
   useDeletePlantReportRow,
   useImportPlantReportSheet,
+  usePlantReportImportTemplates,
+  useCreatePlantReportImportTemplate,
 } from "../hooks/usePlantReport";
 import type {
   PlantReportTable,
@@ -486,6 +488,8 @@ const PlantReport: React.FC = () => {
   const updateRowMutation = useUpdatePlantReportRow();
   const deleteRowMutation = useDeletePlantReportRow();
   const importSheetMutation = useImportPlantReportSheet();
+  const importTemplatesQuery = usePlantReportImportTemplates(activeTableId);
+  const createImportTemplateMutation = useCreatePlantReportImportTemplate();
 
   useEffect(() => {
     if (
@@ -625,6 +629,8 @@ const PlantReport: React.FC = () => {
           onUpdateRow={(id, payload) => updateRowMutation.mutateAsync({ id, tableId: activeTable.id, payload })}
           onDeleteRow={(id) => deleteRowMutation.mutateAsync({ id, tableId: activeTable.id })}
           onImportSheet={(payload) => importSheetMutation.mutateAsync({ tableId: activeTable.id, payload })}
+          importTemplates={importTemplatesQuery.data}
+          onSaveImportTemplate={(payload) => createImportTemplateMutation.mutateAsync({ tableId: activeTable.id, payload })}
         />
       ) : null}
 

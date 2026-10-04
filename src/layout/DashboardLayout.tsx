@@ -30,7 +30,6 @@ import {
   ClipboardList,
   Tag,
   Wallet,
-  Boxes,
   Receipt,
   FileSignature,
 } from "lucide-react";
@@ -355,12 +354,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "site-activities",
     },
     {
-      path: `${prefix}/materials`,
-      label: "Materials",
-      icon: Boxes,
-      id: "materials",
-    },
-    {
       path: `${prefix}/purchase`,
       label: "Purchases",
       icon: Receipt,
@@ -404,7 +397,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     documents: "Browse and manage organization files",
     inventory: "Material stock, receipts and usage, per project",
     "plant-report": "Daily boiler/plant operations log and monthly summary",
-    materials: "Material stock, receipts and usage, per project",
     purchase: "Manage all purchase orders, bills and payments",
     "site-activities": "Daily site progress report — work activities, equipment, manpower and photos",
     procurement: "Purchase requests across all your projects",
