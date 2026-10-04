@@ -83,6 +83,10 @@ interface GanttChartViewProps {
    * the task no longer exists) — callers clear their focusTaskId state here so the same id can be
    * requested again later (React won't re-fire an effect for an unchanged prop value). */
   onTaskFocusHandled?: () => void;
+  /** Fires right after a Task Name inline edit is confirmed with Enter (new task or
+   * rename) — NOT on every edit (e.g. clicking away doesn't fire this). Callers use
+   * it to save immediately instead of waiting for an explicit Save action. */
+  onCommitTaskName?: () => void;
 }
 
 /** Payload for onLinkEdit — everything a caller needs to render a type/lag edit popover anchored at the click position. */
@@ -132,7 +136,7 @@ const TYPE_MAP: Record<GanttTask["type"], string> = {
  * by onTaskClick's click-to-edit path and GanttChartView's focusTaskId prop (the Ctrl+Enter
  * "add task" shortcut, which wants the new row's name focused with no click involved). Returns
  * false (and does nothing) if the cell isn't a valid, not-already-editing Task Name cell. */
-function openTaskNameEditor(cell: HTMLElement | null, id: string | number): boolean {
+function openTaskNameEditor(cell: HTMLElement | null, id: string | number, onEnterCommit?: () => void): boolean {
   if (!cell || cell.querySelector("input")) return false;
   const contentEl = cell.querySelector<HTMLElement>(".gantt_tree_content");
   if (!contentEl) return false;
@@ -147,6 +151,7 @@ function openTaskNameEditor(cell: HTMLElement | null, id: string | number): bool
   input.select();
 
   let settled = false;
+  let committedViaEnter = false;
   const commit = () => {
     if (settled) return;
     settled = true;
@@ -156,6 +161,15 @@ function openTaskNameEditor(cell: HTMLElement | null, id: string | number): bool
       gantt.updateTask(id);
     } else {
       gantt.render();
+    }
+    if (committedViaEnter) {
+      // gantt.updateTask above synchronously fired onAfterTaskUpdate, which
+      // queues a React state update (the schedule row's new text) — not yet
+      // applied to this closure's state. Deferring one tick lets that state
+      // update (and the save callback's own ref, kept fresh off it) settle
+      // first, so saving here persists this edit instead of the schedule as
+      // it was just before it.
+      setTimeout(() => onEnterCommit?.(), 0);
     }
   };
   const cancel = () => {
@@ -168,6 +182,7 @@ function openTaskNameEditor(cell: HTMLElement | null, id: string | number): bool
   input.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") {
       ev.preventDefault();
+      committedViaEnter = true;
       input.blur();
     } else if (ev.key === "Escape") {
       ev.preventDefault();
@@ -357,6 +372,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   onGridHeaderClick,
   focusTaskId,
   onTaskFocusHandled,
+  onCommitTaskName,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(false);
@@ -384,6 +400,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
   const onReorderRef = useRef(onReorder);
   const onGridHeaderClickRef = useRef(onGridHeaderClick);
   const onTaskFocusHandledRef = useRef(onTaskFocusHandled);
+  const onCommitTaskNameRef = useRef(onCommitTaskName);
   const editableRef = useRef(editable);
   useEffect(() => {
     onLinkCreateRef.current = onLinkCreate;
@@ -400,8 +417,9 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
     onReorderRef.current = onReorder;
     onGridHeaderClickRef.current = onGridHeaderClick;
     onTaskFocusHandledRef.current = onTaskFocusHandled;
+    onCommitTaskNameRef.current = onCommitTaskName;
     editableRef.current = editable;
-  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onAddTaskBelow, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onSelectToggle, onReorder, onGridHeaderClick, onTaskFocusHandled, editable]);
+  }, [onLinkCreate, onLinkDelete, onLinkEdit, onTaskChange, onAddChildTask, onAddTaskBelow, onDeleteTask, onDuplicateTask, onStatusChange, onProgressChange, onSelectToggle, onReorder, onGridHeaderClick, onTaskFocusHandled, onCommitTaskName, editable]);
 
 
   // Row-options menu is dismissed by clicking outside it, scrolling, or Escape.
@@ -576,7 +594,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
         const cell = target.closest<HTMLElement>(
           ".gantt_cell[data-column-name='text']",
         );
-        if (!openTaskNameEditor(cell, id)) return true;
+        if (!openTaskNameEditor(cell, id, () => onCommitTaskNameRef.current?.())) return true;
         return false;
       }),
     );
@@ -954,7 +972,7 @@ const GanttChartView: React.FC<GanttChartViewProps> = ({
       const cell = containerRef.current?.querySelector<HTMLElement>(
         `.gantt_grid_data .gantt_row[data-task-id="${CSS.escape(String(focusTaskId))}"] .gantt_cell[data-column-name='text']`,
       );
-      openTaskNameEditor(cell ?? null, focusTaskId);
+      openTaskNameEditor(cell ?? null, focusTaskId, () => onCommitTaskNameRef.current?.());
       onTaskFocusHandledRef.current?.();
     });
     return () => cancelAnimationFrame(raf);

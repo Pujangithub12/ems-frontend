@@ -1821,6 +1821,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
                   onGridHeaderClick={handleGridHeaderClick}
                   focusTaskId={focusTaskId}
                   onTaskFocusHandled={handleTaskFocusHandled}
+                  onCommitTaskName={handleSaveSchedule}
                 />
               </div>
             </div>

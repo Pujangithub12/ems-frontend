@@ -564,6 +564,22 @@ export type FinancePurchaseOrderRow = {
   currency: string;
 };
 
+export type ShipmentTrackingRecord = {
+  id: number;
+  blNumber: string | null;
+  carrierName: string | null;
+  dispatchDate: string | null;
+  eta: string | null;
+  pol: string | null;
+  pod: string | null;
+  containerType: string | null;
+  containerCount: number | null;
+  dispatchedFrom: string | null;
+  documentStatus: string | null;
+  remarks: string | null;
+  createdAt: string;
+};
+
 export type VendorFinanceSummary = {
   vendor: { id: number; name: string };
   totals: {
@@ -599,6 +615,9 @@ export type FinanceCostBreakdownRow = {
   vat: number;
   importDuties: number;
   insurance: number;
+  /** Manually entered, no computed baseline behind either — shown just left of Refundable Amount. */
+  bibini: number;
+  otherMargin: number;
   /** Manually entered directly in NPR (not the row's own currency) — how much VAT/tax is refundable on this row. */
   refundableAmount: number;
   /** How much VAT has actually been refunded so far, also in NPR. */

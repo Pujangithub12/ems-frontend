@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, RefreshCw, Loader2, AlertCircle, X, CreditCard, History, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
+import { Wallet, Search, RefreshCw, Loader2, AlertCircle, X, CreditCard, History, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { FinancePurchaseOrderRow } from "../../../types";
@@ -46,6 +46,37 @@ function convertRowForDisplay(
   };
 }
 
+type SortKey = "vendor" | "itemProcure" | "itemValue" | "paymentTerms" | "amountPaid" | "paidDate" | "outstandingBalance";
+
+const COLUMNS: { key: SortKey; label: string; sortable?: boolean; align?: "right" }[] = [
+  { key: "vendor", label: "Vendor", sortable: true },
+  { key: "itemProcure", label: "Item Procure", sortable: true },
+  { key: "itemValue", label: "Item Value", sortable: true, align: "right" },
+  { key: "paymentTerms", label: "Terms of Payment", sortable: true },
+  { key: "amountPaid", label: "Amount Paid", sortable: true, align: "right" },
+  { key: "paidDate", label: "Paid Date", sortable: true },
+  { key: "outstandingBalance", label: "Outstanding Balance", sortable: true, align: "right" },
+];
+
+const sortValue = (r: FinancePurchaseOrderRow, key: SortKey): string | number => {
+  switch (key) {
+    case "vendor":
+      return r.vendorName || r.vendor?.name || "";
+    case "itemProcure":
+      return r.itemNames[0] || r.poNumber || "";
+    case "itemValue":
+      return r.itemValue;
+    case "paymentTerms":
+      return r.paymentTerms || "";
+    case "amountPaid":
+      return r.amountPaid;
+    case "paidDate":
+      return r.paidDate || "";
+    case "outstandingBalance":
+      return r.outstandingBalance;
+  }
+};
+
 type PaymentForm = { amount: string; paidDate: string; exchangeRate: string; reference: string; notes: string };
 const emptyPaymentForm: PaymentForm = { amount: "", paidDate: new Date().toISOString().slice(0, 10), exchangeRate: "", reference: "", notes: "" };
 
@@ -69,6 +100,7 @@ const FinancePage: React.FC = () => {
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "paidDate", dir: "desc" });
   const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("native");
   const [paymentTarget, setPaymentTarget] = useState<FinancePurchaseOrderRow | null>(null);
   const [historyTarget, setHistoryTarget] = useState<FinancePurchaseOrderRow | null>(null);
@@ -84,14 +116,25 @@ const FinancePage: React.FC = () => {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        (r.poNumber || "").toLowerCase().includes(q) ||
-        (r.vendorName || r.vendor?.name || "").toLowerCase().includes(q) ||
-        r.itemNames.some((n) => n.toLowerCase().includes(q)),
-    );
-  }, [rows, search]);
+    const matched = !q
+      ? rows
+      : rows.filter(
+          (r) =>
+            (r.poNumber || "").toLowerCase().includes(q) ||
+            (r.vendorName || r.vendor?.name || "").toLowerCase().includes(q) ||
+            r.itemNames.some((n) => n.toLowerCase().includes(q)),
+        );
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...matched].sort((a, b) => {
+      const av = sortValue(a, sort.key);
+      const bv = sortValue(b, sort.key);
+      const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true });
+      return cmp !== 0 ? cmp * dir : 0;
+    });
+  }, [rows, search, sort]);
+
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
   const openAddRecord = () => {
     setEditingManualRow(null);
@@ -188,7 +231,7 @@ const FinancePage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
+          <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-sm border-slate-200">
             {filteredRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
@@ -203,30 +246,46 @@ const FinancePage: React.FC = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-[12px]">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-blue-900 text-white text-[11px] font-semibold uppercase tracking-wide">
-                      <th className="px-3 py-2 font-semibold text-left">Vendor</th>
-                      <th className="px-3 py-2 font-semibold text-left">Item Procure</th>
-                      <th className="px-3 py-2 font-semibold text-right">Item Value</th>
-                      <th className="px-3 py-2 font-semibold text-left">Terms of Payment</th>
-                      <th className="px-3 py-2 font-semibold text-right">Amount Paid</th>
-                      <th className="px-3 py-2 font-semibold text-left">Paid Date</th>
-                      <th className="px-3 py-2 font-semibold text-right">Outstanding Balance</th>
-                      {isAdmin && <th className="px-3 py-2 font-semibold text-right">Actions</th>}
+                    <tr className="bg-[#f3f6fb]">
+                      {COLUMNS.map((c) => {
+                        const active = c.sortable && sort.key === c.key;
+                        return (
+                          <th
+                            key={c.key}
+                            onClick={c.sortable ? () => toggleSort(c.key) : undefined}
+                            className={`px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 whitespace-nowrap ${
+                              c.align === "right" ? "text-right" : ""
+                            } ${c.sortable ? "cursor-pointer select-none" : ""}`}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {c.label}
+                              {c.sortable &&
+                                (active ? (
+                                  sort.dir === "asc" ? <ChevronUp size={11} /> : <ChevronDown size={11} />
+                                ) : (
+                                  <ChevronsUpDown size={11} className="text-slate-400" />
+                                ))}
+                            </span>
+                          </th>
+                        );
+                      })}
+                      {isAdmin && <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRows.map((r) => {
                       const converted = convertRowForDisplay(r, displayCurrency, ratesQuery.data);
                       const display = converted ?? { itemValue: r.itemValue, amountPaid: r.amountPaid, outstandingBalance: r.outstandingBalance, currency: r.currency };
+                      const cell = "px-2.5 py-3 text-[12px] text-slate-800 border border-slate-200";
                       return (
                       <tr
                         key={rowKey(r)}
                         onClick={() => navigate(`/${organizationId}/finance/records/${r.source}/${r.source === "po" ? r.poId : r.manualRecordId}`)}
-                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50 cursor-pointer"
+                        className="bg-white hover:bg-blue-50/60 cursor-pointer"
                       >
-                        <td className="px-3 py-2" onClick={(e) => r.vendor && e.stopPropagation()}>
+                        <td className={cell} onClick={(e) => r.vendor && e.stopPropagation()}>
                           {r.vendor ? (
                             <button
                               onClick={() => navigate(`/${organizationId}/finance/vendors/${r.vendor!.id}`)}
@@ -238,7 +297,7 @@ const FinancePage: React.FC = () => {
                             <span className="text-slate-600">{r.vendorName || "--"}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2" onClick={(e) => r.source === "po" && e.stopPropagation()}>
+                        <td className={cell} onClick={(e) => r.source === "po" && e.stopPropagation()}>
                           {r.source === "po" ? (
                             <button
                               onClick={() => navigate(`/${organizationId}/purchase-orders/${r.poId}`)}
@@ -254,17 +313,17 @@ const FinancePage: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className={`${cell} text-right`}>
                           {formatCost(display.itemValue, display.currency)}
                           {display.currency && display.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{display.currency}</span>}
                           {converted && <div className="text-[10px] text-slate-400">{formatCost(r.itemValue, r.currency)} native</div>}
                         </td>
-                        <td className="px-3 py-2 text-slate-600">{r.paymentTerms || "--"}</td>
-                        <td className="px-3 py-2 text-right text-slate-700">
+                        <td className={cell}>{r.paymentTerms || "--"}</td>
+                        <td className={`${cell} text-right`}>
                           {formatCost(display.amountPaid, display.currency)}
                           {converted && <div className="text-[10px] text-slate-400">{formatCost(r.amountPaid, r.currency)} native</div>}
                         </td>
-                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <td className={cell} onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => setHistoryTarget(r)}
                             className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-900 hover:underline disabled:no-underline disabled:text-slate-400"
@@ -275,12 +334,12 @@ const FinancePage: React.FC = () => {
                             {r.payments.length > 0 && <History size={11} />}
                           </button>
                         </td>
-                        <td className={`px-3 py-2 text-right font-medium ${display.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                        <td className={`${cell} text-right font-medium ${display.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
                           {formatCost(display.outstandingBalance, display.currency)}
                           {converted && <div className="text-[10px] font-normal text-slate-400">{formatCost(r.outstandingBalance, r.currency)} native</div>}
                         </td>
                         {isAdmin && (
-                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <td className={cell} onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => setPaymentTarget(r)}

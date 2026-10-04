@@ -18,13 +18,19 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 type SwitchOrganizationModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Opens straight into the "Add organization" form instead of the switch
+   * list — used by the sidebar organization switcher's "Add organization"
+   * row, which has its own switch list already and only needs this modal
+   * for creating a new one. */
+  defaultView?: "list" | "create";
 };
 
 const SwitchOrganizationModal: React.FC<SwitchOrganizationModalProps> = ({
   isOpen,
   onClose,
+  defaultView = "list",
 }) => {
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(defaultView === "create");
   const [newOrganizationName, setNewOrganizationName] = useState("");
   const [newOrganizationDescription, setNewOrganizationDescription] = useState("");
   const [newOrganizationAddress, setNewOrganizationAddress] = useState("");
@@ -55,7 +61,7 @@ const SwitchOrganizationModal: React.FC<SwitchOrganizationModalProps> = ({
   if (!isOpen) return null;
 
   const handleClose = () => {
-    setShowCreateForm(false);
+    setShowCreateForm(defaultView === "create");
     setNewOrganizationName("");
     setNewOrganizationDescription("");
     setNewOrganizationAddress("");
