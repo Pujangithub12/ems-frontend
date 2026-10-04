@@ -114,3 +114,38 @@ export async function importPlantReportSheet(tableId: number, payload: ImportShe
   const res = await api.post(`/api/plant-report-tables/${tableId}/import`, payload);
   return res.data;
 }
+
+/** A saved column mapping from a previous import, so a repeated file (same
+ * header row) can be recognized and imported in one click next time. */
+export type PlantReportImportTemplate = {
+  id: number;
+  name: string;
+  headers: string[];
+  /** Header text -> PlantReportColumn id; a header mapped to "Don't Import" is absent. */
+  mapping: Record<string, number>;
+};
+export type SavePlantReportImportTemplatePayload = {
+  name: string;
+  headers: string[];
+  mapping: Record<string, number>;
+};
+
+/** GET /api/plant-report-tables/:id/import-templates */
+export async function fetchPlantReportImportTemplates(tableId: number): Promise<PlantReportImportTemplate[]> {
+  const res = await api.get(`/api/plant-report-tables/${tableId}/import-templates`);
+  return res.data.templates;
+}
+
+/** POST /api/plant-report-tables/:id/import-templates */
+export async function createPlantReportImportTemplate(
+  tableId: number,
+  payload: SavePlantReportImportTemplatePayload,
+): Promise<PlantReportImportTemplate> {
+  const res = await api.post(`/api/plant-report-tables/${tableId}/import-templates`, payload);
+  return res.data.template;
+}
+
+/** DELETE /api/plant-report-import-templates/:id */
+export async function deletePlantReportImportTemplate(id: number): Promise<void> {
+  await api.delete(`/api/plant-report-import-templates/${id}`);
+}

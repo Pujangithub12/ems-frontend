@@ -43,6 +43,21 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
   await api.put(`/api/users/${id}`, payload);
 }
 
+/**
+ * PUT /api/users/:id/role-everywhere — sets the member's role in every
+ * organization they share with the caller (where the caller themselves is
+ * admin/super_admin), instead of just the currently active one. Returns which
+ * organizations were skipped (e.g. the caller isn't admin there, or a
+ * super-admin-per-organization cap), so the UI can surface that.
+ */
+export async function updateUserRoleEverywhere(
+  id: number,
+  role: string,
+): Promise<{ message: string; updatedCount: number; skippedOrganizations: string[] }> {
+  const res = await api.put(`/api/users/${id}/role-everywhere`, { role });
+  return res.data;
+}
+
 /** DELETE /api/users/:id — removes a member from the organization. */
 export async function deleteUser(id: number): Promise<void> {
   await api.delete(`/api/users/${id}`);

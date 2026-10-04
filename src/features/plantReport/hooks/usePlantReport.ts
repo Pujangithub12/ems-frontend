@@ -14,10 +14,14 @@ import {
   updatePlantReportRow,
   deletePlantReportRow,
   importPlantReportSheet,
+  fetchPlantReportImportTemplates,
+  createPlantReportImportTemplate,
+  deletePlantReportImportTemplate,
   SavePlantReportTablePayload,
   SavePlantReportColumnPayload,
   SavePlantReportRowPayload,
   ImportSheetPayload,
+  SavePlantReportImportTemplatePayload,
 } from "../api/plantReport.api";
 
 export function usePlantReportTables(projectId: number | null) {
@@ -151,6 +155,38 @@ export function useImportPlantReportSheet() {
     mutationFn: ({ tableId, payload }: { tableId: number; payload: ImportSheetPayload }) => importPlantReportSheet(tableId, payload),
     onSuccess: (_data, { tableId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plantReportTableDetail(wsId, tableId) });
+    },
+  });
+}
+
+export function usePlantReportImportTemplates(tableId: number | null) {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.plantReportImportTemplates(wsId, tableId ?? -1),
+    queryFn: () => fetchPlantReportImportTemplates(tableId as number),
+    enabled: Number.isFinite(wsId) && !!tableId,
+  });
+}
+
+export function useCreatePlantReportImportTemplate() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tableId, payload }: { tableId: number; payload: SavePlantReportImportTemplatePayload }) =>
+      createPlantReportImportTemplate(tableId, payload),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportImportTemplates(wsId, tableId) });
+    },
+  });
+}
+
+export function useDeletePlantReportImportTemplate() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; tableId: number }) => deletePlantReportImportTemplate(id),
+    onSuccess: (_data, { tableId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plantReportImportTemplates(wsId, tableId) });
     },
   });
 }

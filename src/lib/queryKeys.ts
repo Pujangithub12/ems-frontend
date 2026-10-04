@@ -99,6 +99,8 @@ export const queryKeys = {
   plantReportTables: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "plantReportTables", projectId] as const,
   plantReportTableDetail: (wsId: number, tableId: number) =>
     [...queryKeys.all(wsId), "plantReportTableDetail", tableId] as const,
+  plantReportImportTemplates: (wsId: number, tableId: number) =>
+    [...queryKeys.all(wsId), "plantReportImportTemplates", tableId] as const,
 
   materials: (wsId: number, projectId: number) => [...queryKeys.all(wsId), "materials", projectId] as const,
 
