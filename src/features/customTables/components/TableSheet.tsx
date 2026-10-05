@@ -1523,6 +1523,16 @@ export const TableSheet: React.FC<TableSheetProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateColumns]);
 
+  // Must stay above the isLoading/isError early returns below (a hook can't
+  // follow a conditional return) — grouping+sorting every row is cheap for a
+  // handful of rows, but re-running it on every unrelated re-render (opening
+  // a modal, toggling a row's selection, ...) adds up on a large table.
+  const aggregatedRows = useMemo(() => {
+    const dateColumn = dateColumns.find((c) => c.id === dateColumnId) ?? null;
+    if (granularity === "daily" || !dateColumn) return [];
+    return aggregateRows(detail?.rows ?? [], dateColumn, numberColumns, granularity);
+  }, [detail, dateColumns, dateColumnId, numberColumns, granularity]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-slate-400">
@@ -1536,8 +1546,6 @@ export const TableSheet: React.FC<TableSheetProps> = ({
 
   const { columns, rows } = detail;
   const dateColumn = dateColumns.find((c) => c.id === dateColumnId) ?? null;
-  const aggregatedRows =
-    granularity !== "daily" && dateColumn ? aggregateRows(rows, dateColumn, numberColumns, granularity) : [];
 
   const commitCell = (row: CustomTableRow, column: CustomTableColumn, value: CustomTableCellValue) => {
     const nextValues = { ...row.values, [String(column.id)]: value };

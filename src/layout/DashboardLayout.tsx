@@ -19,7 +19,9 @@ import {
   ChevronDown,
   ChevronRight,
   Settings,
-  RefreshCcw,
+  Loader2,
+  Check,
+  Plus,
   User as UserRoundIcon,
   UserPlus,
   Truck,
@@ -93,12 +95,25 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { organizationId: organizationIdParam } = useParams<{ organizationId: string }>();
+  const sortedOrganizations = React.useMemo(
+    () =>
+      organizations
+        .filter((o): o is NonNullable<typeof o> => o != null)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [organizations],
+  );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = React.useState(false);
   const [showSwitchOrganizationModal, setShowSwitchOrganizationModal] =
     React.useState(false);
+  const [switchOrganizationModalView, setSwitchOrganizationModalView] =
+    React.useState<"list" | "create">("list");
+  const [orgMenuOpen, setOrgMenuOpen] = React.useState(false);
+  const [orgSwitchingId, setOrgSwitchingId] = React.useState<number | null>(null);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
+  const orgMenuRef = React.useRef<HTMLDivElement>(null);
   const { isMuted: notificationsMuted } = useNotificationMute();
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isFinance = user?.role === "finance";
@@ -146,6 +161,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       ) {
         setUserMenuOpen(false);
         setNotificationSettingsOpen(false);
+      }
+      if (
+        orgMenuRef.current &&
+        !orgMenuRef.current.contains(e.target as Node)
+      ) {
+        setOrgMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -419,17 +440,33 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     navigate("/login", { replace: true });
   };
 
+  const handleSwitchOrganization = (organizationId: number) => {
+    if (organizationId === organization?.id || orgSwitchingId !== null) {
+      setOrgMenuOpen(false);
+      return;
+    }
+    setOrgSwitchingId(organizationId);
+    navigate(`/${organizationId}/dashboard`);
+    window.setTimeout(() => {
+      setOrgSwitchingId(null);
+      setOrgMenuOpen(false);
+    }, 450);
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F6F7F9]">
       {/* Desktop Sidebar */}
       <aside className="sticky top-0 flex-col flex-shrink-0 hidden w-56 h-screen border-r shadow-2xl lg:flex bg-slate-900 border-slate-800 z-20">
-        {/* Brand / Current Organization */}
-        <div className="p-3 border-b border-slate-800">
-          <div className="flex items-center w-full gap-2.5 px-2.5 py-2.5">
+        {/* Brand / Current Organization — click to switch organizations */}
+        <div className="relative p-3 border-b border-slate-800" ref={orgMenuRef}>
+          <button
+            onClick={() => setOrgMenuOpen((o) => !o)}
+            className="flex items-center w-full gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-white/5 transition-colors"
+          >
             <div className="w-[26px] h-[26px] bg-blue-900 rounded-lg shadow-sm ring-1 ring-white/10 flex items-center justify-center text-white font-bold text-[10px] tracking-[0.05em] flex-shrink-0">
               {organization?.name.charAt(0).toUpperCase() || "EM"}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <div className="font-bold tracking-tight leading-tight truncate text-[14px] text-white">
                 {organization?.name || "EMS Organization"}
               </div>
@@ -440,7 +477,48 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 Management
               </div>
             </div>
-          </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 transition-transform ${orgMenuOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {orgMenuOpen && (
+            <div className="absolute left-3 w-72 top-[calc(100%+4px)] bg-white border border-slate-200/70 z-50 shadow-2xl overflow-hidden">
+              <div className="py-1.5 max-h-72 overflow-y-auto">
+                {sortedOrganizations.map((org) => {
+                  const isCurrent = organization?.id === org.id;
+                  const isSwitchingTo = orgSwitchingId === org.id;
+                  return (
+                    <button
+                      key={org.id}
+                      onClick={() => handleSwitchOrganization(org.id)}
+                      disabled={orgSwitchingId !== null}
+                      className={`w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-2.5 px-2.5 py-2 text-left rounded-lg transition-colors ${
+                        isCurrent ? "bg-blue-50" : "hover:bg-slate-50"
+                      } ${orgSwitchingId !== null && !isSwitchingTo ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="flex items-center justify-center flex-shrink-0 w-6 h-6 text-[10px] font-bold text-white rounded bg-blue-900">
+                        {isSwitchingTo ? <Loader2 className="w-3 h-3 animate-spin" /> : org.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="flex-1 min-w-0 text-[13px] font-medium text-slate-900 truncate">{org.name}</span>
+                      {isCurrent && !isSwitchingTo && <Check className="flex-shrink-0 w-3.5 h-3.5 text-emerald-600" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="pt-1 pb-1.5 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setOrgMenuOpen(false);
+                    setSwitchOrganizationModalView("create");
+                    setShowSwitchOrganizationModal(true);
+                  }}
+                  className="w-[calc(100%-12px)] mx-1.5 flex items-center gap-2.5 px-2.5 py-2 text-left text-[13px] font-medium text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5 opacity-70" />
+                  Add organization
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Nav */}
@@ -589,7 +667,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       {/* Main content */}
       <main className="flex flex-col flex-1 min-w-0">
         {/* Top bar */}
-        <div className="flex items-center flex-shrink-0 h-16 gap-4 px-6 bg-white border-b border-slate-200 shadow-sm z-30">
+        <div className="relative flex items-center flex-shrink-0 h-16 gap-4 px-6 bg-white border-b border-slate-200 shadow-sm z-[45]">
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
@@ -715,16 +793,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       <ChevronRight className="w-3.5 h-3.5 opacity-50" />
                     </span>
                   </button>
-                  <button
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      setShowSwitchOrganizationModal(true);
-                    }}
-                    className="w-[calc(100%-12px)] mx-1.5 mb-0.5 flex items-center gap-3 px-2.5 py-2 text-left text-[13px] text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                  >
-                    <RefreshCcw className="w-3.5 h-3.5 opacity-70" />
-                    Switch organization
-                  </button>
                   <div className="mt-1 pt-1 border-t border-slate-100">
                     <button
                       onClick={handleLogout}
@@ -759,6 +827,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       <SwitchOrganizationModal
         isOpen={showSwitchOrganizationModal}
         onClose={() => setShowSwitchOrganizationModal(false)}
+        defaultView={switchOrganizationModalView}
       />
     </div>
   );

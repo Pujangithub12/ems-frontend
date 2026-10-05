@@ -94,6 +94,13 @@ export async function fetchFinanceCostBreakdown(source: "po" | "manual", id: num
   return res.data;
 }
 
+/** GET the cost-breakdown page's "Export as PDF" option as a downloadable blob. */
+export async function fetchCostBreakdownPdf(source: "po" | "manual", id: number): Promise<Blob> {
+  const path = source === "po" ? `/api/workspace/finance/purchase-orders/${id}/cost-breakdown/pdf` : `/api/workspace/finance/manual-records/${id}/cost-breakdown/pdf`;
+  const res = await api.get<Blob>(path, { responseType: "blob" });
+  return res.data;
+}
+
 export interface EditCostBreakdownRowInput {
   itemName: string;
   majorCost: number;
@@ -105,6 +112,8 @@ export interface EditCostBreakdownRowInput {
   vat: number;
   importDuties: number;
   insurance: number;
+  bibini: number;
+  otherMargin: number;
   refundableAmount: number;
   refundedAmount: number;
   remarks?: string | null;
