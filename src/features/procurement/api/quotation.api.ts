@@ -23,6 +23,7 @@ interface QuotationInputBase {
   customerPan?: string;
   priceBasis?: string;
   deliveryPeriod?: string;
+  deliveryAddress?: string;
   paymentTerms?: string;
   validityPeriod?: string;
   taxPercent?: number;

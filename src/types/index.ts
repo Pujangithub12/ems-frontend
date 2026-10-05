@@ -334,6 +334,7 @@ export type Quotation = {
   customerPan?: string | null;
   priceBasis?: string | null;
   deliveryPeriod?: string | null;
+  deliveryAddress?: string | null;
   paymentTerms?: string | null;
   validityPeriod?: string | null;
   taxPercent?: number | string | null;
