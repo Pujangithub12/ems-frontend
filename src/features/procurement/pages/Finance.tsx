@@ -141,6 +141,21 @@ const FinancePage: React.FC = () => {
     setManualModalOpen(true);
   };
 
+  // Ctrl+Enter (Cmd+Enter on Mac) is the keyboard shortcut for the "Add New Record" button —
+  // opens the same modal, wherever focus is on the page.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !manualModalOpen) {
+        e.preventDefault();
+        openAddRecord();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, manualModalOpen]);
+
   const openEditRecord = (row: FinancePurchaseOrderRow) => {
     setEditingManualRow(row);
     setManualModalOpen(true);
@@ -216,6 +231,7 @@ const FinancePage: React.FC = () => {
               {isAdmin && (
                 <button
                   onClick={openAddRecord}
+                  title="Ctrl+Enter"
                   className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
                 >
                   <Plus size={14} /> Add New Record
