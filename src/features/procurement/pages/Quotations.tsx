@@ -195,6 +195,7 @@ const QuotationsPage: React.FC = () => {
   const [regNo, setRegNo] = useState("");
   const [priceBasis, setPriceBasis] = useState("");
   const [deliveryPeriod, setDeliveryPeriod] = useState(DEFAULT_DELIVERY_PERIOD);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [paymentTerms, setPaymentTerms] = useState(DEFAULT_PAYMENT_TERMS);
   const [validityPeriod, setValidityPeriod] = useState(DEFAULT_VALIDITY_PERIOD);
   const [signatoryName, setSignatoryName] = useState("");
@@ -221,6 +222,7 @@ const QuotationsPage: React.FC = () => {
     setRegNo(latestQuotation?.regNo ?? "");
     setPriceBasis(latestQuotation?.priceBasis ?? "");
     setDeliveryPeriod(latestQuotation?.deliveryPeriod ?? DEFAULT_DELIVERY_PERIOD);
+    setDeliveryAddress(latestQuotation?.deliveryAddress ?? "");
     setPaymentTerms(latestQuotation?.paymentTerms ?? DEFAULT_PAYMENT_TERMS);
     setValidityPeriod(latestQuotation?.validityPeriod ?? DEFAULT_VALIDITY_PERIOD);
     setSignatoryName(latestQuotation?.signatoryName ?? "");
@@ -250,6 +252,7 @@ const QuotationsPage: React.FC = () => {
     setRegNo(q.regNo ?? "");
     setPriceBasis(q.priceBasis ?? "");
     setDeliveryPeriod(q.deliveryPeriod ?? "");
+    setDeliveryAddress(q.deliveryAddress ?? "");
     setPaymentTerms(q.paymentTerms ?? "");
     setValidityPeriod(q.validityPeriod ?? "");
     setSignatoryName(q.signatoryName ?? "");
@@ -340,6 +343,7 @@ const QuotationsPage: React.FC = () => {
       regNo: regNo.trim() || blank,
       priceBasis: priceBasis.trim() || blank,
       deliveryPeriod: deliveryPeriod.trim() || blank,
+      deliveryAddress: deliveryAddress.trim() || blank,
       paymentTerms: paymentTerms.trim() || blank,
       validityPeriod: validityPeriod.trim() || blank,
       signatoryName: signatoryName.trim() || blank,
@@ -451,7 +455,7 @@ const QuotationsPage: React.FC = () => {
           </div>
 
           {isAdmin && showForm && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-900/50">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
               <div className="flex flex-col w-full max-w-4xl max-h-full bg-white shadow-2xl rounded-xl">
                 <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200">
                   <h3 className="text-[14px] font-semibold text-slate-900">
@@ -603,6 +607,10 @@ const QuotationsPage: React.FC = () => {
                       <div>
                         <label className={labelCls}>Delivery Period</label>
                         <input value={deliveryPeriod} onChange={(e) => setDeliveryPeriod(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Delivery Address</label>
+                        <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} onKeyDown={handleRowArrowNav} className={inputCls} placeholder="Optional" />
                       </div>
                       <div>
                         <label className={labelCls}>Payment Terms</label>
