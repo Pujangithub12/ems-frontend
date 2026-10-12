@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Wallet, Search, RefreshCw, Loader2, AlertCircle, X, CreditCard, History, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { Wallet, Search, RefreshCw, Loader2, AlertCircle, History, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { FinancePurchaseOrderRow } from "../../../types";
-import { useFinanceOverviewQuery, useAddFinanceRowPaymentMutation, useDeleteFinanceManualRecordMutation, useExchangeRatesQuery } from "../hooks/useFinance";
+import { useFinanceOverviewQuery, useDeleteFinanceManualRecordMutation } from "../hooks/useFinance";
 import PaymentHistoryModal from "../components/PaymentHistoryModal";
 import ManualRecordModal from "../components/ManualRecordModal";
 import { formatCost } from "../../../lib/currency";
@@ -15,41 +15,12 @@ const formatDate = (value?: string | null) =>
 
 const rowKey = (r: FinancePurchaseOrderRow) => `${r.source}-${r.source === "po" ? r.poId : r.manualRecordId}`;
 
-/** Currencies the "Display in" toggle can convert the whole table into — "native" (the default)
- * shows each row in its own currency, unconverted, exactly like before. */
-const DISPLAY_CURRENCIES = ["native", "NPR", "USD", "INR", "RMB"] as const;
-type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
-
-/** Converts one row's Item Value/Amount Paid/Outstanding Balance into `target`, using today's
- * live NRB rate for both the row's currency and the target — this is what answers "how much
- * {target} do I need today to settle this row," which is the whole point of the toggle: a
- * vendor debt fixed in USD costs a different amount of NPR every day, so seeing it converted at
- * *today's* rate (not some average or the rate from when the PO was made) is what prevents
- * over/under-paying. Returns null when the toggle is "native" or the rate isn't available yet
- * (rates still loading, or an unsupported currency) — callers fall back to the row's own
- * currency in that case. */
-function convertRowForDisplay(
-  row: FinancePurchaseOrderRow,
-  target: DisplayCurrency,
-  liveRates: Record<string, number> | undefined,
-): { itemValue: number; amountPaid: number; outstandingBalance: number; currency: string } | null {
-  if (target === "native" || target === row.currency) return null;
-  const rowRate = row.currency === "NPR" ? 1 : liveRates?.[row.currency];
-  const targetRate = target === "NPR" ? 1 : liveRates?.[target];
-  if (!rowRate || !targetRate) return null;
-  const factor = rowRate / targetRate;
-  return {
-    itemValue: row.itemValue * factor,
-    amountPaid: row.amountPaid * factor,
-    outstandingBalance: row.outstandingBalance * factor,
-    currency: target,
-  };
-}
-
-type SortKey = "vendor" | "itemProcure" | "itemValue" | "paymentTerms" | "amountPaid" | "paidDate" | "outstandingBalance";
+type SortKey = "vendor" | "project" | "lcNumber" | "itemProcure" | "itemValue" | "paymentTerms" | "amountPaid" | "paidDate" | "outstandingBalance";
 
 const COLUMNS: { key: SortKey; label: string; sortable?: boolean; align?: "right" }[] = [
   { key: "vendor", label: "Vendor", sortable: true },
+  { key: "project", label: "Project", sortable: true },
+  { key: "lcNumber", label: "LC Number", sortable: true },
   { key: "itemProcure", label: "Item Procure", sortable: true },
   { key: "itemValue", label: "Item Value", sortable: true, align: "right" },
   { key: "paymentTerms", label: "Terms of Payment", sortable: true },
@@ -62,6 +33,10 @@ const sortValue = (r: FinancePurchaseOrderRow, key: SortKey): string | number =>
   switch (key) {
     case "vendor":
       return r.vendorName || r.vendor?.name || "";
+    case "project":
+      return r.project?.name || "";
+    case "lcNumber":
+      return r.lcNumber || "";
     case "itemProcure":
       return r.itemNames[0] || r.poNumber || "";
     case "itemValue":
@@ -76,9 +51,6 @@ const sortValue = (r: FinancePurchaseOrderRow, key: SortKey): string | number =>
       return r.outstandingBalance;
   }
 };
-
-type PaymentForm = { amount: string; paidDate: string; exchangeRate: string; reference: string; notes: string };
-const emptyPaymentForm: PaymentForm = { amount: "", paidDate: new Date().toISOString().slice(0, 10), exchangeRate: "", reference: "", notes: "" };
 
 /**
  * Finance ledger (procurement pipeline's money layer, on top of the existing Cost Sheet) — one
@@ -96,13 +68,10 @@ const FinancePage: React.FC = () => {
   const overviewQuery = useFinanceOverviewQuery();
   const rows = overviewQuery.data ?? [];
   const deleteManualMutation = useDeleteFinanceManualRecordMutation();
-  const ratesQuery = useExchangeRatesQuery();
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "paidDate", dir: "desc" });
-  const [displayCurrency, setDisplayCurrency] = useState<DisplayCurrency>("native");
-  const [paymentTarget, setPaymentTarget] = useState<FinancePurchaseOrderRow | null>(null);
   const [historyTarget, setHistoryTarget] = useState<FinancePurchaseOrderRow | null>(null);
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [editingManualRow, setEditingManualRow] = useState<FinancePurchaseOrderRow | null>(null);
@@ -122,6 +91,8 @@ const FinancePage: React.FC = () => {
           (r) =>
             (r.poNumber || "").toLowerCase().includes(q) ||
             (r.vendorName || r.vendor?.name || "").toLowerCase().includes(q) ||
+            (r.project?.name || "").toLowerCase().includes(q) ||
+            (r.lcNumber || "").toLowerCase().includes(q) ||
             r.itemNames.some((n) => n.toLowerCase().includes(q)),
         );
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -202,30 +173,10 @@ const FinancePage: React.FC = () => {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search PO#, vendor, item..."
+                  placeholder="Search PO#, vendor, project, LC #, item..."
                   className="pl-8 pr-3 py-2 w-64 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:bg-white transition-colors"
                 />
               </div>
-              <div className="relative">
-                <select
-                  value={displayCurrency}
-                  onChange={(e) => setDisplayCurrency(e.target.value as DisplayCurrency)}
-                  className="appearance-none pl-3 pr-8 py-2 text-[12px] bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 focus:bg-white transition-colors"
-                  title="Convert every row's amounts to one currency using today's exchange rate"
-                >
-                  <option value="native">Display in: each row's own currency</option>
-                  <option value="NPR">Display in: NPR</option>
-                  <option value="USD">Display in: USD</option>
-                  <option value="INR">Display in: INR</option>
-                  <option value="RMB">Display in: RMB</option>
-                </select>
-                <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
-              </div>
-              {displayCurrency !== "native" && (
-                <span className="text-[11px] text-slate-400">
-                  {ratesQuery.data ? "converted at today's NRB rate" : "loading today's rate…"}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-2">
               {isAdmin && (
@@ -292,8 +243,6 @@ const FinancePage: React.FC = () => {
                   </thead>
                   <tbody>
                     {filteredRows.map((r) => {
-                      const converted = convertRowForDisplay(r, displayCurrency, ratesQuery.data);
-                      const display = converted ?? { itemValue: r.itemValue, amountPaid: r.amountPaid, outstandingBalance: r.outstandingBalance, currency: r.currency };
                       const cell = "px-2.5 py-3 text-[12px] text-slate-800 border border-slate-200";
                       return (
                       <tr
@@ -313,6 +262,8 @@ const FinancePage: React.FC = () => {
                             <span className="text-slate-600">{r.vendorName || "--"}</span>
                           )}
                         </td>
+                        <td className={cell}>{r.project ? r.project.name : <span className="text-slate-400">--</span>}</td>
+                        <td className={cell}>{r.lcNumber || <span className="text-slate-400">--</span>}</td>
                         <td className={cell} onClick={(e) => r.source === "po" && e.stopPropagation()}>
                           {r.source === "po" ? (
                             <button
@@ -330,14 +281,12 @@ const FinancePage: React.FC = () => {
                           )}
                         </td>
                         <td className={`${cell} text-right`}>
-                          {formatCost(display.itemValue, display.currency)}
-                          {display.currency && display.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{display.currency}</span>}
-                          {converted && <div className="text-[10px] text-slate-400">{formatCost(r.itemValue, r.currency)} native</div>}
+                          {formatCost(r.itemValue, r.currency)}
+                          {r.currency && r.currency !== "NPR" && <span className="ml-1 text-[10px] text-slate-400">{r.currency}</span>}
                         </td>
-                        <td className={cell}>{r.paymentTerms || "--"}</td>
+                        <td className={`${cell} whitespace-pre-line`}>{r.paymentTerms || "--"}</td>
                         <td className={`${cell} text-right`}>
-                          {formatCost(display.amountPaid, display.currency)}
-                          {converted && <div className="text-[10px] text-slate-400">{formatCost(r.amountPaid, r.currency)} native</div>}
+                          {formatCost(r.amountPaid, r.currency)}
                         </td>
                         <td className={cell} onClick={(e) => e.stopPropagation()}>
                           <button
@@ -350,19 +299,12 @@ const FinancePage: React.FC = () => {
                             {r.payments.length > 0 && <History size={11} />}
                           </button>
                         </td>
-                        <td className={`${cell} text-right font-medium ${display.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                          {formatCost(display.outstandingBalance, display.currency)}
-                          {converted && <div className="text-[10px] font-normal text-slate-400">{formatCost(r.outstandingBalance, r.currency)} native</div>}
+                        <td className={`${cell} text-right font-medium ${r.outstandingBalance > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                          {formatCost(r.outstandingBalance, r.currency)}
                         </td>
                         {isAdmin && (
                           <td className={cell} onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => setPaymentTarget(r)}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800"
-                              >
-                                <CreditCard size={12} /> Log Payment
-                              </button>
                               {r.source === "manual" && (
                                 <>
                                   <button
@@ -396,10 +338,6 @@ const FinancePage: React.FC = () => {
         </div>
       )}
 
-      {paymentTarget && (
-        <LogPaymentModal row={paymentTarget} onClose={() => setPaymentTarget(null)} onLogged={() => { setPaymentTarget(null); overviewQuery.refetch(); }} />
-      )}
-
       {historyTarget && (
         <PaymentHistoryModal
           row={rows.find((r) => rowKey(r) === rowKey(historyTarget)) ?? historyTarget}
@@ -416,173 +354,6 @@ const FinancePage: React.FC = () => {
           onSaved={() => setManualModalOpen(false)}
         />
       )}
-    </div>
-  );
-};
-
-const LogPaymentModal: React.FC<{ row: FinancePurchaseOrderRow; onClose: () => void; onLogged: () => void }> = ({
-  row,
-  onClose,
-  onLogged,
-}) => {
-  const addPaymentMutation = useAddFinanceRowPaymentMutation();
-  const ratesQuery = useExchangeRatesQuery();
-  const [form, setForm] = useState<PaymentForm>(emptyPaymentForm);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const rowId = row.source === "po" ? row.poId : row.manualRecordId;
-  const needsRate = row.currency && row.currency !== "NPR";
-
-  // Prefill the exchange rate from today's live rate once it loads, so the field isn't blank —
-  // but only if the user hasn't already typed something in (e.g. the bank's actual rate).
-  useEffect(() => {
-    if (!needsRate || form.exchangeRate) return;
-    const liveRate = ratesQuery.data?.[row.currency];
-    if (liveRate) setForm((f) => (f.exchangeRate ? f : { ...f, exchangeRate: String(liveRate) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ratesQuery.data, needsRate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = parseFloat(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError("Enter a valid amount.");
-      return;
-    }
-    if (!form.paidDate) {
-      setFormError("Select a paid date.");
-      return;
-    }
-    let exchangeRate: number | null = null;
-    if (needsRate) {
-      exchangeRate = parseFloat(form.exchangeRate);
-      if (!Number.isFinite(exchangeRate) || exchangeRate <= 0) {
-        setFormError(`Enter a valid ${row.currency} → NPR exchange rate.`);
-        return;
-      }
-    }
-    if (rowId == null) {
-      setFormError("This record can't be found.");
-      return;
-    }
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      await addPaymentMutation.mutateAsync({
-        source: row.source,
-        id: rowId,
-        input: {
-          amount,
-          paidDate: form.paidDate,
-          exchangeRate,
-          reference: form.reference.trim() || null,
-          notes: form.notes.trim() || null,
-        },
-      });
-      onLogged();
-    } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to log payment."));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
-          <div>
-            <h3 className="text-[14px] font-semibold text-slate-900">Log Payment</h3>
-            <p className="text-[11px] text-slate-500">{row.poNumber || `#${rowId}`} · {row.vendorName || row.vendor?.name || "Unknown vendor"}</p>
-          </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-            <X size={16} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-3">
-          {formError && (
-            <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Amount{row.currency && row.currency !== "NPR" ? ` (${row.currency})` : ""}</label>
-              <input
-                autoFocus
-                type="number"
-                min="0.01"
-                step="any"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Paid Date</label>
-              <input
-                type="date"
-                value={form.paidDate}
-                onChange={(e) => setForm({ ...form, paidDate: e.target.value })}
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-          </div>
-          {needsRate && (
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Exchange Rate ({row.currency} → NPR)</label>
-              <input
-                type="number"
-                min="0.01"
-                step="any"
-                value={form.exchangeRate}
-                onChange={(e) => setForm({ ...form, exchangeRate: e.target.value })}
-                placeholder={ratesQuery.data?.[row.currency] ? String(ratesQuery.data[row.currency]) : "e.g. 133.20"}
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-              <p className="mt-1 text-[11px] text-slate-500">
-                Prefilled from today's NRB selling rate — edit it to match the rate your bank actually used.
-                {parseFloat(form.amount) > 0 && parseFloat(form.exchangeRate) > 0 && (
-                  <span className="block mt-0.5 font-medium text-slate-700">
-                    = {formatCost(parseFloat(form.amount) * parseFloat(form.exchangeRate), "NPR")}
-                  </span>
-                )}
-              </p>
-            </div>
-          )}
-          <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">Reference</label>
-            <input
-              value={form.reference}
-              onChange={(e) => setForm({ ...form, reference: e.target.value })}
-              placeholder="e.g. bank transfer ref / cheque no. (optional)"
-              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-            />
-          </div>
-          <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">Notes</label>
-            <textarea
-              rows={2}
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              placeholder="Optional"
-              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none resize-none focus:border-blue-400"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
-            >
-              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Log Payment
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 };

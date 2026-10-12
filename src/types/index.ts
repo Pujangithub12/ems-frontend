@@ -555,6 +555,9 @@ export type FinancePurchaseOrderRow = {
   vendor?: { id: number; name: string } | null;
   /** Vendor name for display — always populated, even for manual rows with no linked Vendor (vendor is then null). */
   vendorName?: string | null;
+  /** Project this row is linked to (manual records only; always null for PO rows). */
+  project?: { id: number; name: string } | null;
+  lcNumber?: string | null;
   itemNames: string[];
   itemValue: number;
   paymentTerms?: string | null;
@@ -605,6 +608,7 @@ export type ItemCostReportRow = {
 
 export type FinanceCostBreakdownRow = {
   itemId: number | null;
+  date?: string | null;
   itemName: string;
   majorCost: number;
   freight: number;
@@ -774,4 +778,49 @@ export type Project = {
   headings?: ProjectHeading[];
   files?: ProjectFile[];
   projectTasks?: ProjectTask[];
+};
+
+export type DebtorPaymentEntry = {
+  id: number;
+  amount: number;
+  receivedDate: string;
+  reference: string | null;
+  notes: string | null;
+};
+
+/** One receivable on the Debtors page — money a customer owes us. */
+export type DebtorRow = {
+  id: number;
+  debtorName: string;
+  itemName: string;
+  referenceNumber: string | null;
+  lcNumber: string | null;
+  amountDue: number;
+  claimAmount: number;
+  currency: string;
+  paymentTerms: string | null;
+  project: { id: number; name: string } | null;
+  amountReceived: number;
+  receivedDate: string | null;
+  outstandingBalance: number;
+  payments: DebtorPaymentEntry[];
+  createdAt: string;
+};
+
+/** One claim / reimbursement-of-expense line on a debtor's detail page. */
+export type DebtorClaimRow = {
+  id: number;
+  paymentDate: string | null;
+  purpose: string | null;
+  commercialInvoiceNo: string | null;
+  claimReceived: number;
+  reimbursementPurpose: string | null;
+  reimbursementAmount: number;
+  reimbursementReceived: number;
+  reimbursementBalance: number;
+};
+
+export type DebtorDetail = {
+  debtor: { id: number; debtorName: string; lcNumber: string | null; totalAmount: number; claimAmount: number; currency: string };
+  claims: DebtorClaimRow[];
 };

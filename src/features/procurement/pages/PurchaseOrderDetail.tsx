@@ -16,13 +16,12 @@ import {
   XCircle,
   Download,
   Eye,
-  Mail,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import PdfPreviewModal from "../components/PdfPreviewModal";
+import { preloadPdfFonts } from "../pdf/pdfFonts";
 import { formatCost, toNumber } from "../../../lib/currency";
-import { openGmailCompose } from "../../../lib/gmail";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType } from "../../../types";
 import {
   usePurchaseOrderDetailQuery,
@@ -39,7 +38,12 @@ import { useOrganizationItemCatalogQuery } from "../../inventory/hooks/useInvent
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
-const pdfUrl = (id: number) => `${API_BASE}/api/purchase-orders/${id}/pdf`;
+const generatePoPdf = (id: number) => import("../pdf/generatePdf").then((m) => m.generatePurchaseOrderPdf(id));
+// PDFs are drawn in the browser (see ../pdf/generatePdf.ts): warm the fonts and the (lazy) pdfkit
+// chunk in the background so "Preview PDF" opens without waiting on either.
+preloadPdfFonts();
+void import("../pdf/generatePdf");
+
 
 // ---- Status pill styling (kept local to this file, matching the rest of this feature) ----
 
@@ -366,7 +370,6 @@ const specTablesFromPo = (po: PurchaseOrder): SpecTableForm[] =>
   }));
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void>; onBack: () => void }> = ({ po, isAdmin, onChanged, onBack }) => {
-  const { organization } = useAuth();
   const [previewOpen, setPreviewOpen] = useState(false);
   const updateMutation = useUpdatePurchaseOrderMutation();
   const addItemMutation = useAddPurchaseOrderItemMutation();
@@ -792,17 +795,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
 
-  const poDisplayNumber = po.poNumber || `PO-${po.id}`;
-  const emailDefaultSubject = `Purchase Order ${poDisplayNumber}`;
-  const emailDefaultMessage = `Dear ${po.vendor?.contactPerson || po.vendor?.name || "Sir/Madam"},
-
-Please find attached Purchase Order ${poDisplayNumber} for your reference.
-
-Kindly review and confirm receipt at your earliest convenience.
-
-Best regards,
-${organization?.name || ""}`;
-
   return (
     <div className="flex flex-col gap-4 w-full">
       {error && (
@@ -885,17 +877,11 @@ ${organization?.name || ""}`;
             </button>
             {previewOpen && (
               <PdfPreviewModal
-                url={pdfUrl(po.id)}
+                generate={() => generatePoPdf(po.id)}
                 fileName={`${(po.poNumber || `PO-${po.id}`).replace(/\//g, "-")}.pdf`}
                 onClose={() => setPreviewOpen(false)}
               />
             )}
-            <button
-              onClick={() => openGmailCompose(po.vendor?.email || "", emailDefaultSubject, emailDefaultMessage)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
-            >
-              <Mail size={13} /> Send Email
-            </button>
             {isAdmin && (
               <button onClick={handleSave} disabled={busy} className={primaryBtnCls}>
                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

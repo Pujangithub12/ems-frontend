@@ -11,22 +11,25 @@ import {
   Eye,
   Pencil,
   X,
-  Mail,
   ReceiptText,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { formatCost, toNumber } from "../../../lib/currency";
-import { openGmailCompose } from "../../../lib/gmail";
 import { currentNepaliFiscalYearLabel } from "../../../lib/bsDate";
 import { Quotation } from "../../../types";
 import { useAllQuotationsQuery, useCreateQuotationMutation, useUpdateQuotationMutation, useDeleteQuotationMutation } from "../hooks/useQuotation";
 import PdfPreviewModal from "../components/PdfPreviewModal";
+import { preloadPdfFonts } from "../pdf/pdfFonts";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import type { QuotationInput } from "../api/quotation.api";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-const pdfUrl = (id: number) => `${API_BASE}/api/quotations/${id}/pdf`;
+const generateQuotationPdf = (id: number) => import("../pdf/generatePdf").then((m) => m.generateQuotationPdf(id));
+
+// PDFs are drawn in the browser (see ../pdf/generatePdf.ts): warm the fonts and the (lazy) pdfkit
+// chunk in the background so "Preview PDF" opens without waiting on either.
+preloadPdfFonts();
+void import("../pdf/generatePdf");
 
 const KpiCard: React.FC<{ label: string; value: string; icon: React.ReactNode; iconBg: string }> = ({ label, value, icon, iconBg }) => (
   <div className="p-3 bg-white border rounded-xl shadow-md border-slate-200">
@@ -717,18 +720,6 @@ const QuotationsPage: React.FC = () => {
                                 <button onClick={() => setPreviewQuote(q)} className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline">
                                   <Eye size={11} /> Preview PDF
                                 </button>
-                                <button
-                                  onClick={() =>
-                                    openGmailCompose(
-                                      q.customerEmail || "",
-                                      `Price Quotation ${q.quotationNumber || `QT-${q.id}`}`,
-                                      `Dear Sir/Madam,\n\nPlease find attached our price quotation ${q.quotationNumber || `QT-${q.id}`} for your reference.\n\nKindly review and let us know if you have any questions.\n\nBest regards,`,
-                                    )
-                                  }
-                                  className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
-                                >
-                                  <Mail size={11} /> Send Email
-                                </button>
                               </div>
                             </td>
                             {isAdmin && (
@@ -877,7 +868,7 @@ const QuotationsPage: React.FC = () => {
 
       {previewQuote && (
         <PdfPreviewModal
-          url={pdfUrl(previewQuote.id)}
+          generate={() => generateQuotationPdf(previewQuote.id)}
           fileName={`${(previewQuote.quotationNumber || `QT-${previewQuote.id}`).replace(/\//g, "-")}.pdf`}
           onClose={() => setPreviewQuote(null)}
         />

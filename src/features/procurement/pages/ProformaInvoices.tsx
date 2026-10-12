@@ -16,21 +16,24 @@ import {
   Eye,
   Pencil,
   X,
-  Mail,
 } from "lucide-react";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import { formatCost, toNumber } from "../../../lib/currency";
-import { openGmailCompose } from "../../../lib/gmail";
 import { ProformaInvoice, ProformaInvoiceStatus } from "../../../types";
 import { useAllProformaInvoicesQuery, useCreateProformaInvoiceMutation, useCreateStandaloneProformaInvoiceMutation, useUpdateProformaInvoiceMutation } from "../hooks/useProformaInvoice";
 import { useOrganizationPurchaseOrdersQuery } from "../hooks/usePurchaseOrder";
 import PdfPreviewModal from "../components/PdfPreviewModal";
+import { preloadPdfFonts } from "../pdf/pdfFonts";
 import type { ProformaInvoiceInput } from "../api/proformaInvoice.api";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-const pdfUrl = (id: number) => `${API_BASE}/api/proforma-invoices/${id}/pdf`;
+const generatePiPdf = (id: number) => import("../pdf/generatePdf").then((m) => m.generateProformaInvoicePdf(id));
+// PDFs are drawn in the browser (see ../pdf/generatePdf.ts): warm the fonts and the (lazy) pdfkit
+// chunk in the background so "Preview PDF" opens without waiting on either.
+preloadPdfFonts();
+void import("../pdf/generatePdf");
+
 
 const PI_STATUS_STYLES: Record<ProformaInvoiceStatus, { bg: string; fg: string; label: string }> = {
   waiting: { bg: "#fef9c3", fg: "#854d0e", label: "Waiting" },
@@ -858,18 +861,6 @@ const ProformaInvoicesPage: React.FC = () => {
                                 >
                                   <Eye size={11} /> Preview PDF
                                 </button>
-                                <button
-                                  onClick={() =>
-                                    openGmailCompose(
-                                      pi.customerEmail || "",
-                                      `Proforma Invoice ${pi.piNumber || `PI-${pi.id}`}`,
-                                      `Dear ${pi.customerContactPerson || pi.customerName || "Sir/Madam"},\n\nPlease find attached Proforma Invoice ${pi.piNumber || `PI-${pi.id}`} for your reference.\n\nKindly review and confirm receipt at your earliest convenience.\n\nBest regards,`,
-                                    )
-                                  }
-                                  className="flex items-center gap-1 text-[11px] font-medium text-blue-900 hover:underline"
-                                >
-                                  <Mail size={11} /> Send Email
-                                </button>
                               </div>
                             </td>
                             {isAdmin && (
@@ -1027,7 +1018,7 @@ const ProformaInvoicesPage: React.FC = () => {
 
       {previewPi && (
         <PdfPreviewModal
-          url={pdfUrl(previewPi.id)}
+          generate={() => generatePiPdf(previewPi.id)}
           fileName={`${(previewPi.piNumber || `PI-${previewPi.id}`).replace(/\//g, "-")}.pdf`}
           onClose={() => setPreviewPi(null)}
         />

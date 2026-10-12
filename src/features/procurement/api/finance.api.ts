@@ -47,12 +47,18 @@ export async function deletePurchaseOrderPayment(id: number, paymentId: number):
 }
 
 export interface SaveFinanceManualRecordInput {
-  vendorName: string;
-  itemName: string;
+  vendorName?: string;
+  itemName?: string;
+  /** Create: all items procured - the first is the record's own line, the rest become extra lines. */
+  itemNames?: string[];
+  /** Update: new items to append as lines. */
+  newItemNames?: string[];
   referenceNumber?: string | null;
   itemValue: number;
   paymentTerms?: string | null;
   vendorId?: number | null;
+  projectId?: number | null;
+  lcNumber?: string | null;
   /** "NPR" | "INR" | "USD" | "RMB" — falls back to "NPR" when unset. */
   currency?: string;
 }
@@ -103,6 +109,7 @@ export async function fetchCostBreakdownPdf(source: "po" | "manual", id: number)
 
 export interface EditCostBreakdownRowInput {
   itemName: string;
+  date?: string | null;
   majorCost: number;
   freight: number;
   lcNumber?: string | null;
@@ -130,6 +137,19 @@ export async function updateCostBreakdownRow(
   const path =
     source === "po"
       ? `/api/workspace/finance/purchase-orders/${id}/items/${itemId}`
-      : `/api/workspace/finance/manual-records/${id}/breakdown`;
+      : itemId != null
+        ? `/api/workspace/finance/manual-records/${id}/lines/${itemId}`
+        : `/api/workspace/finance/manual-records/${id}/breakdown`;
   await api.put(path, input);
+}
+
+/** POST an extra cost-breakdown line on a manual record ("Add Line") — returns the new line's id. */
+export async function addManualRecordLine(id: number, itemName: string): Promise<number> {
+  const res = await api.post<{ lineId: number }>(`/api/workspace/finance/manual-records/${id}/lines`, { itemName });
+  return res.data.lineId;
+}
+
+/** DELETE one added line from a manual record. */
+export async function deleteManualRecordLine(id: number, lineId: number): Promise<void> {
+  await api.delete(`/api/workspace/finance/manual-records/${id}/lines/${lineId}`);
 }
