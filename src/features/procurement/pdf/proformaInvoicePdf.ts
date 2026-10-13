@@ -1,0 +1,511 @@
+import PDFDocument from "pdfkit/js/pdfkit.standalone";
+import type { PdfFonts } from "./pdfFonts";
+import { amountToWords } from "./numberToWords";
+
+/** Postgres `numeric` columns come back as Prisma's Decimal wrapper or null — coerce for arithmetic (same convention as costSheet.ts / purchaseOrderPdf.ts). */
+const num = (value: { toNumber(): number } | number | string | null | undefined): number => {
+  if (value == null) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") return Number(value) || 0;
+  const n = value.toNumber();
+  return Number.isFinite(n) ? n : 0;
+};
+
+export interface ProformaInvoicePdfItem {
+  itemName: string;
+  quantity: number;
+  unit?: string | null;
+  unitPrice?: { toNumber(): number } | number | string | null;
+  hsnCode?: string | null;
+  taxable: boolean;
+}
+
+export interface ProformaInvoicePdfData {
+  piNumber?: string | null;
+  piDate?: Date | null;
+  taxPercent?: { toNumber(): number } | number | string | null;
+  currency?: string | null;
+  paymentTerms?: string | null;
+  notes?: string | null;
+
+  // CUSTOMER box — the party being invoiced, entered per invoice.
+  customerName?: string | null;
+  customerContactPerson?: string | null;
+  customerAddress?: string | null;
+  customerPan?: string | null;
+  customerEmail?: string | null;
+  customerContact?: string | null;
+
+  // VENDOR box — us: this app's own organization (also the letterhead).
+  organizationName?: string | null;
+  organizationAddress?: string | null;
+  organizationContact?: string | null;
+  organizationEmail?: string | null;
+  organizationContactPerson?: string | null;
+  /** Per-invoice overrides for the VENDOR (us) box; blank falls back to the organization's details. */
+  vendorName?: string | null;
+  vendorContactPerson?: string | null;
+  vendorAddress?: string | null;
+  vendorEmail?: string | null;
+  vendorContact?: string | null;
+  vendorPan?: string | null;
+
+  // Bank Details box.
+  bankBeneficiaryName?: string | null;
+  bankAccountNumber?: string | null;
+  bankName?: string | null;
+  bankSwiftCode?: string | null;
+  bankAddress?: string | null;
+
+  // Terms of Delivery box.
+  deliveryTerms?: string | null;
+  placeOfLoading?: string | null;
+  placeOfDischarge?: string | null;
+  modeOfShipment?: string | null;
+
+  signatureImage?: ArrayBuffer | null;
+  stampImage?: ArrayBuffer | null;
+
+  items: ProformaInvoicePdfItem[];
+}
+
+// Colors — matches the company's reference paper Proforma Invoice: a dark forest-green
+// letterhead/section-bar theme with a light sage-green fill for boxed content, rather than the
+// navy theme purchaseOrderPdf.ts uses.
+const NAVY = "#2E4A28";
+const BADGE_NAVY = "#41652F";
+const LIGHT_BG = "#E4EEDD";
+const BLACK = "#000000";
+const SIGNATURE_GRAY = "#545454";
+const BORDER_GREEN = "#2E4A28";
+
+const PAGE_WIDTH = 612;
+const PAGE_HEIGHT = 792;
+const MARGIN_TOP = 22;
+const MARGIN_RIGHT = 26;
+const MARGIN_BOTTOM = 14;
+const MARGIN_LEFT = 26;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+
+const FONT_COMPANY = "Company";
+const FONT_BODY = "Body";
+const FONT_BODY_BOLD = "Body-Bold";
+const FONT_BODY_BOLD_ITALIC = "Body-BoldItalic";
+// Carlito — a free, metric-compatible substitute for Calibri (which is a proprietary Microsoft
+// font that can't be redistributed/embedded): same glyph widths, so text wraps and lays out
+// exactly as it would in Calibri.
+
+const fmtDate = (d?: Date | null) => (d ? d.toLocaleDateString("en-US") : "--");
+const fmtAmount = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function sectionBar(doc: PDFKit.PDFDocument, x: number, y: number, width: number, height: number, label: string, fontSize = 11) {
+  doc.rect(x, y, width, height).fill(NAVY);
+  doc
+    .fillColor("#ffffff")
+    .font(FONT_COMPANY)
+    .fontSize(fontSize)
+    .text(label, x + 6, y + (height - fontSize) / 2, { width: width - 12 });
+}
+
+function labeledField(doc: PDFKit.PDFDocument, x: number, y: number, width: number, caption: string, value: string) {
+  doc.fillColor(BLACK).font(FONT_COMPANY).fontSize(9).text(caption, x, y, { width });
+  const captionHeight = doc.heightOfString(caption, { width });
+  doc
+    .fillColor(BLACK)
+    .font(FONT_BODY)
+    .fontSize(9.5)
+    .text(value || "--", x, y + captionHeight + 2, { width });
+  return doc.y;
+}
+
+/**
+ * Renders a Proforma Invoice as a PDF matching the company's reference paper form: company
+ * letterhead + "PROFORMA INVOICE" badge, PI No./Date box, CUSTOMER (buying org)/VENDOR
+ * (supplying vendor) boxes with PAN, an items table split into Non-Taxable/Taxable/VAT/Grand
+ * Total, Payment Terms, Bank Details, Terms of Delivery, and a Notes + signature block. Visual
+ * language (colors, fonts, section-bar style) matches purchaseOrderPdf.ts so both PDFs feel
+ * like the same document family.
+ */
+export function buildProformaInvoicePdf(pi: ProformaInvoicePdfData, fonts: PdfFonts): PDFKit.PDFDocument {
+  const doc = new PDFDocument({ size: [PAGE_WIDTH, PAGE_HEIGHT], margins: { top: MARGIN_TOP, right: MARGIN_RIGHT, bottom: MARGIN_BOTTOM, left: MARGIN_LEFT } });
+  doc.registerFont(FONT_COMPANY, fonts.carlito700);
+  doc.registerFont(FONT_BODY, fonts.carlito400);
+  doc.registerFont(FONT_BODY_BOLD, fonts.carlito700);
+  doc.registerFont(FONT_BODY_BOLD_ITALIC, fonts.carlito700Italic);
+  let y = MARGIN_TOP;
+
+  // The layout below places everything at manually-tracked y coordinates rather than
+  // relying on PDFKit's own flowing-text pagination (which — since most of this document is
+  // drawn with rect()/positioned text, not one continuous flow — was letting `y` run past the
+  // bottom of the page before anything actually broke to a new page, leaving a near-empty
+  // trailing page under the last section that *did* fit). Call this before starting any
+  // section that wouldn't fit in the remaining space, so a fresh page starts exactly where
+  // the next section begins instead of after a stretch of invisible overflow.
+  const PAGE_BOTTOM = PAGE_HEIGHT - MARGIN_BOTTOM;
+  // The reference paper form has a thin green frame around the whole sheet — redraw it on
+  // every page (drawing first so all later content paints over it, never the reverse).
+  function drawPageBorder() {
+    doc.rect(10, 10, PAGE_WIDTH - 20, PAGE_HEIGHT - 20).lineWidth(1.25).stroke(BORDER_GREEN);
+  }
+  drawPageBorder();
+  function ensureSpace(needed: number) {
+    if (y + needed > PAGE_BOTTOM) {
+      doc.addPage();
+      y = MARGIN_TOP;
+      drawPageBorder();
+    }
+  }
+
+  // ---- Letterhead: a full-width dark-green banner with the company name + address in white,
+  // then a row right below it with the centered "PROFORMA INVOICE" title and the PI No./Date
+  // stacked at the right, both sharing that same horizontal band. ----
+  const companyName = pi.organizationName || "Proforma Invoice";
+
+  const letterheadLine = [pi.organizationAddress, pi.organizationContact]
+    .filter((v): v is string => !!v && v.trim().length > 0)
+    .join(" | ");
+  const bannerH =
+    28 +
+    (letterheadLine ? doc.font(FONT_BODY_BOLD).fontSize(9).heightOfString(letterheadLine, { width: CONTENT_WIDTH - 16 }) + 6 : 0);
+  doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, bannerH).fill(NAVY);
+  doc
+    .fillColor("#ffffff")
+    .font(FONT_COMPANY)
+    .fontSize(20)
+    .text(companyName, MARGIN_LEFT + 8, y + 6, { width: CONTENT_WIDTH - 16, align: "center" });
+  if (letterheadLine) {
+    doc
+      .fillColor("#ffffff")
+      .font(FONT_BODY_BOLD)
+      .fontSize(9)
+      .text(letterheadLine, MARGIN_LEFT + 8, doc.y + 2, { width: CONTENT_WIDTH - 16, align: "center" });
+  }
+  y += bannerH + 12;
+
+  // ---- Centered "PROFORMA INVOICE" title, right above the Customer/Vendor table — plain
+  // dark-green text, no background fill — sharing its row with PI No./Date, stacked at the
+  // right. ----
+  doc.font(FONT_BODY_BOLD).fontSize(15);
+  const titleH = doc.heightOfString("PROFORMA INVOICE", { width: CONTENT_WIDTH, align: "center" });
+  const piNoText = `PI No:- ${pi.piNumber || "--"}`;
+  const dateText = `Date: ${fmtDate(pi.piDate)}`;
+  doc.font(FONT_BODY_BOLD).fontSize(8.5);
+  const piMetaH = doc.heightOfString(piNoText, { width: CONTENT_WIDTH }) + doc.heightOfString(dateText, { width: CONTENT_WIDTH }) + 2;
+  const titleRowH = Math.max(titleH, piMetaH);
+
+  doc
+    .fillColor(NAVY)
+    .font(FONT_BODY_BOLD)
+    .fontSize(15)
+    .text("PROFORMA INVOICE", MARGIN_LEFT, y + (titleRowH - titleH) / 2, { width: CONTENT_WIDTH, align: "center" });
+  doc
+    .fillColor(BLACK)
+    .font(FONT_BODY_BOLD)
+    .fontSize(8.5)
+    .text(piNoText, MARGIN_LEFT, y + (titleRowH - piMetaH) / 2, { width: CONTENT_WIDTH, align: "right" })
+    .text(dateText, MARGIN_LEFT, doc.y + 1, { width: CONTENT_WIDTH, align: "right" });
+  y += titleRowH + 10;
+
+  // ---- Customer / Vendor, one table (matches purchaseOrderPdf.ts's Vendor/Customer table, ratio flipped: Customer first as in the reference) ----
+  const customerW = (CONTENT_WIDTH * 5625) / 9644;
+  const vendorW = CONTENT_WIDTH - customerW;
+  const customerX = MARGIN_LEFT;
+  const vendorX = MARGIN_LEFT + customerW;
+
+  sectionBar(doc, customerX, y, customerW, 16, "CUSTOMER");
+  sectionBar(doc, vendorX, y, vendorW, 16, "VENDOR");
+  const fieldsTop = y + 16;
+  const fieldY = fieldsTop + 8;
+
+  const customerFields: [string, string][] = [
+    ["NAME OF CONTACT PERSON", pi.customerContactPerson || "--"],
+    ["COMPANY NAME", pi.customerName || "--"],
+    ["ADDRESS", pi.customerAddress || "--"],
+    ["PAN NO.", pi.customerPan || "--"],
+    ["EMAIL ID", pi.customerEmail || "--"],
+    ["CONTACT NO.", pi.customerContact || "--"],
+  ];
+  const vendorFields: [string, string][] = [
+    ["NAME OF CONTACT PERSON", pi.vendorContactPerson || pi.organizationContactPerson || "--"],
+    ["COMPANY NAME", pi.vendorName || companyName],
+    ["ADDRESS", pi.vendorAddress || pi.organizationAddress || "--"],
+    ["PAN NO.", pi.vendorPan || "--"],
+    ["EMAIL ID", pi.vendorEmail || pi.organizationEmail || "--"],
+    ["CONTACT NO.", pi.vendorContact || pi.organizationContact || "--"],
+  ];
+
+  const measure = (fields: [string, string][], w: number) => {
+    let my = fieldY;
+    for (const [label, value] of fields) {
+      const capH = doc.font(FONT_COMPANY).fontSize(9).heightOfString(label, { width: w });
+      const valH = doc.font(FONT_BODY).fontSize(9.5).heightOfString(value || "--", { width: w });
+      my += capH + 2 + valH + 8;
+    }
+    return my;
+  };
+  const fieldsBottom = Math.max(measure(customerFields, customerW), measure(vendorFields, vendorW));
+
+  doc.rect(customerX, fieldsTop, CONTENT_WIDTH, fieldsBottom - fieldsTop).fill(LIGHT_BG);
+  doc
+    .moveTo(vendorX, fieldsTop)
+    .lineTo(vendorX, fieldsBottom)
+    .strokeColor("#ffffff")
+    .lineWidth(1)
+    .stroke();
+
+  let customerY = fieldY;
+  let vendorY = fieldY;
+  for (let i = 0; i < customerFields.length; i++) {
+    const [cLabel, cValue] = customerFields[i]!;
+    const [vLabel, vValue] = vendorFields[i]!;
+    customerY = labeledField(doc, customerX + 6, customerY, customerW - 12, cLabel, cValue) + 8;
+    vendorY = labeledField(doc, vendorX + 6, vendorY, vendorW - 12, vLabel, vValue) + 8;
+  }
+  y = Math.max(customerY, vendorY) + 8;
+
+  // White cell with a black border. Strokes are centered on their path, so a border drawn on the
+  // table's outer left/right edge would stick out past the header/total bars (which are filled
+  // exactly to the edge) — outer verticals are inset by half a line width to stay flush with them.
+  const cellBox = (x: number, cy: number, w: number, h: number, outerLeft: boolean, outerRight: boolean) => {
+    const lw = 0.75;
+    const half = lw / 2;
+    doc.rect(x, cy, w, h).fill("#ffffff");
+    doc.lineWidth(lw).strokeColor(BLACK);
+    doc.moveTo(x, cy).lineTo(x + w, cy).stroke();
+    doc.moveTo(x, cy + h).lineTo(x + w, cy + h).stroke();
+    const leftX = outerLeft ? x + half : x;
+    const rightX = outerRight ? x + w - half : x + w;
+    doc.moveTo(leftX, cy).lineTo(leftX, cy + h).stroke();
+    doc.moveTo(rightX, cy).lineTo(rightX, cy + h).stroke();
+  };
+
+  // ---- Items table (H.S. Code, Commodity & Specification, Qty, Unit, Unit Price, Amount) ----
+  const colW = (twips: number) => (CONTENT_WIDTH * twips) / 9644;
+  const cols = [
+    { label: "H.S. Code", width: colW(1090) },
+    { label: "Commodity & Specification", width: colW(3400) },
+    { label: "Qty", width: colW(1000), align: "right" as const },
+    { label: "Unit", width: colW(900) },
+    { label: "Unit Price (" + (pi.currency?.trim() || "NPR") + ")", width: colW(1600), align: "right" as const },
+    { label: "Amount (" + (pi.currency?.trim() || "NPR") + ")", width: colW(1654), align: "right" as const },
+  ];
+
+  let colX = MARGIN_LEFT;
+  doc.font(FONT_COMPANY).fontSize(8.5);
+  const headerH = Math.max(
+    22,
+    ...cols.map((col) => doc.heightOfString(col.label, { width: col.width - 8, align: col.align || "left" }) + 12),
+  );
+  ensureSpace(headerH);
+  for (const col of cols) {
+    doc.rect(colX, y, col.width, headerH).fill(NAVY);
+    doc
+      .fillColor("#ffffff")
+      .font(FONT_COMPANY)
+      .fontSize(8.5)
+      .text(col.label, colX + 4, y + 6, { width: col.width - 8, align: col.align || "left" });
+    colX += col.width;
+  }
+  y += headerH;
+
+  let taxableSubtotal = 0;
+  let nonTaxableSubtotal = 0;
+  for (const item of pi.items) {
+    const unitPrice = num(item.unitPrice);
+    const amount = unitPrice * item.quantity;
+    if (item.taxable) taxableSubtotal += amount;
+    else nonTaxableSubtotal += amount;
+
+    const rowValues = [item.hsnCode || "--", item.itemName, String(item.quantity), item.unit || "--", fmtAmount(unitPrice), fmtAmount(amount)];
+    const rowHeight = Math.max(
+      16,
+      ...cols.map((col, i) => doc.font(FONT_BODY).fontSize(8.5).heightOfString(rowValues[i]!, { width: col.width - 8 }) + 8),
+    );
+    ensureSpace(rowHeight);
+
+    colX = MARGIN_LEFT;
+    for (let i = 0; i < cols.length; i++) {
+      const col = cols[i]!;
+      cellBox(colX, y, col.width, rowHeight, i === 0, i === cols.length - 1);
+      doc
+        .fillColor(BLACK)
+        .font(i === 1 ? FONT_BODY_BOLD : FONT_BODY)
+        .fontSize(8.5)
+        .text(rowValues[i]!, colX + 4, y + 4, { width: col.width - 8, align: col.align || "left" });
+      colX += col.width;
+    }
+    y += rowHeight;
+  }
+
+  // ---- Non-Taxable / Taxable / VAT / Total rows ----
+  const currencyCode = pi.currency?.trim() || "NPR";
+  const taxPercent = num(pi.taxPercent) || 13;
+  const vatAmount = taxableSubtotal * (taxPercent / 100);
+  const grandTotal = nonTaxableSubtotal + taxableSubtotal + vatAmount;
+
+  const labelW = cols[0]!.width + cols[1]!.width + cols[2]!.width + cols[3]!.width + cols[4]!.width;
+  const amountW = cols[5]!.width;
+
+  ensureSpace(3 * 18 + 22);
+  const summaryRow = (label: string, value: number, opts?: { bold?: boolean }) => {
+    const rowH = 18;
+    cellBox(MARGIN_LEFT, y, labelW, rowH, true, false);
+    cellBox(MARGIN_LEFT + labelW, y, amountW, rowH, false, true);
+    doc
+      .fillColor(BLACK)
+      .font(opts?.bold ? FONT_BODY_BOLD : FONT_BODY)
+      .fontSize(8.5)
+      .text(label, MARGIN_LEFT + labelW - 160, y + 5, { width: 154, align: "right" })
+      .text(`${currencyCode} ${fmtAmount(value)}`, MARGIN_LEFT + labelW + 4, y + 5, { width: amountW - 8, align: "right" });
+    y += rowH;
+  };
+  summaryRow("Non-Taxable Amount", nonTaxableSubtotal);
+  summaryRow("Taxable Amount", taxableSubtotal);
+  summaryRow(`VAT @ ${taxPercent}%`, vatAmount);
+
+  const totalRowH = 22;
+  doc.rect(MARGIN_LEFT, y, labelW, totalRowH).fill(NAVY);
+  doc.rect(MARGIN_LEFT + labelW, y, amountW, totalRowH).fill(NAVY);
+  doc
+    .fillColor("#ffffff")
+    .font(FONT_BODY_BOLD)
+    .fontSize(9.5)
+    .text("TOTAL AMOUNT", MARGIN_LEFT + labelW - 160, y + 6, { width: 154, align: "right" })
+    .text(`${currencyCode} ${fmtAmount(grandTotal)}`, MARGIN_LEFT + labelW + 4, y + 6, { width: amountW - 8, align: "right" });
+  y += totalRowH + 8;
+
+  // ---- Amount in Words ----
+  const amountWordsText = `Amount in words: ${amountToWords(grandTotal, pi.currency?.trim() || "Rupees")}.`;
+  const wordsH = Math.max(22, doc.font(FONT_BODY_BOLD_ITALIC).fontSize(8.5).heightOfString(amountWordsText, { width: CONTENT_WIDTH - 16 }) + 12);
+  ensureSpace(wordsH);
+  doc.rect(MARGIN_LEFT, y, CONTENT_WIDTH, wordsH).fill(BADGE_NAVY);
+  doc
+    .fillColor("#ffffff")
+    .font(FONT_BODY_BOLD_ITALIC)
+    .fontSize(8.5)
+    .text(amountWordsText, MARGIN_LEFT + 8, y + (wordsH - doc.heightOfString(amountWordsText, { width: CONTENT_WIDTH - 16 })) / 2, {
+      width: CONTENT_WIDTH - 16,
+    });
+  y += wordsH + 12;
+
+  // ---- Bank Details / Terms of Delivery, side by side ----
+  const colGap = 10;
+  const halfW = (CONTENT_WIDTH - colGap) / 2;
+  const bankX = MARGIN_LEFT;
+  const deliveryX = MARGIN_LEFT + halfW + colGap;
+
+  const bankLines: [string, string][] = [
+    ["Beneficiary's Name:", pi.bankBeneficiaryName || "--"],
+    ["A/C No.:", pi.bankAccountNumber || "--"],
+    ["Bank Name:", pi.bankName || "--"],
+    ["SWIFT Code:", pi.bankSwiftCode || "--"],
+    ["Bank Address:", pi.bankAddress || "--"],
+  ];
+  const deliveryLines: [string, string][] = [
+    ["Delivery Terms:", pi.deliveryTerms || "--"],
+    ["Place of Loading:", pi.placeOfLoading || "--"],
+    ["Place of Discharge:", pi.placeOfDischarge || "--"],
+    ["Mode & Duration of Shipment:", pi.modeOfShipment || "--"],
+  ];
+
+  // Measured first (dry run, no drawing) so we know the box's height before committing to a
+  // page for it — drawing straight away could split the box across a page boundary.
+  const measureBoxLines = (w: number, lines: [string, string][]) => {
+    let h = 8;
+    for (const [label, value] of lines) {
+      const labelH = doc.font(FONT_BODY_BOLD).fontSize(8.5).heightOfString(label, { width: w - 12 });
+      const valueH = doc.font(FONT_BODY).fontSize(8.5).heightOfString(value, { width: w - 12 });
+      h += labelH + 1 + valueH + 6;
+    }
+    return h;
+  };
+  const boxContentH = Math.max(measureBoxLines(halfW, bankLines), measureBoxLines(halfW, deliveryLines));
+  ensureSpace(16 + boxContentH + 12);
+
+  sectionBar(doc, bankX, y, halfW, 16, "BANK DETAILS");
+  sectionBar(doc, deliveryX, y, halfW, 16, "TERMS OF DELIVERY");
+  const boxTop = y + 16;
+
+  const renderBoxLines = (x: number, w: number, lines: [string, string][]) => {
+    let ly = boxTop + 8;
+    for (const [label, value] of lines) {
+      doc.fillColor(BLACK).font(FONT_BODY_BOLD).fontSize(8.5).text(label, x + 6, ly, { width: w - 12 });
+      const labelH = doc.heightOfString(label, { width: w - 12 });
+      doc.fillColor(BLACK).font(FONT_BODY).fontSize(8.5).text(value, x + 6, ly + labelH + 1, { width: w - 12 });
+      ly = doc.y + 6;
+    }
+    return ly;
+  };
+  const bankBottom = renderBoxLines(bankX, halfW, bankLines);
+  const deliveryBottom = renderBoxLines(deliveryX, halfW, deliveryLines);
+  const boxBottom = Math.max(bankBottom, deliveryBottom);
+  doc.rect(bankX, boxTop, halfW, boxBottom - boxTop).stroke(LIGHT_BG);
+  doc.rect(deliveryX, boxTop, halfW, boxBottom - boxTop).stroke(LIGHT_BG);
+
+  // ---- Payment Terms + Notes (stacked, Payment Terms on top) beside the Signature, in one row so
+  // the signature/stamp always lands on the same page as them whenever they fit together (rather
+  // than the text fitting while the signature spills to a fresh page below it). ----
+  const paymentTermsText = (pi.paymentTerms || "").trim();
+  const hasNotes = !!pi.notes;
+  const sigColW = 210;
+  const rowGap = 16;
+  const leftColW = CONTENT_WIDTH - sigColW - rowGap;
+  const sigColX = MARGIN_LEFT + leftColW + rowGap;
+
+  const bodyH = (text: string) => (text ? doc.font(FONT_BODY).fontSize(8.5).heightOfString(text, { width: leftColW }) : 0);
+  const paymentBlockH = 16 + 6 + bodyH(paymentTermsText) + 10;
+  const notesBlockH = hasNotes ? 16 + 6 + bodyH(pi.notes!) : 0;
+  const leftBlockH = paymentBlockH + notesBlockH;
+  const sigBlockH = 90; // signature line + label, plus headroom for the stamp above it
+  const rowH = Math.max(leftBlockH, sigBlockH);
+
+  // Prefer a clean gap below the Bank Details/Terms of Delivery box; if that would push this row
+  // to a fresh page, pack it tightly against — or a little into — that box instead, since landing
+  // on the same page matters more than the gap. Only actually page-break if it doesn't fit even
+  // packed that tight.
+  const preferredGap = 12;
+  const overlapAllowance = 10;
+  let rowTop: number;
+  if (boxBottom + preferredGap + rowH <= PAGE_BOTTOM) {
+    rowTop = boxBottom + preferredGap;
+  } else if (boxBottom - overlapAllowance + rowH <= PAGE_BOTTOM) {
+    rowTop = PAGE_BOTTOM - rowH;
+  } else {
+    doc.addPage();
+    rowTop = MARGIN_TOP;
+    drawPageBorder();
+  }
+  y = rowTop;
+
+  sectionBar(doc, MARGIN_LEFT, rowTop, leftColW, 16, "PAYMENT TERMS");
+  if (paymentTermsText) {
+    doc.fillColor(BLACK).font(FONT_BODY).fontSize(8.5).text(paymentTermsText, MARGIN_LEFT, rowTop + 16 + 6, { width: leftColW });
+  }
+  if (hasNotes) {
+    const notesTop = rowTop + paymentBlockH;
+    sectionBar(doc, MARGIN_LEFT, notesTop, leftColW, 16, "NOTES");
+    doc.fillColor(BLACK).font(FONT_BODY).fontSize(8.5).text(pi.notes!, MARGIN_LEFT, notesTop + 16 + 6, { width: leftColW });
+  }
+
+  const sigY = rowTop + 70;
+  const sigW = 100;
+  if (pi.signatureImage) {
+    try {
+      doc.image(pi.signatureImage, sigColX, sigY - 35, { fit: [sigW, 35], valign: "bottom" });
+    } catch (err) {
+      console.error("Failed to embed organization signature image:", err);
+    }
+  }
+  doc.moveTo(sigColX, sigY).lineTo(sigColX + sigW, sigY).strokeColor(BLACK).lineWidth(0.75).stroke();
+  doc.fillColor(SIGNATURE_GRAY).font(FONT_BODY_BOLD).fontSize(8).text("Authorized Signatory", sigColX, sigY + 5, { width: 160 });
+  if (pi.stampImage) {
+    try {
+      doc.image(pi.stampImage, sigColX + sigW + 24, sigY - 66, { fit: [82, 82] });
+    } catch (err) {
+      console.error("Failed to embed organization stamp image:", err);
+    }
+  }
+  y = rowTop + rowH;
+
+  return doc;
+}

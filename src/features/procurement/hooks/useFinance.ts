@@ -15,6 +15,8 @@ import {
   deleteManualRecordPayment,
   fetchFinanceCostBreakdown,
   updateCostBreakdownRow,
+  addManualRecordLine,
+  deleteManualRecordLine,
   AddPurchaseOrderPaymentInput,
   SaveFinanceManualRecordInput,
   EditCostBreakdownRowInput,
@@ -182,6 +184,31 @@ export function useUpdateCostBreakdownRowMutation() {
       queryClient.invalidateQueries({ queryKey: queryKeys.financeCostBreakdown(wsId, variables.source, variables.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.financeOverview(wsId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.itemCostReport(wsId) });
+    },
+  });
+}
+
+/** "Add Line" on a manual record's cost-breakdown page. */
+export function useAddManualRecordLineMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, itemName }: { id: number; itemName: string }) => addManualRecordLine(id, itemName),
+    onSuccess: (_lineId, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.financeCostBreakdown(wsId, "manual", variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financeOverview(wsId) });
+    },
+  });
+}
+
+export function useDeleteManualRecordLineMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, lineId }: { id: number; lineId: number }) => deleteManualRecordLine(id, lineId),
+    onSuccess: (_d, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.financeCostBreakdown(wsId, "manual", variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financeOverview(wsId) });
     },
   });
 }

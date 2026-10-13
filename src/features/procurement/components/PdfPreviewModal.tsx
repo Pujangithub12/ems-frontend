@@ -10,8 +10,16 @@ import { getErrorMessage } from "../../../lib/errors";
  * "Download" button inside just re-uses the same blob: URL with a `download`
  * attribute rather than re-fetching.
  */
-const PdfPreviewModal: React.FC<{ url: string; fileName: string; onClose: () => void }> = ({
+const PdfPreviewModal: React.FC<{
+  /** Server-rendered PDF to fetch. Omit when `generate` is given. */
+  url?: string;
+  /** Draws the PDF in the browser instead (see pdf/generatePdf.ts) — used when set. */
+  generate?: () => Promise<Blob>;
+  fileName: string;
+  onClose: () => void;
+}> = ({
   url,
+  generate,
   fileName,
   onClose,
 }) => {
@@ -24,11 +32,13 @@ const PdfPreviewModal: React.FC<{ url: string; fileName: string; onClose: () => 
     setBlobUrl(null);
     setError(null);
 
-    fetch(url, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load PDF (${res.status})`);
-        return res.blob();
-      })
+    const blobPromise: Promise<Blob> = generate
+      ? generate()
+      : fetch(url as string, { credentials: "include" }).then((res) => {
+          if (!res.ok) throw new Error(`Failed to load PDF (${res.status})`);
+          return res.blob();
+        });
+    blobPromise
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -42,6 +52,7 @@ const PdfPreviewModal: React.FC<{ url: string; fileName: string; onClose: () => 
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   return (

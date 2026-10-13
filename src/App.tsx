@@ -27,6 +27,8 @@ const Quotations = lazy(() => import("./features/procurement/pages/Quotations"))
 const Vendors = lazy(() => import("./features/procurement/pages/Vendors"));
 const Items = lazy(() => import("./features/procurement/pages/Items"));
 const Finance = lazy(() => import("./features/procurement/pages/Finance"));
+const Debtors = lazy(() => import("./features/procurement/pages/Debtors"));
+const DebtorDetail = lazy(() => import("./features/procurement/pages/DebtorDetail"));
 const VendorFinance = lazy(() => import("./features/procurement/pages/VendorFinance"));
 const ItemCostReport = lazy(() => import("./features/procurement/pages/ItemCostReport"));
 const FinanceCostBreakdown = lazy(() => import("./features/procurement/pages/FinanceCostBreakdown"));
@@ -239,6 +241,22 @@ function App() {
               element={
                 <RequireProcurementAccess>
                   <Finance />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/debtors"
+              element={
+                <RequireProcurementAccess>
+                  <Debtors />
+                </RequireProcurementAccess>
+              }
+            />
+            <Route
+              path="/:organizationId/debtors/:debtorId"
+              element={
+                <RequireProcurementAccess>
+                  <DebtorDetail />
                 </RequireProcurementAccess>
               }
             />

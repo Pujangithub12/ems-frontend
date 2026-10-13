@@ -1,11 +1,18 @@
 import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, AlertCircle, Layers, Check, X, Pencil, History, Ship, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, Layers, Check, X, Pencil, History, Ship, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { FinanceCostBreakdownRow } from "../../../types";
-import { useFinanceCostBreakdownQuery, useUpdateCostBreakdownRowMutation, useExchangeRatesQuery, useFinanceOverviewQuery } from "../hooks/useFinance";
+import {
+  useFinanceCostBreakdownQuery,
+  useUpdateCostBreakdownRowMutation,
+  useExchangeRatesQuery,
+  useFinanceOverviewQuery,
+  useAddManualRecordLineMutation,
+  useDeleteManualRecordLineMutation,
+} from "../hooks/useFinance";
 import { EditCostBreakdownRowInput, fetchCostBreakdownPdf } from "../api/finance.api";
 import { useAddPurchaseOrderItemMutation } from "../hooks/usePurchaseOrder";
 import { formatCost } from "../../../lib/currency";
@@ -18,6 +25,7 @@ import ExportMenu from "../components/ExportMenu";
 type RecordsTab = "costBreakdown" | "shipmentTracking";
 
 type RowForm = {
+  date: string;
   itemName: string;
   majorCost: string;
   freight: string;
@@ -41,9 +49,13 @@ type RowForm = {
 
 /** Blank instead of "0" for an unset numeric field — typing over a pre-filled 0 is annoying, and
  * an empty box is treated as 0 anyway on save (see saveRow's numeric parsing). */
+const formatDate = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "--";
+
 const numOrBlank = (n: number): string => (n === 0 ? "" : String(n));
 
 const toForm = (row: FinanceCostBreakdownRow): RowForm => ({
+  date: (row.date ?? "").slice(0, 10),
   itemName: row.itemName,
   majorCost: numOrBlank(row.majorCost),
   freight: numOrBlank(row.freight),
@@ -69,131 +81,6 @@ const previewRefund = (form: RowForm) => {
   return { refundableAmount, toBeRefunded: refundableAmount - refunded };
 };
 
-type AddItemForm = { itemName: string; quantity: string; unit: string; unitPrice: string; description: string };
-const emptyAddItemForm: AddItemForm = { itemName: "", quantity: "1", unit: "", unitPrice: "", description: "" };
-
-/** Adds a new line item directly to the PO behind this cost-breakdown page — only meaningful for
- * a "po" row (a manual record has no items relation, just the one freeform row). */
-const AddItemModal: React.FC<{ poId: number; onClose: () => void; onAdded: () => void }> = ({ poId, onClose, onAdded }) => {
-  const addItemMutation = useAddPurchaseOrderItemMutation();
-  const [form, setForm] = useState<AddItemForm>(emptyAddItemForm);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const itemName = form.itemName.trim();
-    if (!itemName) {
-      setFormError("Item name is required.");
-      return;
-    }
-    const quantity = parseFloat(form.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setFormError("Enter a valid quantity.");
-      return;
-    }
-    const unitPrice = form.unitPrice.trim() ? parseFloat(form.unitPrice) : null;
-    if (form.unitPrice.trim() && (!Number.isFinite(unitPrice) || (unitPrice as number) < 0)) {
-      setFormError("Enter a valid unit price.");
-      return;
-    }
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      await addItemMutation.mutateAsync({
-        id: poId,
-        input: { itemName, quantity, unit: form.unit.trim() || null, unitPrice, description: form.description.trim() || null },
-      });
-      onAdded();
-    } catch (err) {
-      setFormError(getErrorMessage(err, "Failed to add record."));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
-          <h3 className="text-[14px] font-semibold text-slate-900">Add Record</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-            <X size={16} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-3">
-          {formError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{formError}</div>}
-          <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">Item Name</label>
-            <input
-              autoFocus
-              value={form.itemName}
-              onChange={(e) => setForm({ ...form, itemName: e.target.value })}
-              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Quantity</label>
-              <input
-                type="number"
-                min="0.01"
-                step="any"
-                value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Unit</label>
-              <input
-                value={form.unit}
-                onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                placeholder="Optional"
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-[11px] font-medium text-slate-900">Unit Price</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={form.unitPrice}
-                onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}
-                placeholder="Optional"
-                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block mb-1 text-[11px] font-medium text-slate-900">Description</label>
-            <input
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Optional"
-              className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded outline-none focus:border-blue-400"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded hover:bg-blue-800 disabled:opacity-60"
-            >
-              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Add Record
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
 /**
  * Per-item cost breakdown for one Finance row (a PO's line items, or a manual record's single
  * line) — reached by clicking that row on the Finance page. Every field is editable inline:
@@ -213,6 +100,9 @@ const FinanceCostBreakdownPage: React.FC = () => {
 
   const breakdownQuery = useFinanceCostBreakdownQuery(normalizedSource, recordId);
   const rowMutation = useUpdateCostBreakdownRowMutation();
+  const deleteLineMutation = useDeleteManualRecordLineMutation();
+  const addManualLineMutation = useAddManualRecordLineMutation();
+  const addPoItemMutation = useAddPurchaseOrderItemMutation();
   const ratesQuery = useExchangeRatesQuery();
   const overviewQuery = useFinanceOverviewQuery();
 
@@ -225,12 +115,13 @@ const FinanceCostBreakdownPage: React.FC = () => {
   const isBulkEditing = Object.keys(forms).length > 0;
   const [showHistory, setShowHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<RecordsTab>("costBreakdown");
-  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<number | null>(null);
 
   // Left/Right arrow at a field's edge moves focus to the adjacent editable cell in that same
   // row (see handleCellArrowNav below) — must be declared before the early returns, same as
   // every other hook here, so the hook order stays stable across loading/error/loaded renders.
-  const EDITABLE_FIELD_COUNT = 15; // itemName, majorCost, freight, lcNumber, lcAmount, lcCharge, lcCommission, vat, importDuties, insurance, bibini, otherMargin, refundableAmount, refundedAmount, remarks
+  const EDITABLE_FIELD_COUNT = 14; // itemName, majorCost, freight, lcAmount, lcCharge, lcCommission, vat, importDuties, insurance, bibini, otherMargin, refundableAmount, refundedAmount, remarks
   const cellRefs = useRef<Record<number, Array<HTMLInputElement | null>>>({});
 
   if (!normalizedSource || !recordId) {
@@ -268,6 +159,30 @@ const FinanceCostBreakdownPage: React.FC = () => {
 
   const { poNumber, vendorName, currency, rows } = breakdownQuery.data;
 
+  // The LC number is shown once up in the page header (not as a column). It's shared across the
+  // lines: while editing, one input sets it on every line being edited.
+  const lcNumbers = [...new Set(rows.map((r) => r.lcNumber).filter(Boolean))] as string[];
+  const editingForms = Object.values(forms);
+  const headerLcValue = editingForms.length > 0 ? editingForms[0]!.lcNumber : "";
+  const setHeaderLc = (value: string) => setForms((f) => Object.fromEntries(Object.entries(f).map(([k, v]) => [k, { ...v, lcNumber: value }])));
+
+  const sumOf = (pick: (r: FinanceCostBreakdownRow) => number) => rows.reduce((t, r) => t + pick(r), 0);
+  const totals = {
+    majorCost: sumOf((r) => r.majorCost),
+    freight: sumOf((r) => r.freight),
+    lcAmount: sumOf((r) => r.lcAmount),
+    lcCharge: sumOf((r) => r.lcCharge),
+    lcCommission: sumOf((r) => r.lcCommission),
+    vat: sumOf((r) => r.vat),
+    importDuties: sumOf((r) => r.importDuties),
+    insurance: sumOf((r) => r.insurance),
+    bibini: sumOf((r) => r.bibini),
+    otherMargin: sumOf((r) => r.otherMargin),
+    refundableAmount: sumOf((r) => r.refundableAmount),
+    refundedAmount: sumOf((r) => r.refundedAmount),
+    toBeRefunded: sumOf((r) => r.toBeRefunded),
+  };
+
   // The matching Finance-page ledger row (has the payments list) — same data PaymentHistoryModal
   // uses from the /finance page, just looked up here by source+id instead of already in hand.
   const ledgerRow = (overviewQuery.data ?? []).find((r) =>
@@ -291,6 +206,52 @@ const FinanceCostBreakdownPage: React.FC = () => {
     setRowErrors({});
   };
 
+  /** "Add Payment": no form - every line of a record is the same item, so this just appends a row
+   * (named like the first line) and opens it in edit mode so the figures can be typed straight in. */
+  const handleAddPayment = async () => {
+    if (recordId == null || addingPayment) return;
+    const knownIds = new Set(rows.map((r) => r.itemId));
+    const itemName = rows[0]?.itemName ?? "";
+    setAddingPayment(true);
+    try {
+      if (normalizedSource === "po") {
+        await addPoItemMutation.mutateAsync({
+          id: recordId,
+          input: { itemName: itemName || "Item", quantity: 1, unit: null, unitPrice: null, description: null },
+        });
+      } else {
+        await addManualLineMutation.mutateAsync({ id: recordId, itemName });
+      }
+      await handleLineAdded(knownIds);
+    } catch (err) {
+      window.alert(getErrorMessage(err, "Failed to add payment row."));
+    } finally {
+      setAddingPayment(false);
+    }
+  };
+
+  /** After "Add Payment": reload, then drop the newly created row straight into edit mode so its
+   * columns can be filled in right away. */
+  const handleLineAdded = async (knownIds: Set<number | null>) => {
+    const result = await breakdownQuery.refetch();
+    const added = result.data?.rows.find((r) => !knownIds.has(r.itemId));
+    if (added) {
+      setForms((f) => ({ ...f, [added.itemId ?? -1]: { ...toForm(added), lcNumber: Object.values(f)[0]?.lcNumber ?? added.lcNumber ?? "" } }));
+      setRowErrors({});
+    }
+  };
+
+  const handleDeleteLine = async (row: FinanceCostBreakdownRow) => {
+    if (row.itemId == null) return;
+    if (!window.confirm("Delete this payment row? This can't be undone.")) return;
+    setDeletingLineId(row.itemId);
+    try {
+      await deleteLineMutation.mutateAsync({ id: recordId, lineId: row.itemId });
+    } finally {
+      setDeletingLineId(null);
+    }
+  };
+
   const cancelRow = (key: number) => {
     setForms((f) => {
       const next = { ...f };
@@ -309,7 +270,7 @@ const FinanceCostBreakdownPage: React.FC = () => {
     const form = forms[key];
     if (!form) return;
 
-    if (!form.itemName.trim()) {
+    if (!form.itemName.trim() && normalizedSource !== "manual") {
       setRowErrors((e) => ({ ...e, [key]: "Item name is required." }));
       return;
     }
@@ -337,6 +298,7 @@ const FinanceCostBreakdownPage: React.FC = () => {
       parsed[label] = n;
     }
     const input: EditCostBreakdownRowInput = {
+      date: form.date || null,
       itemName: form.itemName.trim(),
       majorCost: parsed["Major Cost"]!,
       freight: parsed["Freight"]!,
@@ -375,7 +337,8 @@ const FinanceCostBreakdownPage: React.FC = () => {
     }
   };
 
-  const inputCls = "w-full px-2 py-1 text-[12px] border border-slate-200 rounded outline-none focus:border-blue-400";
+  // Spreadsheet-style cell input: fills the whole cell, no box of its own, and shows a blue "active cell" outline on focus.
+  const inputCls = "block w-full h-9 px-2 text-[12px] bg-transparent border-0 rounded-none outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600";
 
   const registerCell = (rowKey: number, i: number) => (el: HTMLInputElement | null) => {
     if (!cellRefs.current[rowKey]) cellRefs.current[rowKey] = Array(EDITABLE_FIELD_COUNT).fill(null);
@@ -411,11 +374,11 @@ const FinanceCostBreakdownPage: React.FC = () => {
 
   const exportCostBreakdownExcel = () => {
     const header = [
-      "Item Procure", "Major Cost", "Freight", "LC Number", "LC Amount", "LC Charge", "LC Commission", "VAT",
+      "Date", "Item Procure", "Major Cost", "Freight", "LC Amount", "LC Charge", "LC Commission", "VAT",
       "Import Duties", "Insurance", "Bibini", "Other Margin", "Refundable Amount (NPR)", "Refunded (NPR)", "To Be Refunded (NPR)", "Remarks",
     ];
     const data = rows.map((r) => [
-      r.itemName, r.majorCost, r.freight, r.lcNumber || "", r.lcAmount, r.lcCharge, r.lcCommission, r.vat,
+      r.date ? r.date.slice(0, 10) : "", r.itemName, r.majorCost, r.freight, r.lcAmount, r.lcCharge, r.lcCommission, r.vat,
       r.importDuties, r.insurance, r.bibini, r.otherMargin, r.refundableAmount, r.refundedAmount, r.toBeRefunded, r.remarks || "",
     ]);
     const sheet = XLSX.utils.aoa_to_sheet([header, ...data]);
@@ -506,18 +469,38 @@ const FinanceCostBreakdownPage: React.FC = () => {
           <ShipmentTrackingTab isAdmin={isAdmin} />
         ) : (
         <>
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[13px]">
+            {isBulkEditing ? (
+              <label className="flex items-center gap-1.5 font-medium text-slate-700">
+                LC Number:
+                <input
+                  value={headerLcValue}
+                  onChange={(e) => setHeaderLc(e.target.value)}
+                  placeholder="Optional"
+                  className="w-48 px-2 py-1 text-[12px] font-normal border border-slate-200 rounded outline-none focus:border-blue-400"
+                />
+              </label>
+            ) : (
+              <span className="font-medium text-slate-700">
+                LC Number: <span className="font-semibold text-blue-900">{lcNumbers.length > 0 ? lcNumbers.join(", ") : "--"}</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
           <ExportMenu onExportExcel={exportCostBreakdownExcel} onExportPdf={exportCostBreakdownPdf} />
-          {isAdmin && normalizedSource === "po" && (
+          {isAdmin && (
             <button
-              onClick={() => setAddItemOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors shadow-sm"
+              onClick={handleAddPayment}
+              disabled={addingPayment}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-900 text-white rounded-lg text-[12px] font-medium hover:bg-blue-800 transition-colors shadow-sm disabled:opacity-60"
             >
-              <Plus size={14} /> Add Record
+              {addingPayment ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Payment
             </button>
           )}
+          </div>
         </div>
-        <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-xl shadow-sm border-slate-200">
+        <div className="flex-1 min-w-0 overflow-hidden bg-white border rounded-md shadow-sm border-slate-300">
           {rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <p className="text-slate-500 text-[12px]">No items to show.</p>
@@ -527,23 +510,23 @@ const FinanceCostBreakdownPage: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-[#f3f6fb]">
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-left whitespace-nowrap">Item Procure</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Major Cost</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Freight</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-left whitespace-nowrap">LC Number</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">LC Amount</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">LC Charge</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">LC Commission</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">VAT</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Import Duties</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Insurance</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Bibini</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Other Margin</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Refundable Amount (NPR)</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Refunded (NPR)</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">To Be Refunded (NPR)</th>
-                    <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-left whitespace-nowrap">Remarks</th>
-                    {isAdmin && <th className="px-2.5 py-3 text-[11.5px] font-semibold text-slate-700 border border-slate-200 text-right whitespace-nowrap">Actions</th>}
+                    <th className="px-2 h-8 text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-left whitespace-nowrap">Date</th>
+                    <th className="px-2 h-8 text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-left whitespace-nowrap">Item Procure</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Major Cost</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Freight</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">LC Amount</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">LC Charge</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">LC Commission</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">VAT</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Import Duties</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Insurance</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Bibini</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Other Margin</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Refundable Amount (NPR)</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Refunded (NPR)</th>
+                    <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">To Be Refunded (NPR)</th>
+                    <th className="px-2 h-8 text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-left whitespace-nowrap">Remarks</th>
+                    {isAdmin && <th className="px-2 h-8 min-w-[100px] text-[11.5px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 text-right whitespace-nowrap">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -558,7 +541,10 @@ const FinanceCostBreakdownPage: React.FC = () => {
                       const updateForm = (patch: Partial<RowForm>) => setForms((f) => ({ ...f, [rowKey]: { ...f[rowKey]!, ...patch } }));
                       return (
                         <tr key={r.itemId ?? i} className="bg-blue-50/40">
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
+                            <input type="date" value={form.date} onChange={(e) => updateForm({ date: e.target.value })} className={inputCls} />
+                          </td>
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
                               ref={registerCell(rowKey, 0)}
                               value={form.itemName}
@@ -568,7 +554,7 @@ const FinanceCostBreakdownPage: React.FC = () => {
                               autoFocus
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
                               ref={registerCell(rowKey, 1)}
                               type="text"
@@ -576,10 +562,10 @@ const FinanceCostBreakdownPage: React.FC = () => {
                               value={form.majorCost}
                               onChange={(e) => updateForm({ majorCost: e.target.value })}
                               onKeyDown={(e) => handleCellArrowNav(e, rowKey, 1)}
-                              className={`${inputCls} text-right`}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
                               ref={registerCell(rowKey, 2)}
                               type="text"
@@ -587,147 +573,131 @@ const FinanceCostBreakdownPage: React.FC = () => {
                               value={form.freight}
                               onChange={(e) => updateForm({ freight: e.target.value })}
                               onKeyDown={(e) => handleCellArrowNav(e, rowKey, 2)}
-                              className={`${inputCls} text-right`}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
                               ref={registerCell(rowKey, 3)}
-                              value={form.lcNumber}
-                              onChange={(e) => updateForm({ lcNumber: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 3)}
-                              className={inputCls}
-                              placeholder="Optional"
-                            />
-                          </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
-                            <input
-                              ref={registerCell(rowKey, 4)}
                               type="text"
                               inputMode="decimal"
                               value={form.lcAmount}
                               onChange={(e) => updateForm({ lcAmount: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 4)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 3)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 5)}
+                              ref={registerCell(rowKey, 4)}
                               type="text"
                               inputMode="decimal"
                               value={form.lcCharge}
                               onChange={(e) => updateForm({ lcCharge: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 5)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 4)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 6)}
+                              ref={registerCell(rowKey, 5)}
                               type="text"
                               inputMode="decimal"
                               value={form.lcCommission}
                               onChange={(e) => updateForm({ lcCommission: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 6)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 5)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 7)}
+                              ref={registerCell(rowKey, 6)}
                               type="text"
                               inputMode="decimal"
                               value={form.vat}
                               onChange={(e) => updateForm({ vat: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 7)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 6)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 8)}
+                              ref={registerCell(rowKey, 7)}
                               type="text"
                               inputMode="decimal"
                               value={form.importDuties}
                               onChange={(e) => updateForm({ importDuties: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 8)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 7)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 9)}
+                              ref={registerCell(rowKey, 8)}
                               type="text"
                               inputMode="decimal"
                               value={form.insurance}
                               onChange={(e) => updateForm({ insurance: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 9)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 8)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 10)}
+                              ref={registerCell(rowKey, 9)}
                               type="text"
                               inputMode="decimal"
                               value={form.bibini}
                               onChange={(e) => updateForm({ bibini: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 10)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 9)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 11)}
+                              ref={registerCell(rowKey, 10)}
                               type="text"
                               inputMode="decimal"
                               value={form.otherMargin}
                               onChange={(e) => updateForm({ otherMargin: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 11)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 10)}
+                              className={inputCls}
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 12)}
+                              ref={registerCell(rowKey, 11)}
                               type="text"
                               inputMode="decimal"
                               value={form.refundableAmount}
                               onChange={(e) => updateForm({ refundableAmount: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 12)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 11)}
+                              className={inputCls}
                             />
-                            {toNativeEquivalent(preview.refundableAmount) && (
-                              <div className="text-[10px] text-slate-400 text-right">≈ {toNativeEquivalent(preview.refundableAmount)} today</div>
-                            )}
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 13)}
+                              ref={registerCell(rowKey, 12)}
                               type="text"
                               inputMode="decimal"
                               value={form.refundedAmount}
                               onChange={(e) => updateForm({ refundedAmount: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 13)}
-                              className={`${inputCls} text-right`}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 12)}
+                              className={inputCls}
                             />
-                            {toNativeEquivalent(parseFloat(form.refundedAmount) || 0) && (
-                              <div className="text-[10px] text-slate-400 text-right">≈ {toNativeEquivalent(parseFloat(form.refundedAmount) || 0)} today</div>
-                            )}
                           </td>
-                          <td className="px-2.5 py-3 text-[12px] text-right text-slate-500 border border-slate-200">{formatCost(preview.toBeRefunded, "NPR")}</td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-500 border border-slate-300">{formatCost(preview.toBeRefunded, "NPR")}</td>
+                          <td className="p-0 border border-slate-300 bg-white">
                             <input
-                              ref={registerCell(rowKey, 14)}
+                              ref={registerCell(rowKey, 13)}
                               value={form.remarks}
                               onChange={(e) => updateForm({ remarks: e.target.value })}
-                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 14)}
+                              onKeyDown={(e) => handleCellArrowNav(e, rowKey, 13)}
                               className={inputCls}
                               placeholder="Optional"
                             />
                           </td>
-                          <td className="px-2.5 py-3 border border-slate-200">
+                          <td className="px-2 h-9 border border-slate-300">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => saveRow(r)}
@@ -740,7 +710,7 @@ const FinanceCostBreakdownPage: React.FC = () => {
                               <button
                                 onClick={() => cancelRow(rowKey)}
                                 disabled={saving}
-                                className="flex items-center justify-center w-7 h-7 text-slate-500 transition-colors border rounded border-slate-200 hover:bg-slate-100 disabled:opacity-50"
+                                className="flex items-center justify-center w-7 h-7 text-slate-500 transition-colors border rounded border-slate-300 hover:bg-slate-100 disabled:opacity-50"
                                 title="Cancel"
                               >
                                 <X size={12} />
@@ -754,35 +724,71 @@ const FinanceCostBreakdownPage: React.FC = () => {
 
                     return (
                       <tr key={r.itemId ?? i} className="bg-white hover:bg-blue-50/60">
-                        <td className="px-2.5 py-3 text-[12px] font-semibold text-slate-800 border border-slate-200">{r.itemName}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-700 border border-slate-200">{formatCost(r.majorCost, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.freight, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-slate-600 border border-slate-200">{r.lcNumber || "--"}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.lcAmount, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.lcCharge, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.lcCommission, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.vat, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.importDuties, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.insurance, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.bibini, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">{formatCost(r.otherMargin, currency)}</td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-slate-600 border border-slate-300 whitespace-nowrap">{formatDate(r.date)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] font-semibold text-slate-800 border border-slate-300">{r.itemName}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-700 border border-slate-300">{formatCost(r.majorCost, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.freight, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.lcAmount, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.lcCharge, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.lcCommission, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.vat, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.importDuties, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.insurance, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.bibini, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">{formatCost(r.otherMargin, currency)}</td>
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">
                           {formatCost(r.refundableAmount, "NPR")}
                           {toNativeEquivalent(r.refundableAmount) && <div className="text-[10px] text-slate-400">≈ {toNativeEquivalent(r.refundableAmount)} today</div>}
                         </td>
-                        <td className="px-2.5 py-3 text-[12px] text-right text-slate-600 border border-slate-200">
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-600 border border-slate-300">
                           {formatCost(r.refundedAmount, "NPR")}
                           {toNativeEquivalent(r.refundedAmount) && <div className="text-[10px] text-slate-400">≈ {toNativeEquivalent(r.refundedAmount)} today</div>}
                         </td>
-                        <td className={`px-2.5 py-3 text-[12px] text-right font-medium border border-slate-200 ${r.toBeRefunded > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                        <td className={`px-2 h-9 whitespace-nowrap text-[12px] text-right font-medium border border-slate-300 ${r.toBeRefunded > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                           {formatCost(r.toBeRefunded, "NPR")}
                         </td>
-                        <td className="px-2.5 py-3 text-[12px] text-slate-600 border border-slate-200 max-w-[200px] truncate">{r.remarks || "--"}</td>
-                        {isAdmin && <td className="px-2.5 py-3 border border-slate-200" />}
+                        <td className="px-2 h-9 whitespace-nowrap text-[12px] text-slate-600 border border-slate-300 max-w-[200px] truncate">{r.remarks || "--"}</td>
+                        {isAdmin && (
+                          <td className="px-2 h-9 border border-slate-300">
+                            {normalizedSource === "manual" && r.itemId != null && (
+                              <div className="flex items-center justify-end">
+                                <button
+                                  onClick={() => handleDeleteLine(r)}
+                                  disabled={deletingLineId === r.itemId}
+                                  className="flex items-center justify-center w-7 h-7 text-red-600 transition-colors border border-red-200 rounded hover:bg-red-50 disabled:opacity-50"
+                                  title="Delete payment row"
+                                >
+                                  {deletingLineId === r.itemId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-slate-100 font-semibold border-t-2 border-slate-400">
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-slate-800 border border-slate-300">Total</td>
+                    <td className="px-2 h-9 border border-slate-300" />
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.majorCost, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.freight, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.lcAmount, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.lcCharge, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.lcCommission, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.vat, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.importDuties, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.insurance, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.bibini, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.otherMargin, currency)}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.refundableAmount, "NPR")}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.refundedAmount, "NPR")}</td>
+                    <td className="px-2 h-9 whitespace-nowrap text-[12px] text-right text-slate-800 border border-slate-300">{formatCost(totals.toBeRefunded, "NPR")}</td>
+                    <td className="px-2 h-9 border border-slate-300" />
+                    {isAdmin && <td className="px-2 h-9 border border-slate-300" />}
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -790,17 +796,6 @@ const FinanceCostBreakdownPage: React.FC = () => {
         </>
         )}
       </div>
-
-      {addItemOpen && recordId != null && (
-        <AddItemModal
-          poId={recordId}
-          onClose={() => setAddItemOpen(false)}
-          onAdded={() => {
-            setAddItemOpen(false);
-            breakdownQuery.refetch();
-          }}
-        />
-      )}
 
       {showHistory && ledgerRow && (
         <PaymentHistoryModal
