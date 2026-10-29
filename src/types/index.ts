@@ -238,6 +238,8 @@ export type PurchaseOrderItem = {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | string | null;
+  /** Optional label shown next to the unit price on the PDF, e.g. "/ kg". */
+  perUnit?: string | null;
   /** Entered on the Overview tab's "Add Item" form — shown under the item name in the PDF's Product Description cell. */
   description?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */

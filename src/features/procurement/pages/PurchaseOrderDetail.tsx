@@ -341,6 +341,7 @@ const emptyAddItemForm = {
   quantity: "1",
   unit: "",
   unitPrice: "",
+  perUnit: "",
   description: "",
 };
 
@@ -420,6 +421,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       quantity: String(item.quantity),
       unit: item.unit || "",
       unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
+      perUnit: item.perUnit || "",
       description: item.description || "",
     });
     setAddItemError(null);
@@ -446,6 +448,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         quantity,
         unit: addItemForm.unit.trim() || undefined,
         unitPrice: addItemForm.unitPrice ? parseFloat(addItemForm.unitPrice) : null,
+        perUnit: addItemForm.perUnit.trim() || null,
         description: addItemForm.description.trim() || null,
       };
       if (editingItemId) {
@@ -535,6 +538,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           quantity,
           unit: field === "unit" ? (trimmed || undefined) : (item.unit || undefined),
           unitPrice,
+          perUnit: item.perUnit || null,
           description: item.description || null,
         },
       });
@@ -1144,6 +1148,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                         className={isAdmin ? "inline-block -mx-1 px-1 py-0.5 rounded cursor-text hover:bg-slate-50" : ""}
                       >
                         {formatCost(item.unitPrice)}
+                        {item.perUnit && <span className="ml-1 text-[11px] text-slate-400">{item.perUnit}</span>}
                       </span>
                     )}
                   </td>
@@ -1257,7 +1262,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   className={inputCls}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div>
                   <label className={labelCls}>Quantity</label>
                   <input
@@ -1286,6 +1291,15 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                     step="any"
                     value={addItemForm.unitPrice}
                     onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Per Unit</label>
+                  <input
+                    value={addItemForm.perUnit}
+                    onChange={(e) => setAddItemForm({ ...addItemForm, perUnit: e.target.value })}
+                    placeholder="e.g. / kg (optional)"
                     className={inputCls}
                   />
                 </div>
