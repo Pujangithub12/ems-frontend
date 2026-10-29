@@ -7,6 +7,7 @@ export interface CreatePurchaseOrderItemInput {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
+  perUnit?: string | null;
   description?: string | null;
 }
 
@@ -21,6 +22,7 @@ export interface AddPurchaseOrderItemInput {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
+  perUnit?: string | null;
   description?: string | null;
 }
 
@@ -36,6 +38,7 @@ export interface EditPurchaseOrderItemInput {
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
+  perUnit?: string | null;
   description?: string | null;
 }
 
