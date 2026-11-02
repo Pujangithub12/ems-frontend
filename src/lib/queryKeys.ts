@@ -72,6 +72,7 @@ export const queryKeys = {
   organizationWarehouses: (wsId: number) => [...queryKeys.all(wsId), "organizationWarehouses"] as const,
   organizationVendors: (wsId: number) => [...queryKeys.all(wsId), "organizationVendors"] as const,
   debtorDetail: (wsId: number, id: number) => [...queryKeys.all(wsId), "debtorDetail", id] as const,
+  requisitions: (wsId: number) => [...queryKeys.all(wsId), "requisitions"] as const,
   debtors: (wsId: number) => [...queryKeys.all(wsId), "debtors"] as const,
   financeOverview: (wsId: number) => [...queryKeys.all(wsId), "financeOverview"] as const,
   shipmentTrackingRecords: (wsId: number) => [...queryKeys.all(wsId), "shipmentTrackingRecords"] as const,
