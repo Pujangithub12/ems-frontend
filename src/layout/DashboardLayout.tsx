@@ -332,6 +332,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       id: "quotations",
     },
     {
+      path: `${prefix}/requisition`,
+      label: "Requisition",
+      icon: ClipboardList,
+      id: "requisition",
+    },
+    {
       path: `${prefix}/finance`,
       label: "Finance",
       icon: Wallet,
@@ -434,6 +440,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     quotations: "Price quotations sent to prospective customers",
     finance: "Payments, balances and cost tracking across all your purchase orders",
     debtors: "Customers who owe money and outstanding receivables",
+    requisition: "Purchase requisition form — fill in and preview as PDF",
     tasks: "Assign, track and update tasks",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
@@ -534,7 +541,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="h-1.5" />
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
-              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors") return null;
+              if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
               if (it.id === "purchase-orders") {
                 // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                 // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
@@ -546,6 +553,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 const itemsItem = navItems.find((n) => n.id === "items")!;
                 const financeItem = navItems.find((n) => n.id === "finance")!;
                 const debtorsItem = navItems.find((n) => n.id === "debtors")!;
+                const requisitionItem = navItems.find((n) => n.id === "requisition")!;
                 return (
                   <SidebarDropdown
                     key="purchase"
@@ -555,6 +563,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                       { to: it.path, label: "Purchase Orders" },
                       { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                       { to: quotationsItem.path, label: "Quotations" },
+                      { to: requisitionItem.path, label: "Requisition" },
                       { to: vendorsItem.path, label: "Vendors" },
                       { to: itemsItem.path, label: "Items" },
                       { to: financeItem.path, label: "Finance" },
@@ -614,7 +623,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="h-1.5" />
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
-                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors") return null;
+                  if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
                   if (it.id === "purchase-orders") {
                     // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                     // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
@@ -626,6 +635,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                     const itemsItem = navItems.find((n) => n.id === "items")!;
                     const financeItem = navItems.find((n) => n.id === "finance")!;
                     const debtorsItem = navItems.find((n) => n.id === "debtors")!;
+                const requisitionItem = navItems.find((n) => n.id === "requisition")!;
                     return (
                       <SidebarDropdown
                         key="purchase"
@@ -635,6 +645,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                           { to: it.path, label: "Purchase Orders" },
                           { to: proformaInvoicesItem.path, label: "Proforma Invoices" },
                           { to: quotationsItem.path, label: "Quotations" },
+                      { to: requisitionItem.path, label: "Requisition" },
                           { to: vendorsItem.path, label: "Vendors" },
                           { to: itemsItem.path, label: "Items" },
                           { to: financeItem.path, label: "Finance" },
