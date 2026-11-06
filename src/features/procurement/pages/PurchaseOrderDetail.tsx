@@ -342,6 +342,9 @@ const emptyAddItemForm = {
   unit: "",
   unitPrice: "",
   perUnit: "",
+  unitWeight: "",
+  weightUnit: "",
+  rate: "",
   description: "",
 };
 
@@ -422,6 +425,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       unit: item.unit || "",
       unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
       perUnit: item.perUnit || "",
+      unitWeight: item.unitWeight != null ? String(toNumber(item.unitWeight)) : "",
+      weightUnit: item.weightUnit || "",
+      rate: item.rate != null ? String(toNumber(item.rate)) : "",
       description: item.description || "",
     });
     setAddItemError(null);
@@ -449,6 +455,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         unit: addItemForm.unit.trim() || undefined,
         unitPrice: addItemForm.unitPrice ? parseFloat(addItemForm.unitPrice) : null,
         perUnit: addItemForm.perUnit.trim() || null,
+        unitWeight: addItemForm.unitWeight ? parseFloat(addItemForm.unitWeight) : null,
+        weightUnit: addItemForm.weightUnit.trim() || null,
+        rate: addItemForm.rate ? parseFloat(addItemForm.rate) : null,
         description: addItemForm.description.trim() || null,
       };
       if (editingItemId) {
@@ -497,6 +506,8 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const startCellEdit = (item: PurchaseOrder["items"][number], field: CellField) => {
     if (!isAdmin || cellBusy) return;
+    // Weight-priced lines (unit weight + rate) derive their unit price - change them via Edit Item.
+    if (field === "unitPrice" && item.unitWeight != null && item.rate != null) return;
     setEditingCell({ itemId: item.id, field });
     setCellValue(cellValueFor(item, field));
   };
@@ -539,6 +550,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           unit: field === "unit" ? (trimmed || undefined) : (item.unit || undefined),
           unitPrice,
           perUnit: item.perUnit || null,
+          unitWeight: item.unitWeight != null ? toNumber(item.unitWeight) : null,
+          weightUnit: item.weightUnit || null,
+          rate: item.rate != null ? toNumber(item.rate) : null,
           description: item.description || null,
         },
       });
@@ -798,6 +812,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const statusHistory = po.statusHistory ?? [];
 
   const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
+  // Weight columns: the unit goes in the header when every item shares one, else each cell carries it.
+  const weightUnitSet = new Set(po.items.map((i) => (i.weightUnit || "").trim()).filter(Boolean));
+  const commonWeightUnit = weightUnitSet.size === 1 ? [...weightUnitSet][0]! : null;
+  const fmtWt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const poCurrencyLabel = po.currency || "Rs";
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -1041,6 +1060,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                 <th className="px-3 py-2 font-medium text-left">HSN Code</th>
                 <th className="px-3 py-2 font-medium text-right">Quantity</th>
                 <th className="px-3 py-2 font-medium text-left">Unit</th>
+                <th className="px-3 py-2 font-medium text-right">Unit Wt{commonWeightUnit ? ` (${commonWeightUnit})` : ""}</th>
+                <th className="px-3 py-2 font-medium text-right">Total Wt{commonWeightUnit ? ` (${commonWeightUnit})` : ""}</th>
+                <th className="px-3 py-2 font-medium text-right">Rate ({poCurrencyLabel}/{commonWeightUnit || "unit"})</th>
                 <th className="px-3 py-2 font-medium text-right">Unit Price</th>
                 <th className="px-3 py-2 font-medium text-right">Line Total</th>
                 {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
@@ -1128,6 +1150,15 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                     )}
                   </td>
                   <td className="px-3 py-2 text-right text-slate-600">
+                    {item.unitWeight != null ? `${fmtWt(toNumber(item.unitWeight))}${commonWeightUnit || !item.weightUnit ? "" : ` ${item.weightUnit}`}` : "--"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-600">
+                    {item.unitWeight != null ? `${fmtWt(item.quantity * toNumber(item.unitWeight))}${commonWeightUnit || !item.weightUnit ? "" : ` ${item.weightUnit}`}` : "--"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-600">
+                    {item.rate != null ? `${formatCost(item.rate)}${commonWeightUnit || !item.weightUnit ? "" : `/${item.weightUnit}`}` : "--"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-600">
                     {editingCell?.itemId === item.id && editingCell.field === "unitPrice" ? (
                       <input
                         autoFocus
@@ -1180,7 +1211,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={isAdmin ? 6 : 5} className="px-3 py-2 text-right text-[12px] font-semibold text-slate-700">Total</td>
+                <td colSpan={8} className="px-3 py-2 text-right text-[12px] font-semibold text-slate-700">Total</td>
                 <td className="px-3 py-2 text-right text-[12px] font-bold text-slate-900">{formatCost(itemsTotal)}</td>
                 {isAdmin && <td className="px-3 py-2" />}
               </tr>
@@ -1262,7 +1293,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   className={inputCls}
                 />
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Quantity</label>
                   <input
@@ -1283,27 +1314,86 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                     className={inputCls}
                   />
                 </div>
-                <div>
-                  <label className={labelCls}>Unit Price</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={addItemForm.unitPrice}
-                    onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Per Unit</label>
-                  <input
-                    value={addItemForm.perUnit}
-                    onChange={(e) => setAddItemForm({ ...addItemForm, perUnit: e.target.value })}
-                    placeholder="e.g. / kg (optional)"
-                    className={inputCls}
-                  />
-                </div>
               </div>
+              {(() => {
+                const uw = parseFloat(addItemForm.unitWeight);
+                const rt = parseFloat(addItemForm.rate);
+                const qty = parseFloat(addItemForm.quantity);
+                const hasWeight = Number.isFinite(uw) && uw >= 0;
+                const derivedPrice = hasWeight && Number.isFinite(rt) && rt >= 0;
+                return (
+                  <>
+                    <div className="grid grid-cols-4 gap-3">
+                      <div>
+                        <label className={labelCls}>Unit Wt</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={addItemForm.unitWeight}
+                          onChange={(e) => setAddItemForm({ ...addItemForm, unitWeight: e.target.value })}
+                          placeholder="optional"
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Weight Unit</label>
+                        <input
+                          value={addItemForm.weightUnit}
+                          onChange={(e) => setAddItemForm({ ...addItemForm, weightUnit: e.target.value })}
+                          placeholder="e.g. kg"
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Total Wt{addItemForm.weightUnit.trim() ? ` (${addItemForm.weightUnit.trim()})` : ""}</label>
+                        <input
+                          readOnly
+                          value={hasWeight && Number.isFinite(qty) ? String(Math.round(uw * qty * 1000) / 1000) : ""}
+                          placeholder="auto"
+                          className={`${inputCls} bg-slate-50 text-slate-600`}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Rate ({po.currency || "Rs"}/{addItemForm.weightUnit.trim() || "unit"})</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={addItemForm.rate}
+                          onChange={(e) => setAddItemForm({ ...addItemForm, rate: e.target.value })}
+                          placeholder="optional"
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelCls}>Unit Price</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          readOnly={derivedPrice}
+                          value={derivedPrice ? String(Math.round(uw * rt * 1e6) / 1e6) : addItemForm.unitPrice}
+                          onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
+                          className={`${inputCls} ${derivedPrice ? "bg-slate-50 text-slate-600" : ""}`}
+                        />
+                        {derivedPrice && <p className="mt-1 text-[11px] text-slate-500">Worked out from Unit Wt × Rate, so Amount = Total Wt × Rate.</p>}
+                      </div>
+                      <div>
+                        <label className={labelCls}>Per Unit</label>
+                        <input
+                          value={addItemForm.perUnit}
+                          onChange={(e) => setAddItemForm({ ...addItemForm, perUnit: e.target.value })}
+                          placeholder="e.g. / kg (optional)"
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
               <div>
                 <label className={labelCls}>Description</label>
                 <textarea

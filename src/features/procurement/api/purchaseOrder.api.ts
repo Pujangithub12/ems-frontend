@@ -8,6 +8,9 @@ export interface CreatePurchaseOrderItemInput {
   unit?: string | null;
   unitPrice?: number | null;
   perUnit?: string | null;
+  unitWeight?: number | null;
+  weightUnit?: string | null;
+  rate?: number | null;
   description?: string | null;
 }
 
@@ -23,6 +26,9 @@ export interface AddPurchaseOrderItemInput {
   unit?: string | null;
   unitPrice?: number | null;
   perUnit?: string | null;
+  unitWeight?: number | null;
+  weightUnit?: string | null;
+  rate?: number | null;
   description?: string | null;
 }
 
@@ -39,6 +45,9 @@ export interface EditPurchaseOrderItemInput {
   unit?: string | null;
   unitPrice?: number | null;
   perUnit?: string | null;
+  unitWeight?: number | null;
+  weightUnit?: string | null;
+  rate?: number | null;
   description?: string | null;
 }
 
