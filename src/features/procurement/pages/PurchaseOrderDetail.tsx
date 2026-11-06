@@ -402,6 +402,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   // row" instead of creating a new one.
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [totalWtDraft, setTotalWtDraft] = useState<string | null>(null);
   const [addItemForm, setAddItemForm] = useState(emptyAddItemForm);
   const [addItemBusy, setAddItemBusy] = useState(false);
   const [addItemError, setAddItemError] = useState<string | null>(null);
@@ -506,8 +507,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const startCellEdit = (item: PurchaseOrder["items"][number], field: CellField) => {
     if (!isAdmin || cellBusy) return;
-    // Weight-priced lines (unit weight + rate) derive their unit price - change them via Edit Item.
-    if (field === "unitPrice" && item.unitWeight != null && item.rate != null) return;
     setEditingCell({ itemId: item.id, field });
     setCellValue(cellValueFor(item, field));
   };
@@ -1317,10 +1316,23 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               </div>
               {(() => {
                 const uw = parseFloat(addItemForm.unitWeight);
-                const rt = parseFloat(addItemForm.rate);
                 const qty = parseFloat(addItemForm.quantity);
                 const hasWeight = Number.isFinite(uw) && uw >= 0;
-                const derivedPrice = hasWeight && Number.isFinite(rt) && rt >= 0;
+                const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
+                // Unit Wt x Rate pre-fills Unit Price whenever either changes - after that, every box stays editable.
+                const withDerivedPrice = (patch: Partial<typeof addItemForm>) => {
+                  const next = { ...addItemForm, ...patch };
+                  const w = parseFloat(next.unitWeight);
+                  const rt = parseFloat(next.rate);
+                  if (Number.isFinite(w) && w >= 0 && Number.isFinite(rt) && rt >= 0) next.unitPrice = String(round(w * rt, 6));
+                  setAddItemForm(next);
+                };
+                const onTotalWtChange = (text: string) => {
+                  setTotalWtDraft(text);
+                  const t = parseFloat(text);
+                  if (Number.isFinite(t) && t >= 0 && Number.isFinite(qty) && qty > 0) withDerivedPrice({ unitWeight: String(round(t / qty, 6)) });
+                  else if (text.trim() === "") withDerivedPrice({ unitWeight: "" });
+                };
                 return (
                   <>
                     <div className="grid grid-cols-4 gap-3">
@@ -1331,7 +1343,10 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                           min="0"
                           step="any"
                           value={addItemForm.unitWeight}
-                          onChange={(e) => setAddItemForm({ ...addItemForm, unitWeight: e.target.value })}
+                          onChange={(e) => {
+                            setTotalWtDraft(null);
+                            withDerivedPrice({ unitWeight: e.target.value });
+                          }}
                           placeholder="optional"
                           className={inputCls}
                         />
@@ -1348,10 +1363,14 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                       <div>
                         <label className={labelCls}>Total Wt{addItemForm.weightUnit.trim() ? ` (${addItemForm.weightUnit.trim()})` : ""}</label>
                         <input
-                          readOnly
-                          value={hasWeight && Number.isFinite(qty) ? String(Math.round(uw * qty * 1000) / 1000) : ""}
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={totalWtDraft ?? (hasWeight && Number.isFinite(qty) ? String(round(uw * qty, 3)) : "")}
+                          onChange={(e) => onTotalWtChange(e.target.value)}
+                          onBlur={() => setTotalWtDraft(null)}
                           placeholder="auto"
-                          className={`${inputCls} bg-slate-50 text-slate-600`}
+                          className={inputCls}
                         />
                       </div>
                       <div>
@@ -1361,7 +1380,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                           min="0"
                           step="any"
                           value={addItemForm.rate}
-                          onChange={(e) => setAddItemForm({ ...addItemForm, rate: e.target.value })}
+                          onChange={(e) => withDerivedPrice({ rate: e.target.value })}
                           placeholder="optional"
                           className={inputCls}
                         />
@@ -1374,12 +1393,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                           type="number"
                           min="0"
                           step="any"
-                          readOnly={derivedPrice}
-                          value={derivedPrice ? String(Math.round(uw * rt * 1e6) / 1e6) : addItemForm.unitPrice}
+                          value={addItemForm.unitPrice}
                           onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
-                          className={`${inputCls} ${derivedPrice ? "bg-slate-50 text-slate-600" : ""}`}
+                          className={inputCls}
                         />
-                        {derivedPrice && <p className="mt-1 text-[11px] text-slate-500">Worked out from Unit Wt × Rate, so Amount = Total Wt × Rate.</p>}
+                        <p className="mt-1 text-[11px] text-slate-500">Pre-filled from Unit Wt × Rate when both are set — you can overwrite it.</p>
                       </div>
                       <div>
                         <label className={labelCls}>Per Unit</label>
