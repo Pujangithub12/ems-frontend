@@ -812,8 +812,13 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
   // Weight columns: the unit goes in the header when every item shares one, else each cell carries it.
-  const weightUnitSet = new Set(po.items.map((i) => (i.weightUnit || "").trim()).filter(Boolean));
-  const commonWeightUnit = weightUnitSet.size === 1 ? [...weightUnitSet][0]! : null;
+  // Compared ignoring case, so "kg" and "Kg" count as one shared unit.
+  const weightUnitByKey = new Map<string, string>();
+  for (const i of po.items) {
+    const t = (i.weightUnit || "").trim();
+    if (t && !weightUnitByKey.has(t.toLowerCase())) weightUnitByKey.set(t.toLowerCase(), t);
+  }
+  const commonWeightUnit = weightUnitByKey.size === 1 ? [...weightUnitByKey.values()][0]! : null;
   const fmtWt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
   const poCurrencyLabel = po.currency || "Rs";
 
