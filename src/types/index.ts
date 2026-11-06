@@ -240,6 +240,10 @@ export type PurchaseOrderItem = {
   unitPrice?: number | string | null;
   /** Optional label shown next to the unit price on the PDF, e.g. "/ kg". */
   perUnit?: string | null;
+  /** Weight of one unit, its unit label (e.g. "kg") and the rate per weight unit; unit price is derived from them when both are set. */
+  unitWeight?: number | string | null;
+  weightUnit?: string | null;
+  rate?: number | string | null;
   /** Entered on the Overview tab's "Add Item" form — shown under the item name in the PDF's Product Description cell. */
   description?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
