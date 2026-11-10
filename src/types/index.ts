@@ -248,6 +248,8 @@ export type PurchaseOrderItem = {
   description?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
   hsnCode?: string | null;
+  /** Values for the PO's custom columns (PurchaseOrder.itemColumns), keyed by column key. */
+  customValues?: Record<string, string> | null;
 };
 
 export type PurchaseOrderStatusHistoryEntry = {
@@ -513,6 +515,8 @@ export type PurchaseOrder = {
    * Specification", "Electricity Requirement", "Electrical Motor data...") — each with its own
    * title, column headers and rows. Omitted from the PDF entirely when there are none. */
   specTables?: PurchaseOrderSpecTable[];
+  /** User-defined extra columns of the line-items table. */
+  itemColumns?: { key: string; label: string }[] | null;
   statusHistory?: PurchaseOrderStatusHistoryEntry[];
   proformaInvoices?: ProformaInvoice[];
   shipment?: Shipment | null;
