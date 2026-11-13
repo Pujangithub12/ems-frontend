@@ -22,6 +22,8 @@ export interface CreatePurchaseOrderInput {
 export interface AddPurchaseOrderItemInput {
   itemName: string;
   itemId?: number | null;
+  hsnCode?: string | null;
+  customValues?: Record<string, string> | null;
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
@@ -41,6 +43,8 @@ export async function addPurchaseOrderItem(id: number, input: AddPurchaseOrderIt
 export interface EditPurchaseOrderItemInput {
   itemName: string;
   itemId?: number | null;
+  hsnCode?: string | null;
+  customValues?: Record<string, string> | null;
   quantity: number;
   unit?: string | null;
   unitPrice?: number | null;
@@ -96,6 +100,7 @@ export interface PurchaseOrderInput {
   purchaseType?: PurchaseType;
   status?: PurchaseOrderStatus;
   items?: { id: number; hsnCode?: string | null }[];
+  itemColumns?: { key: string; label: string }[];
   /** Full replace when present — any table missing a title or ending up with no non-blank rows
    * is dropped, so the PDF only ever shows tables that were actually filled in. */
   specTables?: { title: string; columns: string[]; footerNote?: string | null; rows: { cells: string[] }[] }[];

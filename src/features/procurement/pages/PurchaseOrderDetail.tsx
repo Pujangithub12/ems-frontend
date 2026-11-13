@@ -7,7 +7,6 @@ import {
   AlertCircle,
   X,
   Trash2,
-  Pencil,
   Upload,
   Paperclip,
   ChevronDown,
@@ -31,10 +30,6 @@ import {
   useDeletePurchaseOrderItemMutation,
   useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
-import ItemNameField from "../../inventory/components/ItemNameField";
-import CatalogItemFormModal from "../../inventory/components/CatalogItemFormModal";
-import ConfirmationModal from "../../../components/ConfirmationModal";
-import { useOrganizationItemCatalogQuery } from "../../inventory/hooks/useInventory";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
@@ -335,18 +330,58 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   currency: po.currency || "",
 });
 
-const emptyAddItemForm = {
-  itemId: null as number | null,
-  itemName: "",
-  quantity: "1",
-  unit: "",
-  unitPrice: "",
-  perUnit: "",
-  unitWeight: "",
-  weightUnit: "",
-  rate: "",
-  description: "",
+/** One editable row of the Line Items table. Numbers are kept as the text the user typed; `id` is
+ * null for a row that hasn't been saved yet. Nothing is sent to the server until Save Changes. */
+type ItemRow = { key: string; id: number | null; itemName: string; hsnCode: string; quantity: string; unit: string; unitPrice: string; custom: Record<string, string> };
+
+/** A user-defined column: `key` is stable (values are stored under it), `label` is the heading the user typed. */
+type CustomCol = { key: string; label: string };
+
+const newColKey = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+const rowFromItem = (item: PurchaseOrder["items"][number]): ItemRow => ({
+  key: `i${item.id}`,
+  id: item.id,
+  itemName: item.itemName,
+  hsnCode: item.hsnCode || "",
+  quantity: String(item.quantity),
+  unit: item.unit || "",
+  unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
+  custom: { ...(item.customValues ?? {}) },
+});
+
+let newRowSeq = 0;
+const blankRow = (): ItemRow => ({ key: `n${++newRowSeq}`, id: null, itemName: "", hsnCode: "", quantity: "", unit: "", unitPrice: "", custom: {} });
+
+const rowIsBlank = (r: ItemRow) =>
+  !r.itemName.trim() && !r.hsnCode.trim() && !r.quantity.trim() && !r.unit.trim() && !r.unitPrice.trim() && Object.values(r.custom).every((v) => !v.trim());
+
+/** Comparable snapshot of a row (ignores the React key), so "has anything changed?" is a string compare. */
+const rowSig = (r: ItemRow) =>
+  JSON.stringify([
+    r.id,
+    r.itemName.trim(),
+    r.hsnCode.trim(),
+    r.quantity.trim(),
+    r.unit.trim(),
+    r.unitPrice.trim(),
+    Object.entries(r.custom)
+      .map(([k, v]) => [k, v.trim()] as const)
+      .filter(([, v]) => v)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  ]);
+
+const colsSig = (cols: CustomCol[]) => JSON.stringify(cols.filter((c) => c.label.trim()).map((c) => [c.key, c.label.trim()]));
+
+/** Keeps only digits and a single decimal point, so number cells can stay plain left-aligned text inputs. */
+const cleanNumberText = (s: string) => {
+  const t = s.replace(/[^0-9.]/g, "");
+  const dot = t.indexOf(".");
+  return dot === -1 ? t : t.slice(0, dot + 1) + t.slice(dot + 1).replace(/\./g, "");
 };
+
+const cellInputCls =
+  "w-full h-full px-2.5 py-2 text-[12px] text-left text-slate-800 bg-transparent border-0 outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:text-slate-600";
 
 /** A free-form spec table on the Overview tab (PDF, right above Payment Terms) — title, column
  * headers and rows are all admin-defined, so it can match any spec sheet shape (a simple
@@ -379,14 +414,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const addItemMutation = useAddPurchaseOrderItemMutation();
   const editItemMutation = useEditPurchaseOrderItemMutation();
   const deleteItemMutation = useDeletePurchaseOrderItemMutation();
-  const catalogQuery = useOrganizationItemCatalogQuery();
-  const catalogItems = catalogQuery.data ?? [];
   const ordersQuery = useOrganizationPurchaseOrdersQuery();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
-  const [hsnCodes, setHsnCodes] = useState<Record<number, string>>(() =>
-    Object.fromEntries(po.items.map((item) => [item.id, item.hsnCode || ""])),
-  );
   /** Free-form spec tables (PDF, right above Payment Terms) — a table is dropped from the PDF
    * entirely when it has no title or no non-blank rows (see PurchaseOrderController). */
   const [specTables, setSpecTables] = useState<SpecTableForm[]>(() => specTablesFromPo(po));
@@ -398,181 +428,164 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const keepEditingRef = useRef<HTMLButtonElement>(null);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
 
-  // Add Item modal doubles as the Edit modal — editingItemId set means "editing this existing
-  // row" instead of creating a new one.
-  const [addItemOpen, setAddItemOpen] = useState(false);
-  const [editingItemId, setEditingItemId] = useState<number | null>(null);
-  const [totalWtDraft, setTotalWtDraft] = useState<string | null>(null);
-  const [addItemForm, setAddItemForm] = useState(emptyAddItemForm);
-  const [addItemBusy, setAddItemBusy] = useState(false);
-  const [addItemError, setAddItemError] = useState<string | null>(null);
-  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
-  const [deleteItemTarget, setDeleteItemTarget] = useState<PurchaseOrder["items"][number] | null>(null);
-  const [deleteItemBusy, setDeleteItemBusy] = useState(false);
+  // ---- Line Items: an editable, spreadsheet-style table. Rows live in local state and are only
+  // written to the server by Save Changes (see saveItems). ----
+  const baselineRows = useMemo(() => po.items.map(rowFromItem), [po.items]);
+  const [rows, setRows] = useState<ItemRow[]>(() => (baselineRows.length || !isAdmin ? baselineRows : [blankRow()]));
+  const baselineCols = useMemo<CustomCol[]>(() => (po.itemColumns ?? []).map((c) => ({ key: c.key, label: c.label })), [po.itemColumns]);
+  const [customCols, setCustomCols] = useState<CustomCol[]>(baselineCols);
+  const [itemsBusy, setItemsBusy] = useState(false);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
 
-  const openAddItem = () => {
-    setEditingItemId(null);
-    setAddItemForm(emptyAddItemForm);
-    setAddItemError(null);
-    setAddItemOpen(true);
+  // Re-sync the table whenever the saved items change (after a save, an import, or opening another
+  // PO) - but never while a save is running, so a half-finished save can't wipe what was typed.
+  useEffect(() => {
+    if (itemsBusy) return;
+    setRows(baselineRows.length || !isAdmin ? baselineRows : [blankRow()]);
+    setCustomCols(baselineCols);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineRows, baselineCols, itemsBusy]);
+
+  useEffect(() => {
+    if (!focusKey) return;
+    const selector = focusKey.startsWith("col:") ? `th[data-col-key="${focusKey.slice(4)}"] input` : `tr[data-row-key="${focusKey}"] input`;
+    document.querySelector<HTMLInputElement>(selector)?.focus();
+    setFocusKey(null);
+  }, [focusKey, rows]);
+
+  const itemsDirty = useMemo(
+    () =>
+      rows.filter((r) => !rowIsBlank(r)).map(rowSig).join("|") !== baselineRows.map(rowSig).join("|") ||
+      colsSig(customCols) !== colsSig(baselineCols),
+    [rows, baselineRows, customCols, baselineCols],
+  );
+
+  const updateRow = (key: string, patch: Partial<ItemRow>) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const addCustomCol = () => {
+    const col = { key: newColKey(), label: "" };
+    setCustomCols((prev) => [...prev, col]);
+    setFocusKey(`col:${col.key}`);
   };
 
-  const openEditItem = (item: PurchaseOrder["items"][number]) => {
-    setEditingItemId(item.id);
-    setAddItemForm({
-      itemId: item.itemId ?? null,
-      itemName: item.itemName,
-      quantity: String(item.quantity),
-      unit: item.unit || "",
-      unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
-      perUnit: item.perUnit || "",
-      unitWeight: item.unitWeight != null ? String(toNumber(item.unitWeight)) : "",
-      weightUnit: item.weightUnit || "",
-      rate: item.rate != null ? String(toNumber(item.rate)) : "",
-      description: item.description || "",
+  const renameCustomCol = (key: string, label: string) =>
+    setCustomCols((prev) => prev.map((c) => (c.key === key ? { ...c, label } : c)));
+
+  const removeCustomCol = (key: string) => {
+    setCustomCols((prev) => prev.filter((c) => c.key !== key));
+    setRows((prev) =>
+      prev.map((r) => {
+        if (!(key in r.custom)) return r;
+        const { [key]: _removed, ...rest } = r.custom;
+        return { ...r, custom: rest };
+      }),
+    );
+  };
+
+  const updateCustomValue = (rowKey: string, colKey: string, value: string) =>
+    setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, custom: { ...r.custom, [colKey]: value } } : r)));
+
+  const addRow = () => {
+    const row = blankRow();
+    setRows((prev) => [...prev, row]);
+    setFocusKey(row.key);
+  };
+
+  const removeRow = (key: string) =>
+    setRows((prev) => {
+      const next = prev.filter((r) => r.key !== key);
+      return next.length ? next : [blankRow()];
     });
-    setAddItemError(null);
-    setAddItemOpen(true);
-  };
 
-  const submitAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addItemForm.itemId) {
-      setAddItemError("Select an item.");
-      return;
-    }
-    const quantity = parseFloat(addItemForm.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setAddItemError("Enter a valid quantity.");
-      return;
-    }
-    setAddItemBusy(true);
-    setAddItemError(null);
-    try {
-      const input = {
-        itemName: addItemForm.itemName.trim(),
-        itemId: addItemForm.itemId,
-        quantity,
-        unit: addItemForm.unit.trim() || undefined,
-        unitPrice: addItemForm.unitPrice ? parseFloat(addItemForm.unitPrice) : null,
-        perUnit: addItemForm.perUnit.trim() || null,
-        unitWeight: addItemForm.unitWeight ? parseFloat(addItemForm.unitWeight) : null,
-        weightUnit: addItemForm.weightUnit.trim() || null,
-        rate: addItemForm.rate ? parseFloat(addItemForm.rate) : null,
-        description: addItemForm.description.trim() || null,
-      };
-      if (editingItemId) {
-        await editItemMutation.mutateAsync({ id: po.id, itemId: editingItemId, input });
-      } else {
-        await addItemMutation.mutateAsync({ id: po.id, input });
+  /** Writes the table to the server: deletes removed rows, edits changed ones, adds new ones.
+   * Returns false (and sets `error`) if validation fails or any call fails. */
+  const saveItems = async (): Promise<boolean> => {
+    const filled = rows.filter((r) => !rowIsBlank(r));
+    const parsed: { row: ItemRow; name: string; qty: number; price: number | null }[] = [];
+    for (const row of filled) {
+      const name = row.itemName.trim();
+      if (!name) {
+        setError("Every line item needs an item name.");
+        return false;
       }
-      await onChanged();
-      setAddItemOpen(false);
-    } catch (err) {
-      setAddItemError(getErrorMessage(err, editingItemId ? "Failed to save item." : "Failed to add item."));
-    } finally {
-      setAddItemBusy(false);
-    }
-  };
-
-  const confirmDeleteItem = async () => {
-    if (!deleteItemTarget) return;
-    setDeleteItemBusy(true);
-    try {
-      await deleteItemMutation.mutateAsync({ id: po.id, itemId: deleteItemTarget.id });
-      await onChanged();
-      setDeleteItemTarget(null);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to delete item."));
-    } finally {
-      setDeleteItemBusy(false);
-    }
-  };
-
-  // Click-to-edit line item cells (Item / Quantity / Unit / Unit Price) — an admin can edit a
-  // value directly in the table instead of opening the Edit Item popup for a single-field change.
-  type CellField = "itemName" | "quantity" | "unit" | "unitPrice";
-  const [editingCell, setEditingCell] = useState<{ itemId: number; field: CellField } | null>(null);
-  const [cellValue, setCellValue] = useState("");
-  const [cellBusy, setCellBusy] = useState(false);
-
-  const cellValueFor = (item: PurchaseOrder["items"][number], field: CellField): string => {
-    switch (field) {
-      case "itemName": return item.itemName;
-      case "quantity": return String(item.quantity);
-      case "unit": return item.unit || "";
-      case "unitPrice": return item.unitPrice != null ? String(toNumber(item.unitPrice)) : "";
-    }
-  };
-
-  const startCellEdit = (item: PurchaseOrder["items"][number], field: CellField) => {
-    if (!isAdmin || cellBusy) return;
-    setEditingCell({ itemId: item.id, field });
-    setCellValue(cellValueFor(item, field));
-  };
-
-  const cancelCellEdit = () => setEditingCell(null);
-
-  const saveCellEdit = async () => {
-    if (!editingCell) return;
-    const item = po.items.find((i) => i.id === editingCell.itemId);
-    if (!item) { setEditingCell(null); return; }
-    const { field } = editingCell;
-    const trimmed = cellValue.trim();
-
-    if (trimmed === cellValueFor(item, field)) { setEditingCell(null); return; }
-
-    let quantity = item.quantity;
-    let unitPrice = item.unitPrice != null ? toNumber(item.unitPrice) : null;
-    if (field === "itemName" && !trimmed) { setEditingCell(null); return; }
-    if (field === "quantity") {
-      const q = parseFloat(trimmed);
-      if (!Number.isFinite(q) || q <= 0) { setEditingCell(null); return; }
-      quantity = q;
-    }
-    if (field === "unitPrice") {
-      const p = trimmed ? parseFloat(trimmed) : null;
-      if (trimmed && !Number.isFinite(p)) { setEditingCell(null); return; }
-      unitPrice = p;
+      const qty = parseFloat(row.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setError(`Enter a valid quantity for "${name}".`);
+        return false;
+      }
+      const price = row.unitPrice.trim() === "" ? null : parseFloat(row.unitPrice);
+      if (price !== null && !Number.isFinite(price)) {
+        setError(`Enter a valid unit price for "${name}".`);
+        return false;
+      }
+      parsed.push({ row, name, qty, price });
     }
 
-    setCellBusy(true);
+    // Only columns with a heading are kept; a row's custom values are cut down to those columns.
+    const validCols = customCols.filter((c) => c.label.trim()).map((c) => ({ key: c.key, label: c.label.trim() }));
+    const customOf = (row: ItemRow): Record<string, string> =>
+      Object.fromEntries(validCols.map((c) => [c.key, (row.custom[c.key] ?? "").trim()] as const).filter(([, v]) => v));
+
+    setItemsBusy(true);
     setError(null);
     try {
-      await editItemMutation.mutateAsync({
-        id: po.id,
-        itemId: item.id,
-        input: {
-          itemName: field === "itemName" ? trimmed : item.itemName,
-          itemId: item.itemId ?? null,
-          quantity,
-          unit: field === "unit" ? (trimmed || undefined) : (item.unit || undefined),
-          unitPrice,
-          perUnit: item.perUnit || null,
-          unitWeight: item.unitWeight != null ? toNumber(item.unitWeight) : null,
-          weightUnit: item.weightUnit || null,
-          rate: item.rate != null ? toNumber(item.rate) : null,
-          description: item.description || null,
-        },
-      });
+      if (colsSig(customCols) !== colsSig(baselineCols)) {
+        await updateMutation.mutateAsync({ id: po.id, input: { itemColumns: validCols } });
+      }
+      const keptIds = new Set(filled.filter((r) => r.id !== null).map((r) => r.id));
+      for (const item of po.items) {
+        if (!keptIds.has(item.id)) {
+          // eslint-disable-next-line no-await-in-loop -- sequential keeps per-row errors simple
+          await deleteItemMutation.mutateAsync({ id: po.id, itemId: item.id });
+        }
+      }
+      for (const { row, name, qty, price } of parsed) {
+        const original = row.id !== null ? po.items.find((i) => i.id === row.id) : undefined;
+        if (original) {
+          if (rowSig(row) === rowSig(rowFromItem(original))) continue;
+          // eslint-disable-next-line no-await-in-loop
+          await editItemMutation.mutateAsync({
+            id: po.id,
+            itemId: original.id,
+            input: {
+              itemName: name,
+              itemId: name === original.itemName ? original.itemId ?? null : null,
+              hsnCode: row.hsnCode.trim() || null,
+              customValues: customOf(row),
+              quantity: qty,
+              unit: row.unit.trim() || null,
+              unitPrice: price,
+              // Fields this table no longer shows are carried over untouched.
+              perUnit: original.perUnit || null,
+              unitWeight: original.unitWeight != null ? toNumber(original.unitWeight) : null,
+              weightUnit: original.weightUnit || null,
+              rate: original.rate != null ? toNumber(original.rate) : null,
+              description: original.description || null,
+            },
+          });
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          await addItemMutation.mutateAsync({
+            id: po.id,
+            input: { itemName: name, itemId: null, hsnCode: row.hsnCode.trim() || null, customValues: customOf(row), quantity: qty, unit: row.unit.trim() || null, unitPrice: price },
+          });
+        }
+      }
       await onChanged();
+      return true;
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to save item."));
+      setError(getErrorMessage(err, "Failed to save line items. Check the table and save again."));
+      await onChanged();
+      return false;
     } finally {
-      setCellBusy(false);
-      setEditingCell(null);
+      setItemsBusy(false);
     }
   };
 
-  const cellInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      e.currentTarget.blur();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      cancelCellEdit();
-    }
+  const openPreview = async () => {
+    if (itemsDirty && isAdmin && !(await saveItems())) return;
+    setPreviewOpen(true);
   };
 
   // Bulk import via .xlsx/.csv — parsed entirely client-side, then replayed as
@@ -643,12 +656,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             : null;
         const description = descriptionCol >= 0 ? String(r[descriptionCol] ?? "").trim() || null : null;
 
-        const match = catalogItems.find((ci) => ci.name.toLowerCase() === itemName.toLowerCase());
 
         // eslint-disable-next-line no-await-in-loop -- sequential upserts keep per-row error attribution simple
         await addItemMutation.mutateAsync({
           id: po.id,
-          input: { itemName, itemId: match?.id ?? null, quantity, unit, unitPrice, description },
+          input: { itemName, itemId: null, quantity, unit, unitPrice, description },
         });
         imported += 1;
       }
@@ -666,7 +678,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   // in-flight edits aren't clobbered right after a successful save).
   useEffect(() => {
     setForm(formFromPo(po));
-    setHsnCodes(Object.fromEntries(po.items.map((item) => [item.id, item.hsnCode || ""])));
     setSpecTables(specTablesFromPo(po));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.id]);
@@ -749,6 +760,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     setBusy(true);
     setError(null);
     try {
+      if (itemsDirty && !(await saveItems())) return;
       await updateMutation.mutateAsync({
         id: po.id,
         input: {
@@ -765,7 +777,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           customerEmail: form.customerEmail.trim() || null,
           customerPhone: form.customerPhone.trim() || null,
           currency: form.currency.trim() || undefined,
-          items: po.items.map((item) => ({ id: item.id, hsnCode: hsnCodes[item.id]?.trim() || null })),
           specTables: specTables.map((t) => ({
             title: t.title.trim(),
             columns: t.columns.map((c) => c.trim()),
@@ -788,8 +799,8 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   // confirmation, PDF preview, sheet upload) is open so it doesn't fight that popup's own
   // Enter/Escape handling — mirrors the Proforma Invoice form's shortcuts.
   useEffect(() => {
-    const anyPopupOpen = addItemOpen || catalogModalOpen || deleteItemTarget !== null || previewOpen || uploadModalOpen;
-    if (anyPopupOpen || editingCell) return;
+    const anyPopupOpen = previewOpen || uploadModalOpen;
+    if (anyPopupOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -806,21 +817,17 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addItemOpen, catalogModalOpen, deleteItemTarget, previewOpen, uploadModalOpen, editingCell, confirmCancel, isAdmin, busy, form, hsnCodes]);
+  }, [previewOpen, uploadModalOpen, confirmCancel, isAdmin, busy, form, rows, itemsDirty]);
 
   const statusHistory = po.statusHistory ?? [];
 
-  const itemsTotal = po.items.reduce((sum, i) => sum + i.quantity * toNumber(i.unitPrice), 0);
-  // Weight columns: the unit goes in the header when every item shares one, else each cell carries it.
-  // Compared ignoring case, so "kg" and "Kg" count as one shared unit.
-  const weightUnitByKey = new Map<string, string>();
-  for (const i of po.items) {
-    const t = (i.weightUnit || "").trim();
-    if (t && !weightUnitByKey.has(t.toLowerCase())) weightUnitByKey.set(t.toLowerCase(), t);
-  }
-  const commonWeightUnit = weightUnitByKey.size === 1 ? [...weightUnitByKey.values()][0]! : null;
-  const fmtWt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
-  const poCurrencyLabel = po.currency || "Rs";
+  const rowTotal = (r: ItemRow) => {
+    const q = parseFloat(r.quantity);
+    const p = parseFloat(r.unitPrice);
+    return (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
+  };
+  const itemsTotal = rows.reduce((sum, r) => sum + rowTotal(r), 0);
+  const lastRowKey = rows.length ? rows[rows.length - 1]!.key : null;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -897,7 +904,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           <h3 className="text-[13px] font-semibold text-slate-900">Purchase Order Details</h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPreviewOpen(true)}
+              onClick={openPreview}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 w-fit"
             >
               <Eye size={13} /> Preview PDF
@@ -1023,8 +1030,13 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       </div>
 
       <div className={sectionCardCls}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[13px] font-semibold text-slate-900">Line Items</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h3 className="text-[13px] font-semibold text-slate-900">Line Items</h3>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Type straight into the table — Tab moves to the next cell (and adds a row after the last one). Add Column creates your own column; it prints on the PDF once it has a name and at least one value. Changes are saved with Save Changes.
+            </p>
+          </div>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <input
@@ -1036,14 +1048,22 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               />
               <button
                 onClick={() => setUploadModalOpen(true)}
-                disabled={importing}
+                disabled={importing || itemsBusy}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
               >
                 {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                 Upload Sheet
               </button>
-              <button onClick={openAddItem} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800">
-                <Plus size={13} /> Add Item
+              <button
+                type="button"
+                onClick={addCustomCol}
+                disabled={itemsBusy}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60"
+              >
+                <Plus size={13} /> Add Column
+              </button>
+              <button onClick={addRow} disabled={itemsBusy} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 disabled:opacity-60">
+                <Plus size={13} /> Add Row
               </button>
             </div>
           )}
@@ -1053,176 +1073,135 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             {importStatus}
           </div>
         )}
-        {po.items.length === 0 ? (
-          <p className="py-6 text-[12px] text-center text-slate-400">No items added yet.</p>
-        ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+        {itemsDirty && isAdmin && (
+          <div className="px-3 py-2 mb-3 text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded">
+            You have unsaved line item changes — click Save Changes to keep them.
+          </div>
+        )}
+        <div className="overflow-x-auto border border-slate-200 rounded-lg">
+          <table className="w-full text-[12px] border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                <th className="px-3 py-2 font-medium text-left">Item</th>
-                <th className="px-3 py-2 font-medium text-left">HSN Code</th>
-                <th className="px-3 py-2 font-medium text-right">Quantity</th>
-                <th className="px-3 py-2 font-medium text-left">Unit</th>
-                <th className="px-3 py-2 font-medium text-right">Unit Wt{commonWeightUnit ? ` (${commonWeightUnit})` : ""}</th>
-                <th className="px-3 py-2 font-medium text-right">Total Wt{commonWeightUnit ? ` (${commonWeightUnit})` : ""}</th>
-                <th className="px-3 py-2 font-medium text-right">Rate ({poCurrencyLabel}/{commonWeightUnit || "unit"})</th>
-                <th className="px-3 py-2 font-medium text-right">Unit Price</th>
-                <th className="px-3 py-2 font-medium text-right">Line Total</th>
-                {isAdmin && <th className="px-3 py-2 font-medium text-right">Actions</th>}
+              <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
+                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">HSN Code <span className="normal-case text-slate-400">(optional)</span></th>
+                <th className="px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Item</th>
+                <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Quantity</th>
+                <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit</th>
+                {customCols.map((col) => (
+                  <th key={col.key} data-col-key={col.key} className="w-40 p-0 font-medium text-left border-b border-r border-slate-200">
+                    <div className="flex items-center">
+                      <input
+                        disabled={!isAdmin || itemsBusy}
+                        value={col.label}
+                        onChange={(e) => renameCustomCol(col.key, e.target.value)}
+                        placeholder="Column name"
+                        className="flex-1 min-w-0 px-2.5 py-2 text-[11px] font-medium tracking-wide text-left text-slate-600 uppercase bg-transparent border-0 outline-none placeholder:normal-case placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                      />
+                      {isAdmin && (
+                        <button type="button" onClick={() => removeCustomCol(col.key)} tabIndex={-1} title="Remove column" className="p-1 mr-1 rounded text-slate-400 hover:bg-red-50 hover:text-red-600">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit Price</th>
+                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Total Price</th>
+                <th className="w-16 px-2.5 py-2 font-medium text-center border-b border-slate-200">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {po.items.map((item) => (
-                <tr key={item.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-3 py-2 text-slate-700">
-                    {editingCell?.itemId === item.id && editingCell.field === "itemName" ? (
-                      <input
-                        autoFocus
-                        disabled={cellBusy}
-                        value={cellValue}
-                        onChange={(e) => setCellValue(e.target.value)}
-                        onBlur={saveCellEdit}
-                        onKeyDown={cellInputKeyDown}
-                        className="w-full px-2 py-1 text-[12px] border border-blue-400 rounded outline-none disabled:bg-slate-50"
-                      />
-                    ) : (
-                      <div
-                        onClick={() => startCellEdit(item, "itemName")}
-                        title={isAdmin ? "Click to edit" : undefined}
-                        className={isAdmin ? "-mx-1 px-1 py-0.5 rounded cursor-text hover:bg-slate-50" : ""}
-                      >
-                        {item.itemName}
-                      </div>
-                    )}
-                    {item.description && (
-                      <div className="mt-0.5 text-[11px] text-slate-400">{item.description}</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">
+              {rows.map((row) => (
+                <tr key={row.key} data-row-key={row.key} className="border-b border-slate-200 last:border-b-0">
+                  <td className="p-0 border-r border-slate-200">
                     <input
-                      disabled={!isAdmin}
-                      value={hsnCodes[item.id] ?? ""}
-                      onChange={(e) => setHsnCodes({ ...hsnCodes, [item.id]: e.target.value })}
-                      placeholder="Optional"
-                      className="w-24 px-2 py-1 text-[12px] border border-slate-200 rounded-lg outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
+                      disabled={!isAdmin || itemsBusy}
+                      value={row.hsnCode}
+                      onChange={(e) => updateRow(row.key, { hsnCode: e.target.value })}
+                      className={cellInputCls}
                     />
                   </td>
-                  <td className="px-3 py-2 text-right text-slate-600">
-                    {editingCell?.itemId === item.id && editingCell.field === "quantity" ? (
+                  <td className="p-0 border-r border-slate-200">
+                    <input
+                      disabled={!isAdmin || itemsBusy}
+                      value={row.itemName}
+                      onChange={(e) => updateRow(row.key, { itemName: e.target.value })}
+                      placeholder="Item name"
+                      className={cellInputCls}
+                    />
+                  </td>
+                  <td className="p-0 border-r border-slate-200">
+                    <input
+                      disabled={!isAdmin || itemsBusy}
+                      inputMode="decimal"
+                      value={row.quantity}
+                      onChange={(e) => updateRow(row.key, { quantity: cleanNumberText(e.target.value) })}
+                      className={cellInputCls}
+                    />
+                  </td>
+                  <td className="p-0 border-r border-slate-200">
+                    <input
+                      disabled={!isAdmin || itemsBusy}
+                      value={row.unit}
+                      onChange={(e) => updateRow(row.key, { unit: e.target.value })}
+                      placeholder="e.g. pcs"
+                      className={cellInputCls}
+                    />
+                  </td>
+                  {customCols.map((col) => (
+                    <td key={col.key} className="p-0 border-r border-slate-200">
                       <input
-                        autoFocus
-                        type="number"
-                        min="0.01"
-                        step="any"
-                        disabled={cellBusy}
-                        value={cellValue}
-                        onChange={(e) => setCellValue(e.target.value)}
-                        onBlur={saveCellEdit}
-                        onKeyDown={cellInputKeyDown}
-                        className="w-20 px-2 py-1 text-[12px] text-right border border-blue-400 rounded outline-none disabled:bg-slate-50"
+                        disabled={!isAdmin || itemsBusy}
+                        value={row.custom[col.key] ?? ""}
+                        onChange={(e) => updateCustomValue(row.key, col.key, e.target.value)}
+                        className={cellInputCls}
                       />
-                    ) : (
-                      <span
-                        onClick={() => startCellEdit(item, "quantity")}
-                        title={isAdmin ? "Click to edit" : undefined}
-                        className={isAdmin ? "inline-block -mx-1 px-1 py-0.5 rounded cursor-text hover:bg-slate-50" : ""}
-                      >
-                        {item.quantity}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">
-                    {editingCell?.itemId === item.id && editingCell.field === "unit" ? (
-                      <input
-                        autoFocus
-                        disabled={cellBusy}
-                        value={cellValue}
-                        onChange={(e) => setCellValue(e.target.value)}
-                        onBlur={saveCellEdit}
-                        onKeyDown={cellInputKeyDown}
-                        className="w-20 px-2 py-1 text-[12px] border border-blue-400 rounded outline-none disabled:bg-slate-50"
-                      />
-                    ) : (
-                      <span
-                        onClick={() => startCellEdit(item, "unit")}
-                        title={isAdmin ? "Click to edit" : undefined}
-                        className={isAdmin ? "inline-block -mx-1 px-1 py-0.5 rounded cursor-text hover:bg-slate-50" : ""}
-                      >
-                        {item.unit || "--"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-600">
-                    {item.unitWeight != null ? `${fmtWt(toNumber(item.unitWeight))}${commonWeightUnit || !item.weightUnit ? "" : ` ${item.weightUnit}`}` : "--"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-600">
-                    {item.unitWeight != null ? `${fmtWt(item.quantity * toNumber(item.unitWeight))}${commonWeightUnit || !item.weightUnit ? "" : ` ${item.weightUnit}`}` : "--"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-600">
-                    {item.rate != null ? `${formatCost(item.rate)}${commonWeightUnit || !item.weightUnit ? "" : `/${item.weightUnit}`}` : "--"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-600">
-                    {editingCell?.itemId === item.id && editingCell.field === "unitPrice" ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        min="0"
-                        step="any"
-                        disabled={cellBusy}
-                        value={cellValue}
-                        onChange={(e) => setCellValue(e.target.value)}
-                        onBlur={saveCellEdit}
-                        onKeyDown={cellInputKeyDown}
-                        className="w-24 px-2 py-1 text-[12px] text-right border border-blue-400 rounded outline-none disabled:bg-slate-50"
-                      />
-                    ) : (
-                      <span
-                        onClick={() => startCellEdit(item, "unitPrice")}
-                        title={isAdmin ? "Click to edit" : undefined}
-                        className={isAdmin ? "inline-block -mx-1 px-1 py-0.5 rounded cursor-text hover:bg-slate-50" : ""}
-                      >
-                        {formatCost(item.unitPrice)}
-                        {item.perUnit && <span className="ml-1 text-[11px] text-slate-400">{item.perUnit}</span>}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right font-medium text-slate-800">
-                    {formatCost(item.quantity * toNumber(item.unitPrice))}
-                  </td>
-                  {isAdmin && (
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEditItem(item)}
-                          title="Edit"
-                          className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteItemTarget(item)}
-                          title="Delete"
-                          className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
                     </td>
-                  )}
+                  ))}
+                  <td className="p-0 border-r border-slate-200">
+                    <input
+                      disabled={!isAdmin || itemsBusy}
+                      inputMode="decimal"
+                      value={row.unitPrice}
+                      onChange={(e) => updateRow(row.key, { unitPrice: cleanNumberText(e.target.value) })}
+                      onKeyDown={(e) => {
+                        // Tab out of the very last cell starts a new row, like a spreadsheet.
+                        if (e.key === "Tab" && !e.shiftKey && row.key === lastRowKey && isAdmin) {
+                          e.preventDefault();
+                          addRow();
+                        }
+                      }}
+                      className={cellInputCls}
+                    />
+                  </td>
+                  <td className="px-2.5 py-2 font-medium text-left text-slate-800 bg-slate-50/60 border-r border-slate-200">
+                    {rowTotal(row) > 0 ? formatCost(rowTotal(row)) : ""}
+                  </td>
+                  <td className="px-1 py-1 text-center">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => removeRow(row.key)}
+                        disabled={itemsBusy}
+                        tabIndex={-1}
+                        title="Remove row"
+                        className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr>
-                <td colSpan={8} className="px-3 py-2 text-right text-[12px] font-semibold text-slate-700">Total</td>
-                <td className="px-3 py-2 text-right text-[12px] font-bold text-slate-900">{formatCost(itemsTotal)}</td>
-                {isAdmin && <td className="px-3 py-2" />}
+              <tr className="bg-slate-50 border-t border-slate-200">
+                <td colSpan={5 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
+                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(itemsTotal)}</td>
+                <td />
               </tr>
             </tfoot>
           </table>
         </div>
-        )}
       </div>
 
       {uploadModalOpen && (
@@ -1246,8 +1225,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                 <li>Description</li>
               </ul>
               <p>
-                Each row's item name is matched against the shared catalog (case-insensitive) — a match is linked
-                automatically, otherwise it's added as free text. A trailing{" "}
+                Item names are added exactly as written. A trailing{" "}
                 <span className="font-medium text-slate-800">TOTAL</span> row or rows with no item name are
                 automatically skipped. Accepted formats: .xlsx, .xls, .csv.
               </p>
@@ -1270,196 +1248,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           </div>
         </div>
       )}
-
-      {addItemOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
-              <h3 className="text-[14px] font-semibold text-slate-900">{editingItemId ? "Edit Item" : "Add Item"}</h3>
-              <button onClick={() => setAddItemOpen(false)} className="p-1 rounded hover:bg-slate-100 text-slate-500">
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={submitAddItem} className="p-4 space-y-3">
-              {addItemError && (
-                <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">
-                  {addItemError}
-                </div>
-              )}
-              <div>
-                <label className={labelCls}>Item</label>
-                <ItemNameField
-                  autoFocus
-                  itemId={addItemForm.itemId}
-                  currentName={addItemForm.itemName}
-                  onSelect={(item) => setAddItemForm({ ...addItemForm, itemId: item.id, itemName: item.name })}
-                  onAddNew={() => setCatalogModalOpen(true)}
-                  className={inputCls}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Quantity</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    value={addItemForm.quantity}
-                    onChange={(e) => setAddItemForm({ ...addItemForm, quantity: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Unit of Measure</label>
-                  <input
-                    value={addItemForm.unit}
-                    onChange={(e) => setAddItemForm({ ...addItemForm, unit: e.target.value })}
-                    placeholder="e.g. pcs"
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-              {(() => {
-                const uw = parseFloat(addItemForm.unitWeight);
-                const qty = parseFloat(addItemForm.quantity);
-                const hasWeight = Number.isFinite(uw) && uw >= 0;
-                const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
-                // Unit Wt x Rate pre-fills Unit Price whenever either changes - after that, every box stays editable.
-                const withDerivedPrice = (patch: Partial<typeof addItemForm>) => {
-                  const next = { ...addItemForm, ...patch };
-                  const w = parseFloat(next.unitWeight);
-                  const rt = parseFloat(next.rate);
-                  if (Number.isFinite(w) && w >= 0 && Number.isFinite(rt) && rt >= 0) next.unitPrice = String(round(w * rt, 6));
-                  setAddItemForm(next);
-                };
-                const onTotalWtChange = (text: string) => {
-                  setTotalWtDraft(text);
-                  const t = parseFloat(text);
-                  if (Number.isFinite(t) && t >= 0 && Number.isFinite(qty) && qty > 0) withDerivedPrice({ unitWeight: String(round(t / qty, 6)) });
-                  else if (text.trim() === "") withDerivedPrice({ unitWeight: "" });
-                };
-                return (
-                  <>
-                    <div className="grid grid-cols-4 gap-3">
-                      <div>
-                        <label className={labelCls}>Unit Wt</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={addItemForm.unitWeight}
-                          onChange={(e) => {
-                            setTotalWtDraft(null);
-                            withDerivedPrice({ unitWeight: e.target.value });
-                          }}
-                          placeholder="optional"
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Weight Unit</label>
-                        <input
-                          value={addItemForm.weightUnit}
-                          onChange={(e) => setAddItemForm({ ...addItemForm, weightUnit: e.target.value })}
-                          placeholder="e.g. kg"
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Total Wt{addItemForm.weightUnit.trim() ? ` (${addItemForm.weightUnit.trim()})` : ""}</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={totalWtDraft ?? (hasWeight && Number.isFinite(qty) ? String(round(uw * qty, 3)) : "")}
-                          onChange={(e) => onTotalWtChange(e.target.value)}
-                          onBlur={() => setTotalWtDraft(null)}
-                          placeholder="auto"
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelCls}>Rate ({po.currency || "Rs"}/{addItemForm.weightUnit.trim() || "unit"})</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={addItemForm.rate}
-                          onChange={(e) => withDerivedPrice({ rate: e.target.value })}
-                          placeholder="optional"
-                          className={inputCls}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={labelCls}>Unit Price</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={addItemForm.unitPrice}
-                          onChange={(e) => setAddItemForm({ ...addItemForm, unitPrice: e.target.value })}
-                          className={inputCls}
-                        />
-                        <p className="mt-1 text-[11px] text-slate-500">Pre-filled from Unit Wt × Rate when both are set — you can overwrite it.</p>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Per Unit</label>
-                        <input
-                          value={addItemForm.perUnit}
-                          onChange={(e) => setAddItemForm({ ...addItemForm, perUnit: e.target.value })}
-                          placeholder="e.g. / kg (optional)"
-                          className={inputCls}
-                        />
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-              <div>
-                <label className={labelCls}>Description</label>
-                <textarea
-                  rows={2}
-                  value={addItemForm.description}
-                  onChange={(e) => setAddItemForm({ ...addItemForm, description: e.target.value })}
-                  placeholder="Shown under the item name on the PDF (optional)"
-                  className={`${inputCls} resize-none`}
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setAddItemOpen(false)} disabled={addItemBusy} className="px-4 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-60">
-                  Cancel
-                </button>
-                <button type="submit" disabled={addItemBusy} className={primaryBtnCls}>
-                  {addItemBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {editingItemId ? "Save Changes" : "Add Item"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {catalogModalOpen && (
-        <CatalogItemFormModal
-          onClose={() => setCatalogModalOpen(false)}
-          onSaved={async (item) => {
-            await catalogQuery.refetch();
-            setAddItemForm((prev) => ({ ...prev, itemId: item.id, itemName: item.name }));
-            setCatalogModalOpen(false);
-          }}
-        />
-      )}
-
-      <ConfirmationModal
-        isOpen={deleteItemTarget !== null}
-        onClose={() => setDeleteItemTarget(null)}
-        onConfirm={confirmDeleteItem}
-        isLoading={deleteItemBusy}
-        title="Delete Item"
-        message={`Delete "${deleteItemTarget?.itemName}" from this purchase order? This can't be undone.`}
-      />
 
       {confirmCancel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
