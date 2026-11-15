@@ -827,6 +827,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     return (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
   };
   const itemsTotal = rows.reduce((sum, r) => sum + rowTotal(r), 0);
+  // VAT comes from the Tax % field above (live, even before it's saved); with no Tax % there is no VAT row.
+  const taxPct = parseFloat(form.taxPercent);
+  const vatPct = Number.isFinite(taxPct) && taxPct > 0 ? taxPct : 0;
+  const vatAmount = vatPct > 0 ? itemsTotal * (vatPct / 100) : 0;
+  const grandTotal = itemsTotal + vatAmount;
   const lastRowKey = rows.length ? rows[rows.length - 1]!.key : null;
 
   return (
@@ -1199,6 +1204,20 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               <tr className="bg-slate-50 border-t border-slate-200">
                 <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
                 <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(itemsTotal)}</td>
+                <td />
+              </tr>
+              {vatPct > 0 && (
+                <tr className="bg-slate-50">
+                  <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">
+                    Value Added Tax @ {vatPct}%
+                  </td>
+                  <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(vatAmount)}</td>
+                  <td />
+                </tr>
+              )}
+              <tr className="bg-slate-100 border-t border-slate-300">
+                <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-bold text-slate-800 border-r border-slate-200">Grand Total</td>
+                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(grandTotal)}</td>
                 <td />
               </tr>
             </tfoot>
