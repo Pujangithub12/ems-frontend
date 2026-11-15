@@ -1082,8 +1082,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           <table className="w-full text-[12px] border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
-                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">HSN Code <span className="normal-case text-slate-400">(optional)</span></th>
+                <th className="w-16 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">S.N.</th>
                 <th className="px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Item</th>
+                <th className="w-32 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">HSN Code <span className="normal-case text-slate-400">(optional)</span></th>
                 <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Quantity</th>
                 <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit</th>
                 {customCols.map((col) => (
@@ -1110,22 +1111,23 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {rows.map((row, rowIdx) => (
                 <tr key={row.key} data-row-key={row.key} className="border-b border-slate-200 last:border-b-0">
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      value={row.hsnCode}
-                      onChange={(e) => updateRow(row.key, { hsnCode: e.target.value })}
-                      className={cellInputCls}
-                    />
-                  </td>
+                  <td className="px-2.5 py-2 text-left text-slate-500 bg-slate-50/60 border-r border-slate-200">{rowIdx + 1}</td>
                   <td className="p-0 border-r border-slate-200">
                     <input
                       disabled={!isAdmin || itemsBusy}
                       value={row.itemName}
                       onChange={(e) => updateRow(row.key, { itemName: e.target.value })}
                       placeholder="Item name"
+                      className={cellInputCls}
+                    />
+                  </td>
+                  <td className="p-0 border-r border-slate-200">
+                    <input
+                      disabled={!isAdmin || itemsBusy}
+                      value={row.hsnCode}
+                      onChange={(e) => updateRow(row.key, { hsnCode: e.target.value })}
                       className={cellInputCls}
                     />
                   </td>
@@ -1195,7 +1197,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200">
-                <td colSpan={5 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
+                <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
                 <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(itemsTotal)}</td>
                 <td />
               </tr>
