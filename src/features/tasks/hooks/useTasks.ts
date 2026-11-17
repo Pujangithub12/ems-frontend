@@ -33,17 +33,6 @@ export function useCreateTask() {
   });
 }
 
-// Schedule and Task tabs now share the same Task rows (see schedule.service.ts),
-// so any mutation here also invalidates every project's schedule cache —
-// broad rather than a single projectId, since useUpdateTask/useUpdateTaskStatus/
-// useDeleteTask are also called from project-agnostic pages (AssignedTasks,
-// MyTasks, CompletedTasks, KanbanBoard) where a specific project isn't in
-// scope. This app's query volume is small enough that the blunt invalidation
-// isn't a real cost.
-const invalidateSchedules = (queryClient: ReturnType<typeof useQueryClient>, wsId: number) => {
-  queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "schedule"] });
-};
-
 export function useCreateProjectTask() {
   const wsId = useOrganizationId();
   const queryClient = useQueryClient();
@@ -57,7 +46,6 @@ export function useCreateProjectTask() {
     }) => createProjectTask(projectId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
-      invalidateSchedules(queryClient, wsId);
     },
   });
 }
@@ -70,7 +58,6 @@ export function useUpdateTask() {
       updateTask(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
-      invalidateSchedules(queryClient, wsId);
     },
   });
 }
@@ -82,7 +69,6 @@ export function useUpdateTaskStatus() {
     mutationFn: ({ id, status }: { id: number; status: string }) => updateTaskStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
-      invalidateSchedules(queryClient, wsId);
     },
   });
 }
@@ -94,7 +80,6 @@ export function useUpdateTaskProgress() {
     mutationFn: ({ id, progress }: { id: number; progress: number }) => updateTaskProgress(id, progress),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
-      invalidateSchedules(queryClient, wsId);
     },
   });
 }
@@ -106,7 +91,6 @@ export function useDeleteTask() {
     mutationFn: (id: number) => deleteTask(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks(wsId) });
-      invalidateSchedules(queryClient, wsId);
     },
   });
 }

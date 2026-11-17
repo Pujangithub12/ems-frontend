@@ -500,6 +500,7 @@ export function buildPurchaseOrderPdf(po: PurchaseOrderPdfData, fonts: PdfFonts)
     let hx = MARGIN_LEFT;
     for (const col of cols) {
       doc.rect(hx, y, col.width, headerH).fill(NAVY);
+      doc.rect(hx, y, col.width, headerH).stroke("#ffffff");
       doc
         .fillColor("#ffffff")
         .font(FONT_COMPANY)

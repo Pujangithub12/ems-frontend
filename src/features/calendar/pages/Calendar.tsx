@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Plus,
+  Copy,
   Trash2,
   Loader2,
   X,
@@ -11,8 +12,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import ConfirmationModal from "../../../components/ConfirmationModal";
-import { useEvents, useCreateEvent, useDeleteEvent } from "../hooks/useEvents";
-import type { CalendarEvent } from "../api/events.api";
+import { useEvents, useCreateEvent, useDeleteEvent, useCopyEvents } from "../hooks/useEvents";
+import type { CalendarEvent, CopyEventsOrgResult } from "../api/events.api";
 import { getErrorMessage } from "../../../lib/errors";
 import ErrorBanner from "../../../components/ErrorBanner";
 
@@ -414,11 +415,473 @@ const DayModal: React.FC<{
   );
 };
 
+type BulkRow = { key: number; date: string; title: string; type: string };
+
+/** "YYYY-MM-DD" (from <input type="date">) → local-midnight Date, matching how the grid buckets events by day. */
+const dateFromInput = (v: string): Date | null => {
+  const [y, mo, d] = v.split("-").map(Number);
+  if (!y || !mo || !d) return null;
+  return new Date(y, mo - 1, d);
+};
+
+const bsLabel = (v: string): string => {
+  const ad = dateFromInput(v);
+  if (!ad) return "";
+  try {
+    return NepaliDate.fromAD(ad).format("ddd, D MMMM YYYY", "np");
+  } catch {
+    return ""; // outside the converter's supported range
+  }
+};
+
+/** Add several events on different days in one go. */
+const BulkAddModal: React.FC<{
+  defaultDate: string;
+  onSave: (rows: { date: Date; title: string; type: string }[]) => Promise<number>;
+  onClose: () => void;
+}> = ({ defaultDate, onSave, onClose }) => {
+  const nextKey = React.useRef(2);
+  const [rows, setRows] = useState<BulkRow[]>([
+    { key: 1, date: defaultDate, title: "", type: "event" },
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const lastRowRef = React.useRef<HTMLInputElement>(null);
+  const [focusLast, setFocusLast] = useState(false);
+
+  React.useEffect(() => {
+    if (focusLast) {
+      lastRowRef.current?.focus();
+      setFocusLast(false);
+    }
+  }, [focusLast, rows.length]);
+
+  const update = (key: number, patch: Partial<BulkRow>) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const addRow = () => {
+    setRows((prev) => {
+      const last = prev[prev.length - 1];
+      // Carry over the previous row's date and type — the next event is usually on a nearby day.
+      return [
+        ...prev,
+        { key: nextKey.current++, date: last?.date || defaultDate, title: "", type: last?.type || "event" },
+      ];
+    });
+    setFocusLast(true);
+  };
+
+  const removeRow = (key: number) =>
+    setRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.key !== key)));
+
+  const filled = rows.filter((r) => r.title.trim() && r.date);
+
+  const save = async () => {
+    if (filled.length === 0) {
+      setError("Enter at least one event with a date and a title.");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    const toSave = filled.map((r) => ({
+      key: r.key,
+      date: dateFromInput(r.date)!,
+      title: r.title.trim(),
+      type: r.type,
+    }));
+    const savedCount = await onSave(toSave.map(({ date, title, type }) => ({ date, title, type })));
+    setSaving(false);
+    if (savedCount === toSave.length) {
+      onClose();
+      return;
+    }
+    // Keep only what failed (saves run in order, so the first `savedCount` went through).
+    const failedKeys = new Set(toSave.slice(savedCount).map((r) => r.key));
+    setRows((prev) => prev.filter((r) => failedKeys.has(r.key) || !r.title.trim()));
+    setError(
+      `${savedCount} of ${toSave.length} events saved. The remaining ones are still listed below — please try again.`,
+    );
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[45] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/45"
+      onClick={saving ? undefined : onClose}
+    >
+      <div
+        className="flex flex-col w-full max-w-2xl max-h-[88vh] overflow-hidden bg-white border rounded-md shadow-lg border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between flex-shrink-0 px-5 py-4 border-b border-slate-200"
+          style={{ borderTop: `3px solid ${RED}` }}
+        >
+          <div>
+            <div className="font-bold text-[16px]" style={{ color: RED }}>
+              Add Events
+            </div>
+            <div className="text-[12px] text-slate-400 mt-0.5">
+              Add events, holidays or deadlines on different days, then save them all at once.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="p-1.5 rounded text-slate-400 hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 p-5 space-y-3 overflow-y-auto">
+          {rows.map((r, idx) => {
+            const isLast = idx === rows.length - 1;
+            const bs = bsLabel(r.date);
+            return (
+              <div key={r.key} className="p-3 border rounded border-slate-200 bg-slate-50/40">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={r.date}
+                    onChange={(e) => update(r.key, { date: e.target.value })}
+                    className="px-2.5 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  />
+                  <input
+                    ref={isLast ? lastRowRef : undefined}
+                    value={r.title}
+                    onChange={(e) => update(r.key, { title: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (r.title.trim() && isLast) addRow();
+                      }
+                    }}
+                    placeholder="e.g., Democracy Day, Office Holiday"
+                    className="flex-1 min-w-[160px] px-3 py-2 text-[13px] bg-white border border-slate-200 rounded outline-none focus:border-blue-900 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRow(r.key)}
+                    disabled={rows.length === 1}
+                    title="Remove"
+                    className="flex-shrink-0 p-1.5 transition-colors rounded text-slate-400 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(EVENT_STYLES).map(([id, st]) => {
+                      const active = r.type === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => update(r.key, { type: id })}
+                          className="font-medium transition-colors border rounded-full"
+                          style={{
+                            padding: "3px 10px",
+                            fontSize: 11.5,
+                            background: active ? st.bg : "#fff",
+                            color: active ? st.fg : "#94a3b8",
+                            borderColor: active ? st.fg : "#E2E8F0",
+                          }}
+                        >
+                          {st.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {bs && (
+                    <span className="text-[12px] font-nepali" style={{ color: RED }}>
+                      {bs}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={addRow}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium border border-dashed rounded text-slate-600 border-slate-300 hover:bg-slate-50 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add another event
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between flex-shrink-0 gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50/60">
+          <p className={`text-[12px] ${error ? "text-red-700" : "text-slate-400"}`}>
+            {error ?? `${filled.length} event${filled.length === 1 ? "" : "s"} ready to save`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-3.5 py-2 text-[12.5px] font-medium border rounded text-slate-600 border-slate-200 hover:bg-white transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || filled.length === 0}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium text-white rounded disabled:opacity-50 transition-colors"
+              style={{ background: RED }}
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Save {filled.length > 1 ? `${filled.length} events` : "event"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Copy events from this organization's calendar into another organization's calendar. */
+const CopyEventsModal: React.FC<{
+  events: CalendarEvent[];
+  targets: { id: number; name: string }[];
+  monthEventIds: Set<number>;
+  monthLabel: string;
+  onClose: () => void;
+}> = ({ events, targets, monthEventIds, monthLabel, onClose }) => {
+  const copyMutation = useCopyEvents();
+  const sorted = React.useMemo(
+    () => [...events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    [events],
+  );
+  // With a single possible destination it's pre-ticked; otherwise the user picks.
+  const [targetIds, setTargetIds] = useState<Set<number>>(
+    () => new Set(targets.length === 1 ? [targets[0]!.id] : []),
+  );
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(events.map((e) => e.id)));
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<CopyEventsOrgResult[] | null>(null);
+
+  const toggleTarget = (id: number) =>
+    setTargetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const submit = async () => {
+    setError(null);
+    try {
+      const r = await copyMutation.mutateAsync({
+        targetOrganizationIds: Array.from(targetIds),
+        eventIds: sorted.filter((e) => selected.has(e.id)).map((e) => e.id),
+      });
+      setResults(r);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to copy events."));
+    }
+  };
+
+  const linkBtn = "text-[11.5px] font-medium text-blue-900 hover:underline";
+
+  return (
+    <div
+      className="fixed inset-0 z-[45] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/45"
+      onClick={copyMutation.isPending ? undefined : onClose}
+    >
+      <div
+        className="flex flex-col w-full max-w-lg max-h-[88vh] overflow-hidden bg-white border rounded-md shadow-lg border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between flex-shrink-0 px-5 py-4 border-b border-slate-200"
+          style={{ borderTop: `3px solid ${RED}` }}
+        >
+          <div>
+            <div className="font-bold text-[16px]" style={{ color: RED }}>
+              Copy events to another organization
+            </div>
+            <div className="text-[12px] text-slate-400 mt-0.5">
+              Events already in the other calendar are skipped, so nothing gets duplicated.
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {results ? (
+          <div className="p-6">
+            <div className="space-y-2">
+              {results.map((r) => (
+                <div
+                  key={r.organizationId}
+                  className={`px-3 py-2.5 border rounded ${
+                    r.error ? "border-red-200 bg-red-50" : "border-slate-200"
+                  }`}
+                >
+                  <p className="text-[13px] font-semibold text-slate-900">{r.organizationName}</p>
+                  {r.error ? (
+                    <p className="mt-0.5 text-[12px] text-red-700">{r.error}</p>
+                  ) : (
+                    <p className="mt-0.5 text-[12px] text-slate-500">
+                      {r.copied} event{r.copied === 1 ? "" : "s"} copied
+                      {r.skipped > 0 && ` · ${r.skipped} skipped (already there)`}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 text-center">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-[12.5px] font-medium text-white rounded"
+                style={{ background: RED }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 min-h-0 p-5 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Copy to ({targetIds.size} of {targets.length} selected)
+                </span>
+                {targets.length > 1 && (
+                  <div className="flex items-center gap-3">
+                    <button type="button" className={linkBtn} onClick={() => setTargetIds(new Set(targets.map((t) => t.id)))}>
+                      All
+                    </button>
+                    <button type="button" className={linkBtn} onClick={() => setTargetIds(new Set())}>
+                      None
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="mb-5 space-y-1.5">
+                {targets.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex items-center gap-2.5 px-3 py-2 border rounded cursor-pointer border-slate-200 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={targetIds.has(t.id)}
+                      onChange={() => toggleTarget(t.id)}
+                      className="flex-shrink-0"
+                    />
+                    <span className="flex-1 min-w-0 text-[13px] text-slate-800 truncate">{t.name}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Events ({selected.size} of {sorted.length} selected)
+                </span>
+                <div className="flex items-center gap-3">
+                  <button type="button" className={linkBtn} onClick={() => setSelected(new Set(sorted.map((e) => e.id)))}>
+                    All
+                  </button>
+                  <button type="button" className={linkBtn} onClick={() => setSelected(new Set(monthEventIds))}>
+                    {monthLabel}
+                  </button>
+                  <button type="button" className={linkBtn} onClick={() => setSelected(new Set())}>
+                    None
+                  </button>
+                </div>
+              </div>
+
+              {sorted.length === 0 ? (
+                <p className="py-6 text-center text-slate-400 text-[12.5px]">
+                  This calendar has no events to copy yet.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {sorted.map((ev) => {
+                    const st = eventStyle(ev.type);
+                    const d = new Date(ev.date);
+                    return (
+                      <label
+                        key={ev.id}
+                        className="flex items-center gap-2.5 px-3 py-2 border rounded cursor-pointer border-slate-200 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(ev.id)}
+                          onChange={() => toggle(ev.id)}
+                          className="flex-shrink-0"
+                        />
+                        <span className="flex-shrink-0 rounded-full" style={{ width: 6, height: 6, background: st.fg }} />
+                        <span className="flex-1 min-w-0 text-[13px] text-slate-800 truncate">{ev.title}</span>
+                        <span
+                          className="flex-shrink-0 text-[10.5px] text-slate-400"
+                          style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                        >
+                          {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </span>
+                        <span
+                          className="flex-shrink-0 text-[9.5px] uppercase tracking-[0.04em] font-medium"
+                          style={{ color: st.fg }}
+                        >
+                          {st.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between flex-shrink-0 gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50/60">
+              <p className={`text-[12px] ${error ? "text-red-700" : "text-slate-400"}`}>{error ?? ""}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={copyMutation.isPending}
+                  className="px-3.5 py-2 text-[12.5px] font-medium border rounded text-slate-600 border-slate-200 hover:bg-white disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={copyMutation.isPending || selected.size === 0 || targetIds.size === 0}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium text-white rounded disabled:opacity-50"
+                  style={{ background: RED }}
+                >
+                  {copyMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Copy {selected.size} event{selected.size === 1 ? "" : "s"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 type MonthPos = { y: number; m: number };
 
 const CalendarPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, organization, organizations } = useAuth();
   const { data: events = [], isLoading: loading } = useEvents();
+  const [showCopy, setShowCopy] = useState(false);
+  const copyTargets = organizations.filter((o) => o.id !== organization?.id);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const today = new Date();
@@ -427,6 +890,7 @@ const CalendarPage: React.FC = () => {
   const [flip, setFlip] = useState<{ from: MonthPos; dir: "next" | "prev" } | null>(null);
 
   const [selectedDay, setSelectedDay] = useState<DaySel | null>(null);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
 
   const [deleteEventId, setDeleteEventId] = useState<number | null>(null);
 
@@ -473,6 +937,22 @@ const CalendarPage: React.FC = () => {
     } catch (err) {
       setActionError(getErrorMessage(err, "Failed to add event."));
     }
+  };
+
+  /** Saves in order and stops at the first failure; resolves to how many were saved. */
+  const handleBulkSave = async (rows: { date: Date; title: string; type: string }[]) => {
+    setActionError(null);
+    let saved = 0;
+    for (const r of rows) {
+      try {
+        await createEventMutation.mutateAsync({ title: r.title, date: r.date.toISOString(), type: r.type });
+        saved++;
+      } catch (err) {
+        setActionError(getErrorMessage(err, "Failed to add event."));
+        break;
+      }
+    }
+    return saved;
   };
 
   const handleDeleteEvent = async () => {
@@ -528,6 +1008,28 @@ const CalendarPage: React.FC = () => {
         </p>
         <div className="flex items-center gap-2">
           {loading && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
+          {isAdmin && copyTargets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowCopy(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-semibold border rounded transition-colors hover:bg-slate-50"
+              style={{ borderColor: RED, color: RED }}
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Copy to…
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowBulkAdd(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px] font-semibold text-white rounded transition-colors"
+              style={{ background: RED }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Event
+            </button>
+          )}
           <button
             type="button"
             onClick={() => goTo(clampMonth(cursor.y, cursor.m - 1))}
@@ -670,6 +1172,38 @@ const CalendarPage: React.FC = () => {
           onAdd={(title, type) => handleAddEventForDay(selectedDay.ad, title, type)}
           onDeleteRequest={(id) => setDeleteEventId(id)}
           onClose={() => setSelectedDay(null)}
+        />
+      )}
+
+      {showCopy && (
+        <CopyEventsModal
+          events={events}
+          targets={copyTargets.map((o) => ({ id: o.id, name: o.name }))}
+          monthEventIds={
+            new Set(
+              events
+                .filter((ev) => {
+                  const bs = NepaliDate.fromAD(new Date(ev.date));
+                  return bs.getYear() === cursor.y && bs.getMonth() === cursor.m;
+                })
+                .map((ev) => ev.id),
+            )
+          }
+          monthLabel="This month"
+          onClose={() => setShowCopy(false)}
+        />
+      )}
+
+      {showBulkAdd && (
+        <BulkAddModal
+          // Start on today when it's in the month being viewed, otherwise on that month's first day.
+          defaultDate={isoOfAd(
+            cursor.y === todayBs.getYear() && cursor.m === todayBs.getMonth()
+              ? today
+              : new NepaliDate(cursor.y, cursor.m, 1).toJsDate(),
+          )}
+          onSave={handleBulkSave}
+          onClose={() => setShowBulkAdd(false)}
         />
       )}
 

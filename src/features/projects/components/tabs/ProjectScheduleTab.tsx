@@ -25,6 +25,7 @@ import {
   ScheduleLinkType,
   PredecessorToken,
   parsePredecessorList,
+  formatPredecessorList,
   formatPredecessorToken,
   LINK_TYPE_LABELS,
   LINK_TYPE_TO_GANTT,
@@ -38,7 +39,6 @@ import {
   criticalPathLengthDays,
 } from "../../utils/criticalPath";
 import GanttChartView, { ScheduleColumnDef, ScheduleScale, LinkEditInfo } from "../GanttChartView";
-import { deleteTask } from "../../../tasks/api/tasks.api";
 import { getErrorMessage } from "../../../../lib/errors";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import StickyHorizontalScrollbar from "../../../../components/StickyHorizontalScrollbar";
@@ -125,9 +125,8 @@ interface ParsedRow {
 interface ProjectScheduleTabProps {
   /** Which project's schedule to load/save. Required for backend persistence. */
   projectId: string;
-  /** Called after a successful save or task delete so the Task tab (and
-   * project header stats) can refresh — Schedule and Task tabs now share the
-   * same Task rows, so a Gantt-side change needs to surface there too. */
+  /** Called after a successful save or row delete so the project header can refresh.
+   * (The Schedule has its own rows now — it no longer changes anything on the Task tab.) */
   onScheduleUpdate?: () => void;
 }
 
@@ -1259,18 +1258,51 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
     });
   }, []);
 
+  const persistSchedule = useCallback(
+    async (rows: ScheduleRow[]) => {
+      if (!projectId) {
+        setBackendError("No project selected — cannot save the schedule.");
+        setSaveStatus("error");
+        throw new Error("No project selected.");
+      }
+      setSaveStatus("saving");
+      setBackendError(null);
+      try {
+        const saved = await saveScheduleMutation.mutateAsync(rowsToDto(dedupeRowIds(rows)));
+        setScheduleRows(dtoToRows(saved));
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2500);
+        onScheduleUpdate?.();
+      } catch (err) {
+        const message = getErrorMessage(err, "Failed to save the schedule.");
+        setBackendError(message);
+        setSaveStatus("error");
+        throw new Error(message);
+      }
+    },
+    [projectId, saveScheduleMutation, onScheduleUpdate],
+  );
+
+  // The rows left after removing `ids`, with any dependency ("predecessor") that pointed at a removed row
+  // dropped too — otherwise the save would be sent a link to a row that no longer exists.
+  const withoutRows = (rows: ScheduleRow[], ids: Set<string>): ScheduleRow[] =>
+    rows
+      .filter((row) => !ids.has(row.id))
+      .map((row) => {
+        const kept = parsePredecessorList(row.predecessorId).filter((token) => !ids.has(token.id));
+        const predecessorId = formatPredecessorList(kept);
+        return predecessorId === row.predecessorId ? row : { ...row, predecessorId };
+      });
+
   // Deletes a task row and cascades to every descendant under it (a summary
   // row can't be left with orphaned children pointing at a parentId that no
   // longer exists). Confirmed via a ConfirmationModal (see pendingDeleteId
   // below) before this fires — GanttChartView's row menu calls straight
-  // through without its own confirmation. Since Schedule and Task tabs now
-  // share the same Task rows (see schedule.service.ts), this is a REAL,
-  // immediate backend delete — not deferred to the next "Done Editing" save
-  // the way it used to be, since a task can carry real comments/subtasks/
-  // assignees that shouldn't be destroyed as a side effect of some later,
-  // unrelated save. A "temp-…" row was never persisted, so only rows with a
-  // real numeric id hit the backend; everything is still removed from local
-  // state either way for immediate feedback.
+  // through without its own confirmation. Schedule rows are independent of
+  // Tasks (they live in their own tables, see schedule.service.ts): the rows
+  // are removed and the schedule is saved straight away, so the delete sticks
+  // without needing a separate Save click. It must NEVER call the task API:
+  // schedule row ids are just "1", "2", … and would collide with real task ids.
   const handleDeleteTask = useCallback(
     async (id: string) => {
       const idsToRemove = new Set<string>([id]);
@@ -1285,14 +1317,9 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         }
       }
 
-      const realId = Number(id);
-      if (Number.isInteger(realId)) {
-        await deleteTask(realId);
-      }
-
-      setScheduleRows((rows) => rows.filter((row) => !idsToRemove.has(row.id)));
+      await persistSchedule(withoutRows(scheduleRows, idsToRemove));
     },
-    [scheduleRows],
+    [scheduleRows, persistSchedule],
   );
 
   // Confirms the delete requested via the row menu (pendingDeleteId, set by
@@ -1316,8 +1343,8 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
   // above) — unions each selected row's own descendant cascade (same logic
   // as handleDeleteTask, but computed once across every selected id rather
   // than looping handleDeleteTask, which would redo the cascade scan against
-  // an increasingly stale `scheduleRows` closure on each iteration), then
-  // fires one deleteTask call per real (non-"temp-") id in parallel.
+  // an increasingly stale `scheduleRows` closure on each iteration). Saved
+  // straight away, like handleDeleteTask.
   const confirmBulkDeleteTasks = useCallback(async () => {
     if (rowSelection.selectedIds.length === 0) return;
     setBulkDeleting(true);
@@ -1335,12 +1362,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
         }
       }
 
-      const realIds = Array.from(idsToRemove)
-        .map((rid) => Number(rid))
-        .filter((n) => Number.isInteger(n));
-      await Promise.all(realIds.map((n) => deleteTask(n)));
-
-      setScheduleRows((rows) => rows.filter((row) => !idsToRemove.has(row.id)));
+      await persistSchedule(withoutRows(scheduleRows, idsToRemove));
       rowSelection.clear();
       setPendingBulkDelete(false);
       onScheduleUpdate?.();
@@ -1349,7 +1371,7 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
     } finally {
       setBulkDeleting(false);
     }
-  }, [rowSelection, scheduleRows, onScheduleUpdate]);
+  }, [rowSelection, scheduleRows, persistSchedule, onScheduleUpdate]);
 
   // Fired when the status <select> in the "status" column is changed (see
   // GanttChartView's onStatusChange) — folded into scheduleRows the same way
@@ -1464,31 +1486,6 @@ const ProjectScheduleTab: React.FC<ProjectScheduleTabProps> = ({ projectId, onSc
       return [...reordered, ...remaining];
     });
   }, []);
-
-  const persistSchedule = useCallback(
-    async (rows: ScheduleRow[]) => {
-      if (!projectId) {
-        setBackendError("No project selected — cannot save the schedule.");
-        setSaveStatus("error");
-        throw new Error("No project selected.");
-      }
-      setSaveStatus("saving");
-      setBackendError(null);
-      try {
-        const saved = await saveScheduleMutation.mutateAsync(rowsToDto(dedupeRowIds(rows)));
-        setScheduleRows(dtoToRows(saved));
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2500);
-        onScheduleUpdate?.();
-      } catch (err) {
-        const message = getErrorMessage(err, "Failed to save the schedule.");
-        setBackendError(message);
-        setSaveStatus("error");
-        throw new Error(message);
-      }
-    },
-    [projectId, saveScheduleMutation, onScheduleUpdate],
-  );
 
   // The chart is editable immediately (see canEditSchedule above), so this is now a plain explicit
   // save — no more mode toggle to flip off first. Save status still surfaces via the

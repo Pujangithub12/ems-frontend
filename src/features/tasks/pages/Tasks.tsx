@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { Suspense, lazy, useMemo, useState } from "react";
 import {
   ListTodo,
   UserRound,
@@ -7,12 +7,14 @@ import {
   ListChecks,
   Clock,
   Hourglass,
+  Loader2,
 } from "lucide-react";
 import { useTasks } from "../hooks/useTasks";
 import { useAuth } from "../../../context/AuthProvider";
-import AssignedTasks from "./AssignedTasks"; // Adjust path as needed
-import MyTasks from "./MyTasks"; // Adjust path as needed
-import CompletedTasks from "./CompletedTasks";
+import AssignedTasks from "./AssignedTasks"; // default tab — loaded up front
+// The other two tabs are only downloaded when first opened.
+const MyTasks = lazy(() => import("./MyTasks"));
+const CompletedTasks = lazy(() => import("./CompletedTasks"));
 
 type TabKey = "assigned" | "my" | "completed";
 
@@ -28,28 +30,35 @@ const TasksPage: React.FC = () => {
 
   const { data: summaryTasks = [] } = useTasks();
 
-  const totalTasks = summaryTasks.length;
-  const doneCount = summaryTasks.filter((t) => t.status === "completed").length;
-  const myTasksCount = summaryTasks.filter(
-    (t) =>
-      t.status !== "completed" &&
-      t.assignedUsers?.some((u) => String(u.id) === user?.id),
-  ).length;
-  const assignedTabCount = summaryTasks.filter((t) => t.status !== "completed").length;
-  const tabCounts: Record<TabKey, number> = {
-    assigned: assignedTabCount,
-    my: myTasksCount,
-    completed: doneCount,
-  };
-  const overallProgress = totalTasks
-    ? Math.round((doneCount / totalTasks) * 100)
-    : 0;
-  const overdueCount = summaryTasks.filter((t) => {
-    if (t.status === "completed" || !t.dueDate) return false;
-    return new Date(t.dueDate).getTime() < new Date(new Date().toDateString()).getTime();
-  }).length;
-  const inProgressCount = summaryTasks.filter((t) => t.status === "in_progress").length;
-  const pendingCount = summaryTasks.filter((t) => t.status === "to_do").length;
+  // One pass over the task list for every summary number (instead of seven separate filters per render).
+  const { totalTasks, doneCount, tabCounts, overallProgress, overdueCount, inProgressCount, pendingCount } = useMemo(() => {
+    const startOfToday = new Date(new Date().toDateString()).getTime();
+    let done = 0;
+    let mine = 0;
+    let overdue = 0;
+    let inProgress = 0;
+    let pending = 0;
+    for (const t of summaryTasks) {
+      if (t.status === "completed") {
+        done++;
+        continue;
+      }
+      if (t.assignedUsers?.some((u) => String(u.id) === user?.id)) mine++;
+      if (t.dueDate && new Date(t.dueDate).getTime() < startOfToday) overdue++;
+      if (t.status === "in_progress") inProgress++;
+      else if (t.status === "to_do") pending++;
+    }
+    const total = summaryTasks.length;
+    return {
+      totalTasks: total,
+      doneCount: done,
+      tabCounts: { assigned: total - done, my: mine, completed: done } as Record<TabKey, number>,
+      overallProgress: total ? Math.round((done / total) * 100) : 0,
+      overdueCount: overdue,
+      inProgressCount: inProgress,
+      pendingCount: pending,
+    };
+  }, [summaryTasks, user?.id]);
 
   return (
     <div className="flex flex-col w-full min-h-full overflow-hidden bg-white">
@@ -167,10 +176,16 @@ const TasksPage: React.FC = () => {
       <div className="flex-1 overflow-auto no-scrollbar">
         {activeTab === "assigned" ? (
           <AssignedTasks />
-        ) : activeTab === "my" ? (
-          <MyTasks />
         ) : (
-          <CompletedTasks />
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+              </div>
+            }
+          >
+            {activeTab === "my" ? <MyTasks /> : <CompletedTasks />}
+          </Suspense>
         )}
       </div>
     </div>
