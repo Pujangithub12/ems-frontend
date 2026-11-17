@@ -1,24 +1,12 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx";
-import {
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  X,
-  Trash2,
-  Upload,
-  Paperclip,
-  ChevronDown,
-  Plus,
-  Check,
-  XCircle,
-  Download,
-  Eye,
-} from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle, X, Upload, ChevronDown, Plus, Eye } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import PdfPreviewModal from "../components/PdfPreviewModal";
+import PoFormField from "../components/PoFormField";
+import PoLineItemRow from "../components/PoLineItemRow";
+import PoSpecTablesEditor, { specTablesFromPo, type SpecTableForm } from "../components/PoSpecTablesEditor";
 import { preloadPdfFonts } from "../pdf/pdfFonts";
 import { formatCost, toNumber } from "../../../lib/currency";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType } from "../../../types";
@@ -30,15 +18,25 @@ import {
   useDeletePurchaseOrderItemMutation,
   useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
+import { numOrUndef, primaryBtnCls, sectionCardCls } from "../utils/poFormUi";
+import {
+  blankRow,
+  colsSig,
+  newColKey,
+  parseLineItemsSheet,
+  rowFromItem,
+  rowIsBlank,
+  rowSig,
+  rowTotal,
+  type CustomCol,
+  type ItemRow,
+} from "../utils/poLineItems";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-const fileUrl = (filePath: string) => `${API_BASE}/uploads/${filePath}`;
 const generatePoPdf = (id: number) => import("../pdf/generatePdf").then((m) => m.generatePurchaseOrderPdf(id));
 // PDFs are drawn in the browser (see ../pdf/generatePdf.ts): warm the fonts and the (lazy) pdfkit
 // chunk in the background so "Preview PDF" opens without waiting on either.
 preloadPdfFonts();
 void import("../pdf/generatePdf");
-
 
 // ---- Status pill styling (kept local to this file, matching the rest of this feature) ----
 
@@ -55,52 +53,49 @@ const PURCHASE_TYPE_STYLES: Record<PurchaseType, { bg: string; fg: string; label
   international: { bg: "#e0e7ff", fg: "#3730a3", label: "International" },
 };
 
+const PO_STATUSES = Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[];
+const PURCHASE_TYPES = Object.keys(PURCHASE_TYPE_STYLES) as PurchaseType[];
+
 const Pill: React.FC<{ bg: string; fg: string; label: string }> = ({ bg, fg, label }) => (
   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: bg, color: fg }}>
     {label}
   </span>
 );
 
-const inputCls = "w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500";
-const labelCls = "block mb-1 text-[11px] font-medium text-slate-900";
-const primaryBtnCls = "flex items-center gap-2 px-4 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 disabled:opacity-60 transition-colors";
-const sectionCardCls = "p-4 bg-white border rounded-xl shadow-md border-slate-200";
+const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">{children}</kbd>
+);
 
-/** At the end of a field's text, ArrowRight moves focus to the next field in the same
- * [data-arrow-row] group (ArrowLeft does the same at the start, moving back) — mirrors the
- * same handler on the Site Activities and Proforma Invoices pages. Only wired onto plain text
- * inputs (no `type` attribute) since `.selectionStart`/`.setSelectionRange` throw on
- * `type="number"`/`"date"` inputs in Chrome. */
-const handleRowArrowNav = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-  const input = e.currentTarget;
-  if (input.selectionStart !== input.selectionEnd) return; // a range is selected — let the browser collapse it first
-  const atStart = input.selectionStart === 0;
-  const atEnd = input.selectionStart === input.value.length;
-  if (!((e.key === "ArrowLeft" && atStart) || (e.key === "ArrowRight" && atEnd))) return;
-
-  const row = input.closest<HTMLElement>("[data-arrow-row]");
-  if (!row) return;
-  const fields = Array.from(row.querySelectorAll<HTMLInputElement>("input[type='text'], input:not([type])")).filter((el) => !el.disabled);
-  const idx = fields.indexOf(input);
-  if (idx === -1) return;
-  const next = fields[e.key === "ArrowRight" ? idx + 1 : idx - 1];
-  if (next) {
-    e.preventDefault();
-    next.focus();
-    const pos = e.key === "ArrowRight" ? 0 : next.value.length;
-    next.setSelectionRange(pos, pos);
-  }
-};
-
-const numOrUndef = (s: string): number | undefined => {
-  if (s.trim() === "") return undefined;
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : undefined;
-};
-
-const formatDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "--";
+/** Compact dropdown used for the Purchase Type / Status pickers in the header. */
+function HeaderSelect<T extends string>({
+  value,
+  options,
+  labelOf,
+  disabled,
+  onChange,
+}: {
+  value: T;
+  options: T[];
+  labelOf: (option: T) => string;
+  disabled: boolean;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>{labelOf(o)}</option>
+        ))}
+      </select>
+      <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
+    </div>
+  );
+}
 
 /**
  * Purchase Order detail — the Overview tab's content only (Shipment/Cost Sheet/
@@ -129,29 +124,15 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
     await detailQuery.refetch();
   };
 
-  const changeStatus = async (status: PurchaseOrderStatus) => {
+  const updateHeader = async (input: { status: PurchaseOrderStatus } | { purchaseType: PurchaseType }, failMessage: string) => {
     if (!po) return;
     setHeaderBusy(true);
     setHeaderError(null);
     try {
-      await updateMutation.mutateAsync({ id: po.id, input: { status } });
+      await updateMutation.mutateAsync({ id: po.id, input });
       await refetchAll();
     } catch (err) {
-      setHeaderError(getErrorMessage(err, "Failed to update status."));
-    } finally {
-      setHeaderBusy(false);
-    }
-  };
-
-  const changePurchaseType = async (purchaseType: PurchaseType) => {
-    if (!po) return;
-    setHeaderBusy(true);
-    setHeaderError(null);
-    try {
-      await updateMutation.mutateAsync({ id: po.id, input: { purchaseType } });
-      await refetchAll();
-    } catch (err) {
-      setHeaderError(getErrorMessage(err, "Failed to update purchase type."));
+      setHeaderError(getErrorMessage(err, failMessage));
     } finally {
       setHeaderBusy(false);
     }
@@ -220,32 +201,20 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
           <div className="flex items-center gap-2">
             {canEditHeader && (
               <>
-                <div className="relative">
-                  <select
-                    value={po.purchaseType}
-                    disabled={headerBusy}
-                    onChange={(e) => changePurchaseType(e.target.value as PurchaseType)}
-                    className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
-                  >
-                    {(Object.keys(PURCHASE_TYPE_STYLES) as PurchaseType[]).map((t) => (
-                      <option key={t} value={t}>{PURCHASE_TYPE_STYLES[t].label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
-                </div>
-                <div className="relative">
-                  <select
-                    value={po.status}
-                    disabled={headerBusy}
-                    onChange={(e) => changeStatus(e.target.value as PurchaseOrderStatus)}
-                    className="appearance-none pl-3 pr-8 py-2 text-[12px] border border-slate-200 rounded-lg outline-none cursor-pointer focus:border-blue-400 disabled:opacity-60"
-                  >
-                    {(Object.keys(PO_STATUS_STYLES) as PurchaseOrderStatus[]).map((s) => (
-                      <option key={s} value={s}>{PO_STATUS_STYLES[s].label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute -translate-y-1/2 pointer-events-none right-2.5 top-1/2 w-3.5 h-3.5 text-slate-400" />
-                </div>
+                <HeaderSelect
+                  value={po.purchaseType}
+                  options={PURCHASE_TYPES}
+                  labelOf={(t) => PURCHASE_TYPE_STYLES[t].label}
+                  disabled={headerBusy}
+                  onChange={(purchaseType) => updateHeader({ purchaseType }, "Failed to update purchase type.")}
+                />
+                <HeaderSelect
+                  value={po.status}
+                  options={PO_STATUSES}
+                  labelOf={(s) => PO_STATUS_STYLES[s].label}
+                  disabled={headerBusy}
+                  onChange={(status) => updateHeader({ status }, "Failed to update status.")}
+                />
               </>
             )}
             {headerBusy && <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />}
@@ -330,84 +299,6 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   currency: po.currency || "",
 });
 
-/** One editable row of the Line Items table. Numbers are kept as the text the user typed; `id` is
- * null for a row that hasn't been saved yet. Nothing is sent to the server until Save Changes. */
-type ItemRow = { key: string; id: number | null; itemName: string; hsnCode: string; quantity: string; unit: string; unitPrice: string; custom: Record<string, string> };
-
-/** A user-defined column: `key` is stable (values are stored under it), `label` is the heading the user typed. */
-type CustomCol = { key: string; label: string };
-
-const newColKey = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-
-const rowFromItem = (item: PurchaseOrder["items"][number]): ItemRow => ({
-  key: `i${item.id}`,
-  id: item.id,
-  itemName: item.itemName,
-  hsnCode: item.hsnCode || "",
-  quantity: String(item.quantity),
-  unit: item.unit || "",
-  unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
-  custom: { ...(item.customValues ?? {}) },
-});
-
-let newRowSeq = 0;
-const blankRow = (): ItemRow => ({ key: `n${++newRowSeq}`, id: null, itemName: "", hsnCode: "", quantity: "", unit: "", unitPrice: "", custom: {} });
-
-const rowIsBlank = (r: ItemRow) =>
-  !r.itemName.trim() && !r.hsnCode.trim() && !r.quantity.trim() && !r.unit.trim() && !r.unitPrice.trim() && Object.values(r.custom).every((v) => !v.trim());
-
-/** Comparable snapshot of a row (ignores the React key), so "has anything changed?" is a string compare. */
-const rowSig = (r: ItemRow) =>
-  JSON.stringify([
-    r.id,
-    r.itemName.trim(),
-    r.hsnCode.trim(),
-    r.quantity.trim(),
-    r.unit.trim(),
-    r.unitPrice.trim(),
-    Object.entries(r.custom)
-      .map(([k, v]) => [k, v.trim()] as const)
-      .filter(([, v]) => v)
-      .sort(([a], [b]) => a.localeCompare(b)),
-  ]);
-
-const colsSig = (cols: CustomCol[]) => JSON.stringify(cols.filter((c) => c.label.trim()).map((c) => [c.key, c.label.trim()]));
-
-/** Keeps only digits and a single decimal point, so number cells can stay plain left-aligned text inputs. */
-const cleanNumberText = (s: string) => {
-  const t = s.replace(/[^0-9.]/g, "");
-  const dot = t.indexOf(".");
-  return dot === -1 ? t : t.slice(0, dot + 1) + t.slice(dot + 1).replace(/\./g, "");
-};
-
-const cellInputCls =
-  "w-full h-full px-2.5 py-2 text-[12px] text-left text-slate-800 bg-transparent border-0 outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:text-slate-600";
-
-/** A free-form spec table on the Overview tab (PDF, right above Payment Terms) — title, column
- * headers and rows are all admin-defined, so it can match any spec sheet shape (a simple
- * S.N./label/value table, or a wider multi-column table with its own footer note). */
-type SpecTableForm = {
-  title: string;
-  columns: string[];
-  footerNote: string;
-  rows: string[][];
-};
-
-const emptySpecTable = (): SpecTableForm => ({
-  title: "",
-  columns: ["S.N.", "Particulars", "Description"],
-  footerNote: "",
-  rows: [["", "", ""]],
-});
-
-const specTablesFromPo = (po: PurchaseOrder): SpecTableForm[] =>
-  (po.specTables || []).map((t) => ({
-    title: t.title,
-    columns: [...t.columns],
-    footerNote: t.footerNote || "",
-    rows: t.rows.map((r) => [...r.cells]),
-  }));
-
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void>; onBack: () => void }> = ({ po, isAdmin, onChanged, onBack }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const updateMutation = useUpdatePurchaseOrderMutation();
@@ -417,6 +308,8 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const ordersQuery = useOrganizationPurchaseOrdersQuery();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
+  // One stable handler for every text field, so the memoised fields below only re-render when their own value changes.
+  const setField = useCallback((name: string, value: string) => setForm((prev) => ({ ...prev, [name]: value })), []);
   /** Free-form spec tables (PDF, right above Payment Terms) — a table is dropped from the PDF
    * entirely when it has no title or no non-blank rows (see PurchaseOrderController). */
   const [specTables, setSpecTables] = useState<SpecTableForm[]>(() => specTablesFromPo(po));
@@ -431,8 +324,10 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   // ---- Line Items: an editable, spreadsheet-style table. Rows live in local state and are only
   // written to the server by Save Changes (see saveItems). ----
   const baselineRows = useMemo(() => po.items.map(rowFromItem), [po.items]);
+  const baselineRowsSig = useMemo(() => baselineRows.map(rowSig).join("|"), [baselineRows]);
   const [rows, setRows] = useState<ItemRow[]>(() => (baselineRows.length || !isAdmin ? baselineRows : [blankRow()]));
   const baselineCols = useMemo<CustomCol[]>(() => (po.itemColumns ?? []).map((c) => ({ key: c.key, label: c.label })), [po.itemColumns]);
+  const baselineColsSig = useMemo(() => colsSig(baselineCols), [baselineCols]);
   const [customCols, setCustomCols] = useState<CustomCol[]>(baselineCols);
   const [itemsBusy, setItemsBusy] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -454,14 +349,36 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   }, [focusKey, rows]);
 
   const itemsDirty = useMemo(
-    () =>
-      rows.filter((r) => !rowIsBlank(r)).map(rowSig).join("|") !== baselineRows.map(rowSig).join("|") ||
-      colsSig(customCols) !== colsSig(baselineCols),
-    [rows, baselineRows, customCols, baselineCols],
+    () => rows.filter((r) => !rowIsBlank(r)).map(rowSig).join("|") !== baselineRowsSig || colsSig(customCols) !== baselineColsSig,
+    [rows, baselineRowsSig, customCols, baselineColsSig],
   );
 
-  const updateRow = (key: string, patch: Partial<ItemRow>) =>
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  // Row handlers are stable (functional updates only), so memoised rows aren't re-rendered by unrelated edits.
+  const updateRow = useCallback(
+    (key: string, patch: Partial<ItemRow>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r))),
+    [],
+  );
+
+  const updateCustomValue = useCallback(
+    (rowKey: string, colKey: string, value: string) =>
+      setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, custom: { ...r.custom, [colKey]: value } } : r))),
+    [],
+  );
+
+  const addRow = useCallback(() => {
+    const row = blankRow();
+    setRows((prev) => [...prev, row]);
+    setFocusKey(row.key);
+  }, []);
+
+  const removeRow = useCallback(
+    (key: string) =>
+      setRows((prev) => {
+        const next = prev.filter((r) => r.key !== key);
+        return next.length ? next : [blankRow()];
+      }),
+    [],
+  );
 
   const addCustomCol = () => {
     const col = { key: newColKey(), label: "" };
@@ -482,21 +399,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       }),
     );
   };
-
-  const updateCustomValue = (rowKey: string, colKey: string, value: string) =>
-    setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, custom: { ...r.custom, [colKey]: value } } : r)));
-
-  const addRow = () => {
-    const row = blankRow();
-    setRows((prev) => [...prev, row]);
-    setFocusKey(row.key);
-  };
-
-  const removeRow = (key: string) =>
-    setRows((prev) => {
-      const next = prev.filter((r) => r.key !== key);
-      return next.length ? next : [blankRow()];
-    });
 
   /** Writes the table to the server: deletes removed rows, edits changed ones, adds new ones.
    * Returns false (and sets `error`) if validation fails or any call fails. */
@@ -526,11 +428,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     const validCols = customCols.filter((c) => c.label.trim()).map((c) => ({ key: c.key, label: c.label.trim() }));
     const customOf = (row: ItemRow): Record<string, string> =>
       Object.fromEntries(validCols.map((c) => [c.key, (row.custom[c.key] ?? "").trim()] as const).filter(([, v]) => v));
+    const itemsById = new Map(po.items.map((i) => [i.id, i] as const));
 
     setItemsBusy(true);
     setError(null);
     try {
-      if (colsSig(customCols) !== colsSig(baselineCols)) {
+      if (colsSig(customCols) !== baselineColsSig) {
         await updateMutation.mutateAsync({ id: po.id, input: { itemColumns: validCols } });
       }
       const keptIds = new Set(filled.filter((r) => r.id !== null).map((r) => r.id));
@@ -541,7 +444,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         }
       }
       for (const { row, name, qty, price } of parsed) {
-        const original = row.id !== null ? po.items.find((i) => i.id === row.id) : undefined;
+        const original = row.id !== null ? itemsById.get(row.id) : undefined;
         if (original) {
           if (rowSig(row) === rowSig(rowFromItem(original))) continue;
           // eslint-disable-next-line no-await-in-loop
@@ -588,18 +491,13 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     setPreviewOpen(true);
   };
 
-  // Bulk import via .xlsx/.csv — parsed entirely client-side, then replayed as
-  // sequential addPurchaseOrderItem calls (same "Upload Sheet" pattern as the
-  // Energy Performance tab's daily-generation import).
+  // Bulk import via .xlsx/.csv — parsed entirely client-side (see parseLineItemsSheet), then replayed as
+  // sequential addPurchaseOrderItem calls (same "Upload Sheet" pattern as the Energy Performance tab's
+  // daily-generation import).
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-
-  const findColumn = (header: string[], needle: string, exclude: number[] = []) =>
-    header.findIndex(
-      (h, i) => !exclude.includes(i) && (h || "").toString().toLowerCase().includes(needle),
-    );
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -609,64 +507,18 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     setImporting(true);
     setImportStatus(null);
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows2d: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
-
-      const headerRowIdx = rows2d.findIndex((r) => {
-        const cells = r.map((c) => String(c).trim().toLowerCase());
-        return cells.some((c) => c.includes("item")) && cells.some((c) => c.includes("qty") || c.includes("quantity"));
-      });
-      if (headerRowIdx === -1) {
-        setImportStatus("Couldn't find a header row with \"Item\" and \"Quantity\" columns.");
+      const parsed = await parseLineItemsSheet(file);
+      if (!parsed.ok) {
+        setImportStatus(parsed.message);
         return;
       }
-      const header = rows2d[headerRowIdx].map((c) => String(c));
-      const itemNameCol = findColumn(header, "item");
-      const qtyCol = findColumn(header, "qty");
-      const quantityCol = qtyCol >= 0 ? qtyCol : findColumn(header, "quantity");
-      const unitPriceCol = findColumn(header, "price");
-      const unitCol = findColumn(header, "unit", [unitPriceCol]);
-      const descriptionCol = findColumn(header, "desc");
-
-      let imported = 0;
-      let skipped = 0;
-      for (let i = headerRowIdx + 1; i < rows2d.length; i++) {
-        const r = rows2d[i];
-        const itemName = itemNameCol >= 0 ? String(r[itemNameCol] ?? "").trim() : "";
-        if (!itemName || itemName.toLowerCase() === "total") {
-          skipped += 1;
-          continue;
-        }
-
-        const quantityRaw = quantityCol >= 0 ? r[quantityCol] : "";
-        const quantity =
-          typeof quantityRaw === "number" ? quantityRaw : parseFloat(String(quantityRaw));
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-          skipped += 1;
-          continue;
-        }
-
-        const unit = unitCol >= 0 ? String(r[unitCol] ?? "").trim() || undefined : undefined;
-        const unitPriceRaw = unitPriceCol >= 0 ? r[unitPriceCol] : "";
-        const unitPrice =
-          unitPriceRaw !== "" && unitPriceRaw != null && Number.isFinite(Number(unitPriceRaw))
-            ? Number(unitPriceRaw)
-            : null;
-        const description = descriptionCol >= 0 ? String(r[descriptionCol] ?? "").trim() || null : null;
-
-
+      for (const item of parsed.items) {
         // eslint-disable-next-line no-await-in-loop -- sequential upserts keep per-row error attribution simple
-        await addItemMutation.mutateAsync({
-          id: po.id,
-          input: { itemName, itemId: null, quantity, unit, unitPrice, description },
-        });
-        imported += 1;
+        await addItemMutation.mutateAsync({ id: po.id, input: { itemId: null, ...item } });
       }
-
       await onChanged();
-      setImportStatus(`${imported} item${imported === 1 ? "" : "s"} imported${skipped ? `, ${skipped} skipped` : ""}.`);
+      const imported = parsed.items.length;
+      setImportStatus(`${imported} item${imported === 1 ? "" : "s"} imported${parsed.skipped ? `, ${parsed.skipped} skipped` : ""}.`);
     } catch (err) {
       setImportStatus(getErrorMessage(err, "Failed to import the file."));
     } finally {
@@ -681,47 +533,6 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
     setSpecTables(specTablesFromPo(po));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [po.id]);
-
-  // ---- Free-form spec table editing (add/remove table, rename/add/remove column, add/remove
-  // row, edit a cell) — see SpecTableForm above. ----
-  const addSpecTable = () => setSpecTables((prev) => [...prev, emptySpecTable()]);
-  const removeSpecTable = (tableIdx: number) => setSpecTables((prev) => prev.filter((_, i) => i !== tableIdx));
-  const updateSpecTableTitle = (tableIdx: number, title: string) =>
-    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, title } : t)));
-  const updateSpecTableFooter = (tableIdx: number, footerNote: string) =>
-    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, footerNote } : t)));
-  const updateSpecColumn = (tableIdx: number, colIdx: number, value: string) =>
-    setSpecTables((prev) =>
-      prev.map((t, i) => (i === tableIdx ? { ...t, columns: t.columns.map((c, ci) => (ci === colIdx ? value : c)) } : t)),
-    );
-  const addSpecColumn = (tableIdx: number) =>
-    setSpecTables((prev) =>
-      prev.map((t, i) =>
-        i === tableIdx
-          ? { ...t, columns: [...t.columns, `Column ${t.columns.length + 1}`], rows: t.rows.map((r) => [...r, ""]) }
-          : t,
-      ),
-    );
-  const removeSpecColumn = (tableIdx: number, colIdx: number) =>
-    setSpecTables((prev) =>
-      prev.map((t, i) =>
-        i === tableIdx
-          ? { ...t, columns: t.columns.filter((_, ci) => ci !== colIdx), rows: t.rows.map((r) => r.filter((_, ci) => ci !== colIdx)) }
-          : t,
-      ),
-    );
-  const addSpecRow = (tableIdx: number) =>
-    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, rows: [...t.rows, t.columns.map(() => "")] } : t)));
-  const removeSpecRow = (tableIdx: number, rowIdx: number) =>
-    setSpecTables((prev) => prev.map((t, i) => (i === tableIdx ? { ...t, rows: t.rows.filter((_, ri) => ri !== rowIdx) } : t)));
-  const updateSpecCell = (tableIdx: number, rowIdx: number, colIdx: number, value: string) =>
-    setSpecTables((prev) =>
-      prev.map((t, i) =>
-        i === tableIdx
-          ? { ...t, rows: t.rows.map((r, ri) => (ri === rowIdx ? r.map((c, ci) => (ci === colIdx ? value : c)) : r)) }
-          : t,
-      ),
-    );
 
   // Carry the Customer Details fields over from the most recently saved PO that has them, so a
   // brand-new PO (this one has never had any of its own customer info saved) starts pre-filled
@@ -795,44 +606,42 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   // Esc = Back (after a confirmation), Enter = Save Changes. Enter inside a text area still adds
   // a new line (Ctrl/Cmd+Enter saves from there), and a focused button keeps its own Enter
-  // behaviour. Suppressed while a nested popup (Add/Edit Item, new catalog item, delete
-  // confirmation, PDF preview, sheet upload) is open so it doesn't fight that popup's own
-  // Enter/Escape handling — mirrors the Proforma Invoice form's shortcuts.
+  // behaviour. Suppressed while a nested popup (PDF preview, sheet upload) is open so it doesn't
+  // fight that popup's own Enter/Escape handling — mirrors the Proforma Invoice form's shortcuts.
+  // The listener reads the latest state through a ref, so it's attached once per popup state instead
+  // of being torn down and re-added on every keystroke.
+  const latest = useRef({ handleSave, busy, confirmCancel, isAdmin });
+  latest.current = { handleSave, busy, confirmCancel, isAdmin };
   useEffect(() => {
-    const anyPopupOpen = previewOpen || uploadModalOpen;
-    if (anyPopupOpen) return;
+    if (previewOpen || uploadModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         setConfirmCancel((open) => !open);
         return;
       }
-      if (e.key !== "Enter" || confirmCancel || !isAdmin) return;
+      const { handleSave: save, busy: isBusy, confirmCancel: confirming, isAdmin: admin } = latest.current;
+      if (e.key !== "Enter" || confirming || !admin) return;
       const target = e.target as HTMLElement;
       if (target.tagName === "BUTTON" || target.tagName === "A") return;
       if (target.tagName === "TEXTAREA" && !(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      if (!busy) handleSave();
+      if (!isBusy) save();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewOpen, uploadModalOpen, confirmCancel, isAdmin, busy, form, rows, itemsDirty]);
+  }, [previewOpen, uploadModalOpen]);
 
   const statusHistory = po.statusHistory ?? [];
 
-  const rowTotal = (r: ItemRow) => {
-    const q = parseFloat(r.quantity);
-    const p = parseFloat(r.unitPrice);
-    return (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
-  };
-  const itemsTotal = rows.reduce((sum, r) => sum + rowTotal(r), 0);
+  const itemsTotal = useMemo(() => rows.reduce((sum, r) => sum + rowTotal(r), 0), [rows]);
   // VAT comes from the Tax % field above (live, even before it's saved); with no Tax % there is no VAT row.
   const taxPct = parseFloat(form.taxPercent);
   const vatPct = Number.isFinite(taxPct) && taxPct > 0 ? taxPct : 0;
   const vatAmount = vatPct > 0 ? itemsTotal * (vatPct / 100) : 0;
   const grandTotal = itemsTotal + vatAmount;
   const lastRowKey = rows.length ? rows[rows.length - 1]!.key : null;
+  const fieldsDisabled = !isAdmin;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -845,11 +654,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
       <div className="text-[11.5px] text-slate-500">
         <p>
-          Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Tab</kbd> to switch to the next field · Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Enter</kbd> to save · Press <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Esc</kbd> to go back
+          Press <Kbd>Tab</Kbd> to switch to the next field · Press <Kbd>Enter</Kbd> to save · Press <Kbd>Esc</Kbd> to go back
         </p>
         {isAdmin && (
           <p className="mt-1">
-            <kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Ctrl</kbd>+<kbd className="px-1.5 py-0.5 font-sans text-[11px] font-medium bg-white border rounded border-slate-300">Enter</kbd> to save from a text area
+            <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> to save from a text area
           </p>
         )}
       </div>
@@ -857,50 +666,35 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       <div className={sectionCardCls}>
         <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Customer Details</h3>
         <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className={labelCls}>Customer Contact Person</label>
-            <input
-              disabled={!isAdmin}
-              value={form.customerContactPerson}
-              onChange={(e) => setForm({ ...form, customerContactPerson: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Customer PAN/VAT No.</label>
-            <input
-              disabled={!isAdmin}
-              value={form.customerPanVatNumber}
-              onChange={(e) => setForm({ ...form, customerPanVatNumber: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Customer Email</label>
-            <input
-              type="email"
-              disabled={!isAdmin}
-              value={form.customerEmail}
-              onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="Shown as EMAIL ADDRESS under CUSTOMER on the PDF — defaults to the organization's own email"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Customer Phone</label>
-            <input
-              disabled={!isAdmin}
-              value={form.customerPhone}
-              onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="Shown as PHONE under CUSTOMER on the PDF — defaults to the organization's own phone"
-              className={inputCls}
-            />
-          </div>
+          <PoFormField
+            label="Customer Contact Person"
+            name="customerContactPerson"
+            value={form.customerContactPerson}
+            onField={setField}
+            disabled={fieldsDisabled}
+            arrowNav
+            placeholder="Shown as NAME OF CONTACT PERSON under CUSTOMER on the PDF"
+          />
+          <PoFormField label="Customer PAN/VAT No." name="customerPanVatNumber" value={form.customerPanVatNumber} onField={setField} disabled={fieldsDisabled} arrowNav />
+          <PoFormField
+            label="Customer Email"
+            name="customerEmail"
+            type="email"
+            value={form.customerEmail}
+            onField={setField}
+            disabled={fieldsDisabled}
+            arrowNav
+            placeholder="Shown as EMAIL ADDRESS under CUSTOMER on the PDF — defaults to the organization's own email"
+          />
+          <PoFormField
+            label="Customer Phone"
+            name="customerPhone"
+            value={form.customerPhone}
+            onField={setField}
+            disabled={fieldsDisabled}
+            arrowNav
+            placeholder="Shown as PHONE under CUSTOMER on the PDF — defaults to the organization's own phone"
+          />
         </div>
       </div>
 
@@ -930,107 +724,38 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           </div>
         </div>
         <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className={labelCls}>PO Number</label>
-            <input
-              disabled={!isAdmin}
-              value={form.poNumber}
-              onChange={(e) => setForm({ ...form, poNumber: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Date</label>
-            <input
-              type="date"
-              disabled={!isAdmin}
-              value={form.poDate}
-              onChange={(e) => setForm({ ...form, poDate: e.target.value })}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>{po.purchaseType === "international" ? "GSTIN No." : "Vendor PAN/VAT No."}</label>
-            <input
-              disabled
-              value={po.vendor?.panVatNumber || "--"}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Incoterms</label>
-            <input
-              disabled={!isAdmin}
-              value={form.incoterms}
-              onChange={(e) => setForm({ ...form, incoterms: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="e.g. FOB, CIF"
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Tax %</label>
-            <input
-              type="number"
-              disabled={!isAdmin}
-              value={form.taxPercent}
-              onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Delivery Period</label>
-            <input
-              disabled={!isAdmin}
-              value={form.deliveryPeriod}
-              onChange={(e) => setForm({ ...form, deliveryPeriod: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="e.g. Within 6 weeks of submission of PO."
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Final Destination</label>
-            <input
-              disabled={!isAdmin}
-              value={form.finalDestination}
-              onChange={(e) => setForm({ ...form, finalDestination: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Currency</label>
-            <input
-              disabled={!isAdmin}
-              value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
-              onKeyDown={handleRowArrowNav}
-              placeholder="e.g. Indian Rupees — used in the PDF's Amount in Words line"
-              className={inputCls}
-            />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className={labelCls}>Payment Terms</label>
-            <textarea
-              disabled={!isAdmin}
-              rows={5}
-              value={form.paymentTerms}
-              onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
-              className={`${inputCls} resize-none`}
-            />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className={labelCls}>Notes</label>
-            <textarea
-              disabled={!isAdmin}
-              rows={5}
-              value={form.terms}
-              onChange={(e) => setForm({ ...form, terms: e.target.value })}
-              className={`${inputCls} resize-none`}
-            />
-          </div>
+          <PoFormField label="PO Number" name="poNumber" value={form.poNumber} onField={setField} disabled={fieldsDisabled} arrowNav />
+          <PoFormField label="Date" name="poDate" type="date" value={form.poDate} onField={setField} disabled={fieldsDisabled} />
+          <PoFormField
+            label={po.purchaseType === "international" ? "GSTIN No." : "Vendor PAN/VAT No."}
+            name="vendorPanVatNumber"
+            value={po.vendor?.panVatNumber || "--"}
+            onField={setField}
+            disabled
+          />
+          <PoFormField label="Incoterms" name="incoterms" value={form.incoterms} onField={setField} disabled={fieldsDisabled} arrowNav placeholder="e.g. FOB, CIF" />
+          <PoFormField label="Tax %" name="taxPercent" type="number" value={form.taxPercent} onField={setField} disabled={fieldsDisabled} />
+          <PoFormField
+            label="Delivery Period"
+            name="deliveryPeriod"
+            value={form.deliveryPeriod}
+            onField={setField}
+            disabled={fieldsDisabled}
+            arrowNav
+            placeholder="e.g. Within 6 weeks of submission of PO."
+          />
+          <PoFormField label="Final Destination" name="finalDestination" value={form.finalDestination} onField={setField} disabled={fieldsDisabled} arrowNav />
+          <PoFormField
+            label="Currency"
+            name="currency"
+            value={form.currency}
+            onField={setField}
+            disabled={fieldsDisabled}
+            arrowNav
+            placeholder="e.g. Indian Rupees — used in the PDF's Amount in Words line"
+          />
+          <PoFormField label="Payment Terms" name="paymentTerms" value={form.paymentTerms} onField={setField} disabled={fieldsDisabled} multiline rows={5} wrapperClass="sm:col-span-2 lg:col-span-3" />
+          <PoFormField label="Notes" name="terms" value={form.terms} onField={setField} disabled={fieldsDisabled} multiline rows={5} wrapperClass="sm:col-span-2 lg:col-span-3" />
         </div>
       </div>
 
@@ -1117,87 +842,19 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </thead>
             <tbody>
               {rows.map((row, rowIdx) => (
-                <tr key={row.key} data-row-key={row.key} className="border-b border-slate-200 last:border-b-0">
-                  <td className="px-2.5 py-2 text-left text-slate-500 bg-slate-50/60 border-r border-slate-200">{rowIdx + 1}</td>
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      value={row.itemName}
-                      onChange={(e) => updateRow(row.key, { itemName: e.target.value })}
-                      placeholder="Item name"
-                      className={cellInputCls}
-                    />
-                  </td>
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      value={row.hsnCode}
-                      onChange={(e) => updateRow(row.key, { hsnCode: e.target.value })}
-                      className={cellInputCls}
-                    />
-                  </td>
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      inputMode="decimal"
-                      value={row.quantity}
-                      onChange={(e) => updateRow(row.key, { quantity: cleanNumberText(e.target.value) })}
-                      className={cellInputCls}
-                    />
-                  </td>
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      value={row.unit}
-                      onChange={(e) => updateRow(row.key, { unit: e.target.value })}
-                      placeholder="e.g. pcs"
-                      className={cellInputCls}
-                    />
-                  </td>
-                  {customCols.map((col) => (
-                    <td key={col.key} className="p-0 border-r border-slate-200">
-                      <input
-                        disabled={!isAdmin || itemsBusy}
-                        value={row.custom[col.key] ?? ""}
-                        onChange={(e) => updateCustomValue(row.key, col.key, e.target.value)}
-                        className={cellInputCls}
-                      />
-                    </td>
-                  ))}
-                  <td className="p-0 border-r border-slate-200">
-                    <input
-                      disabled={!isAdmin || itemsBusy}
-                      inputMode="decimal"
-                      value={row.unitPrice}
-                      onChange={(e) => updateRow(row.key, { unitPrice: cleanNumberText(e.target.value) })}
-                      onKeyDown={(e) => {
-                        // Tab out of the very last cell starts a new row, like a spreadsheet.
-                        if (e.key === "Tab" && !e.shiftKey && row.key === lastRowKey && isAdmin) {
-                          e.preventDefault();
-                          addRow();
-                        }
-                      }}
-                      className={cellInputCls}
-                    />
-                  </td>
-                  <td className="px-2.5 py-2 font-medium text-left text-slate-800 bg-slate-50/60 border-r border-slate-200">
-                    {rowTotal(row) > 0 ? formatCost(rowTotal(row)) : ""}
-                  </td>
-                  <td className="px-1 py-1 text-center">
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => removeRow(row.key)}
-                        disabled={itemsBusy}
-                        tabIndex={-1}
-                        title="Remove row"
-                        className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <PoLineItemRow
+                  key={row.key}
+                  row={row}
+                  index={rowIdx}
+                  customCols={customCols}
+                  isAdmin={isAdmin}
+                  itemsBusy={itemsBusy}
+                  isLast={row.key === lastRowKey}
+                  onUpdate={updateRow}
+                  onUpdateCustom={updateCustomValue}
+                  onRemove={removeRow}
+                  onAddRow={addRow}
+                />
               ))}
             </tbody>
             <tfoot>
@@ -1313,140 +970,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         </div>
       )}
 
-      <div className={sectionCardCls}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-[13px] font-semibold text-slate-900">Specification Tables</h3>
-            <p className="mt-0.5 text-[11px] text-slate-400">
-              Shown on the PDF right above Payment Terms (e.g. "Technical Specification", "Electricity Requirement", "Electrical Motor data...") — a table with no title or no rows doesn't appear at all. Add as many as you need, each with its own columns.
-            </p>
-          </div>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={addSpecTable}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 w-fit"
-            >
-              <Plus size={13} /> Add Table
-            </button>
-          )}
-        </div>
-        {specTables.length === 0 ? (
-          <p className="text-[12px] text-slate-400">No spec tables added.</p>
-        ) : (
-          <div className="space-y-4">
-            {specTables.map((table, tIdx) => (
-              <div key={tIdx} className="p-3 border rounded-lg border-slate-200">
-                <div className="flex items-start gap-2 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <label className={labelCls}>Table Title</label>
-                    <input
-                      disabled={!isAdmin}
-                      value={table.title}
-                      onChange={(e) => updateSpecTableTitle(tIdx, e.target.value)}
-                      placeholder="e.g. Technical Specification"
-                      className={inputCls}
-                    />
-                  </div>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => removeSpecTable(tIdx)}
-                      title="Remove table"
-                      className="flex-shrink-0 p-1.5 mt-5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-
-                <label className={labelCls}>Columns</label>
-                <div className="flex items-start gap-1.5 mb-2">
-                  {table.columns.map((col, cIdx) => (
-                    <div key={cIdx} className="flex items-center flex-1 min-w-0 gap-1">
-                      <input
-                        disabled={!isAdmin}
-                        value={col}
-                        onChange={(e) => updateSpecColumn(tIdx, cIdx, e.target.value)}
-                        className={`${inputCls} font-medium`}
-                      />
-                      {isAdmin && table.columns.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeSpecColumn(tIdx, cIdx)}
-                          title="Remove column"
-                          className="flex-shrink-0 p-1 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => addSpecColumn(tIdx)}
-                      title="Add column"
-                      className="flex-shrink-0 p-2 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  )}
-                </div>
-
-                <label className={labelCls}>Rows</label>
-                <div className="space-y-1.5">
-                  {table.rows.map((row, rIdx) => (
-                    <div key={rIdx} data-arrow-row className="flex items-center gap-1.5">
-                      {table.columns.map((col, cIdx) => (
-                        <input
-                          key={cIdx}
-                          disabled={!isAdmin}
-                          value={row[cIdx] ?? ""}
-                          onChange={(e) => updateSpecCell(tIdx, rIdx, cIdx, e.target.value)}
-                          onKeyDown={handleRowArrowNav}
-                          placeholder={col}
-                          className={`${inputCls} flex-1 min-w-0`}
-                        />
-                      ))}
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => removeSpecRow(tIdx, rIdx)}
-                          title="Remove row"
-                          className="flex-shrink-0 p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => addSpecRow(tIdx)}
-                    className="flex items-center gap-1 mt-2 text-[11px] font-medium text-blue-700 hover:underline"
-                  >
-                    <Plus size={12} /> Add Row
-                  </button>
-                )}
-
-                <div className="mt-3">
-                  <label className={labelCls}>Footer Note (optional)</label>
-                  <input
-                    disabled={!isAdmin}
-                    value={table.footerNote}
-                    onChange={(e) => updateSpecTableFooter(tIdx, e.target.value)}
-                    placeholder="e.g. Motors Make – Havells (RPM 1440)"
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <PoSpecTablesEditor tables={specTables} setTables={setSpecTables} isAdmin={isAdmin} />
 
       <div className={sectionCardCls}>
         <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Status History</h3>

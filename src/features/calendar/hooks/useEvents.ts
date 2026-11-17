@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
-import { getEvents, createEvent, deleteEvent } from "../api/events.api";
+import { getEvents, createEvent, deleteEvent, copyEvents } from "../api/events.api";
 
 export function useEvents() {
   const wsId = useOrganizationId();
@@ -19,6 +19,19 @@ export function useCreateEvent() {
     mutationFn: createEvent,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.events(wsId) });
+    },
+  });
+}
+
+export function useCopyEvents() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: copyEvents,
+    onSuccess: (_result, vars) => {
+      // The destination organizations' calendars just changed.
+      for (const id of vars.targetOrganizationIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.events(id) });
+      }
     },
   });
 }

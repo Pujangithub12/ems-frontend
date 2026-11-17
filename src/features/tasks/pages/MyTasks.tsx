@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
@@ -45,6 +45,9 @@ import {
   MessageSquare,
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
+import TaskListRow from "../components/TaskListRow";
+import { useStableCallback } from "../hooks/useStableCallback";
+import TaskProgressUpdates from "../components/TaskProgressUpdates";
 import {
   formatDate,
   formatLongDate,
@@ -1014,6 +1017,8 @@ const MyTasks: React.FC = () => {
     );
   };
 
+  const deferredSearch = useDeferredValue(searchTerm);
+
   const filteredTasks = useMemo(
     () =>
       tasks.filter((task) => {
@@ -1025,7 +1030,7 @@ const MyTasks: React.FC = () => {
         if (task.status === "completed") return false;
         const matchesSearch = task.title
           .toLowerCase()
-          .includes(searchTerm.toLowerCase());
+          .includes(deferredSearch.toLowerCase());
         const matchesProject = filterProjectName
           ? (task.project?.name || task.projectName || "")
               .toLowerCase()
@@ -1040,7 +1045,7 @@ const MyTasks: React.FC = () => {
           : true;
         return matchesSearch && matchesProject && matchesPriority && matchesStatus;
       }),
-    [tasks, user, searchTerm, filterProjectName, filterPriority, filterStatus],
+    [tasks, user, deferredSearch, filterProjectName, filterPriority, filterStatus],
   );
 
   type ProjectGroup = {
@@ -1091,6 +1096,12 @@ const MyTasks: React.FC = () => {
     projectGroups.every((g) => collapsedProjects.has(g.key));
   const toggleAllGroups = () =>
     allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
+
+  // Stable wrappers so the memoised task rows aren't re-rendered by every unrelated state change.
+  const onRowStatusChange = useStableCallback((taskId: number, status: string) => { void handleStatusChange(taskId, status); });
+  const onRowOpen = useStableCallback((task: Task) => openPopup(task));
+  const onRowShowFeedback = useStableCallback((taskId: number) => { void handleShowTaskFeedback(taskId); });
+  const onRowDelete = useStableCallback((taskId: number) => handleDeleteClick(taskId));
 
   return (
     <>
@@ -1300,131 +1311,17 @@ const MyTasks: React.FC = () => {
 
                   {!isCollapsed && (
                     <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
-                      {group.tasks.map((task) => {
-                        const overdue = isOverdue(task.dueDate, task.status);
-                        const completed = task.status === "completed";
-                        const statusColor =
-                          task.status === "completed"
-                            ? "text-emerald-600"
-                            : task.status === "in_progress"
-                              ? "text-amber-600"
-                              : task.status === "on_hold"
-                                ? "text-orange-600"
-                                : "text-slate-500";
-                        return (
-                          <div
-                            key={task.id}
-                            className={`group flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50/60 transition-colors ${
-                              completed ? "opacity-60" : ""
-                            }`}
-                          >
-                            <button
-                              onClick={() =>
-                                handleStatusChange(
-                                  task.id,
-                                  completed ? "to_do" : "completed",
-                                )
-                              }
-                              className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                                completed
-                                  ? "bg-emerald-600 border-emerald-600"
-                                  : "border-slate-300 hover:border-blue-900"
-                              }`}
-                              title="Mark as completed"
-                            >
-                              {completed && (
-                                <Check
-                                  className="w-3 h-3 text-white"
-                                  strokeWidth={3}
-                                />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => openPopup(task)}
-                              className="flex-1 min-w-0 text-left"
-                            >
-                              <p
-                                className={`text-[13px] font-medium text-slate-900 truncate ${
-                                  completed ? "line-through" : ""
-                                }`}
-                              >
-                                {task.title}
-                              </p>
-                              <p
-                                className={`flex items-center gap-1 text-[11px] mt-0.5 ${
-                                  overdue ? "text-red-600" : "text-slate-500"
-                                }`}
-                              >
-                                <Clock className="w-3 h-3" /> Due{" "}
-                                {formatDate(task.dueDate)}
-                                {daysRemainingLabel(task.dueDate, task.status) && (
-                                  <span className="font-medium text-red-600">
-                                    {" "}
-                                    · {daysRemainingLabel(task.dueDate, task.status)}
-                                  </span>
-                                )}
-                                {task.createdBy && (
-                                  <span className="text-slate-400">
-                                    {" "}
-                                    · Assigned by {task.createdBy.fullName}
-                                  </span>
-                                )}
-                              </p>
-                            </button>
-                            <div className="flex-shrink-0">
-                              <StatusPill type="priority" value={task.priority} />
-                            </div>
-                            <div className="relative flex-shrink-0 hidden sm:block">
-                              <select
-                                value={task.status}
-                                onChange={(e) =>
-                                  handleStatusChange(task.id, e.target.value)
-                                }
-                                className={`text-[12px] font-medium bg-transparent outline-none appearance-none cursor-pointer text-right pr-4 ${statusColor}`}
-                              >
-                                <option value="to_do">To Do</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="on_hold">On Hold</option>
-                                <option value="completed">Completed</option>
-                              </select>
-                              <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-                            </div>
-                            <div className="flex-shrink-0 -space-x-1 flex">
-                              {task.assignedUsers.length === 0 ? (
-                                <span className="text-[11px] text-slate-400">
-                                  Unassigned
-                                </span>
-                              ) : (
-                                task.assignedUsers.slice(0, 3).map((u) => (
-                                  <div
-                                    key={u.id}
-                                    className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
-                                    title={u.fullName}
-                                  >
-                                    {u.fullName.charAt(0)}
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                            <div className="items-center flex-shrink-0 hidden gap-1 sm:flex">
-                              <button
-                                onClick={() => handleShowTaskFeedback(task.id)}
-                                className="p-1.5 transition-colors rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50"
-                                title="Show Feedback"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(task.id)}
-                                className="p-1.5 transition-colors rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                title="Delete task"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {group.tasks.map((task) => (
+                        <TaskListRow
+                          key={task.id}
+                          task={task}
+                          variant="my"
+                          onStatusChange={onRowStatusChange}
+                          onOpen={onRowOpen}
+                          onShowFeedback={onRowShowFeedback}
+                          onDelete={onRowDelete}
+                        />
+                      ))}
                       <button
                         onClick={() =>
                           openAddTaskModal(group.projectId ?? undefined)
@@ -2021,7 +1918,7 @@ const MyTasks: React.FC = () => {
           <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200 max-h-[80vh]">
             <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
               <div>
-                <Eyebrow>Sub-Task Updates</Eyebrow>
+                <Eyebrow>Progress &amp; Feedback</Eyebrow>
                 <h3 className="font-semibold text-[15px] text-slate-900 mt-0.5">
                   {feedbackTask?.title || "Updates on this task's sub-tasks"}
                 </h3>
@@ -2034,6 +1931,14 @@ const MyTasks: React.FC = () => {
               </button>
             </div>
             <div className="flex-1 p-5 space-y-3 overflow-y-auto">
+              {feedbackPopupTaskId != null && (
+                <TaskProgressUpdates
+                  taskId={feedbackPopupTaskId}
+                  canWrite={!!feedbackTask?.assignedUsers.some((u) => Number(u.id) === Number(user?.id))}
+                  canGiveFeedback={canGiveFeedback}
+                />
+              )}
+              <SectionLabel className="pt-2">Sub-task updates</SectionLabel>
               {loadingTaskFeedback ? (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
