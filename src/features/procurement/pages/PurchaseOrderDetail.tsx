@@ -7,6 +7,7 @@ import PdfPreviewModal from "../components/PdfPreviewModal";
 import PoFormField from "../components/PoFormField";
 import PoLineItemRow from "../components/PoLineItemRow";
 import PoSpecTablesEditor, { specTablesFromPo, type SpecTableForm } from "../components/PoSpecTablesEditor";
+import { useColumnWidths } from "../hooks/useColumnWidths";
 import { preloadPdfFonts } from "../pdf/pdfFonts";
 import { formatCost, toNumber } from "../../../lib/currency";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType } from "../../../types";
@@ -329,6 +330,18 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const baselineCols = useMemo<CustomCol[]>(() => (po.itemColumns ?? []).map((c) => ({ key: c.key, label: c.label })), [po.itemColumns]);
   const baselineColsSig = useMemo(() => colsSig(baselineCols), [baselineCols]);
   const [customCols, setCustomCols] = useState<CustomCol[]>(baselineCols);
+  const colIds = useMemo(() => ["sn", "item", "hsn", "qty", "unit", ...customCols.map((c) => c.key), "unitPrice", "total", "actions"], [customCols]);
+  const { tableRef, widthOf, tableMinWidth, startResize, resetWidth } = useColumnWidths(colIds);
+  const resizeHandle = (id: string) => (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      title="Drag to resize · double-click to reset"
+      onPointerDown={(e) => startResize(id, e)}
+      onDoubleClick={() => resetWidth(id)}
+      className="absolute top-0 right-0 z-10 w-2 h-full -mr-1 cursor-col-resize touch-none hover:bg-blue-400/50 active:bg-blue-500/60"
+    />
+  );
   const [itemsBusy, setItemsBusy] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
 
@@ -809,16 +822,21 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           </div>
         )}
         <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="w-full text-[12px] border-collapse">
+          <table ref={tableRef} className="w-full text-[12px] border-collapse" style={{ tableLayout: "fixed", minWidth: tableMinWidth }}>
+            <colgroup>
+              {colIds.map((id) => (
+                <col key={id} data-col={id} style={{ width: widthOf(id) }} />
+              ))}
+            </colgroup>
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wide">
-                <th className="w-16 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">S.N.</th>
-                <th className="px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Item</th>
-                <th className="w-32 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">HSN Code <span className="normal-case text-slate-400">(optional)</span></th>
-                <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Quantity</th>
-                <th className="w-28 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">S.N.{resizeHandle("sn")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Item{resizeHandle("item")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">HSN Code <span className="normal-case text-slate-400">(optional)</span>{resizeHandle("hsn")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Quantity{resizeHandle("qty")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit{resizeHandle("unit")}</th>
                 {customCols.map((col) => (
-                  <th key={col.key} data-col-key={col.key} className="w-40 p-0 font-medium text-left border-b border-r border-slate-200">
+                  <th key={col.key} data-col-key={col.key} className="relative p-0 font-medium text-left border-b border-r border-slate-200">
                     <div className="flex items-center">
                       <input
                         disabled={!isAdmin || itemsBusy}
@@ -833,11 +851,12 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                         </button>
                       )}
                     </div>
+                    {resizeHandle(col.key)}
                   </th>
                 ))}
-                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit Price</th>
-                <th className="w-36 px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Total Price</th>
-                <th className="w-16 px-2.5 py-2 font-medium text-center border-b border-slate-200">Actions</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit Price{resizeHandle("unitPrice")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Total Price{resizeHandle("total")}</th>
+                <th className="px-2.5 py-2 font-medium text-center border-b border-slate-200">Actions</th>
               </tr>
             </thead>
             <tbody>
