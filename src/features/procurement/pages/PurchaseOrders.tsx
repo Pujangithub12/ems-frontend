@@ -6,6 +6,7 @@ import {
   Loader2,
   AlertCircle,
   ChevronDown,
+  Download,
   Plus,
   Pencil,
   ShieldCheck,
@@ -23,6 +24,8 @@ import VendorField from "../../inventory/components/VendorField";
 import VendorFormModal from "../../inventory/components/VendorFormModal";
 import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 import AccessManagementModal from "../components/AccessManagementModal";
+import { formatCost } from "../../../lib/currency";
+import { purchaseOrderTotals } from "../utils/poLineItems";
 import { PurchaseOrderDetailModal } from "./PurchaseOrderDetail";
 
 const STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; label: string }> = {
@@ -36,30 +39,6 @@ const STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; label
 const PURCHASE_TYPE_STYLES: Record<PurchaseType, { bg: string; fg: string; label: string }> = {
   local: { bg: "#f1f5f9", fg: "#475569", label: "Local" },
   international: { bg: "#e0e7ff", fg: "#3730a3", label: "International" },
-};
-
-const StatusPill: React.FC<{ status: PurchaseOrderStatus }> = ({ status }) => {
-  const s = STATUS_STYLES[status];
-  return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{ background: s.bg, color: s.fg }}
-    >
-      {s.label}
-    </span>
-  );
-};
-
-const PurchaseTypePill: React.FC<{ type: PurchaseType }> = ({ type }) => {
-  const s = PURCHASE_TYPE_STYLES[type];
-  return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
-      style={{ background: s.bg, color: s.fg }}
-    >
-      {s.label}
-    </span>
-  );
 };
 
 /** Custom dropdown (not a native <select>) so the option list can be capped to 5 visible rows
@@ -245,6 +224,7 @@ const PurchaseOrdersPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null);
   const [accessOpen, setAccessOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -271,6 +251,36 @@ const PurchaseOrdersPage: React.FC = () => {
     });
     return result;
   }, [orders, search, statusFilter, typeFilter, projectFilter, dateSort]);
+
+  /** Downloads the table as it is now shown (current search / filters / sort) as an .xlsx file. The
+   * (large) xlsx library is only loaded here, when someone actually exports. */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const header = ["PO #", "Project", "Vendor", "Items", "Created", "Sub Total", "VAT", "Grand Total"];
+      const data = filtered.map((o) => {
+        const totals = purchaseOrderTotals(o);
+        return [
+          o.poNumber || `#${o.id}`,
+          o.project?.name || "",
+          o.vendor?.name || "",
+          o.items.map((i) => i.itemName).join(", "),
+          new Date(o.createdAt).toLocaleDateString(),
+          totals.subTotal,
+          totals.vat,
+          totals.grandTotal,
+        ];
+      });
+      const sheet = XLSX.utils.aoa_to_sheet([header, ...data]);
+      sheet["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "Purchase Orders");
+      XLSX.writeFile(workbook, "purchase-orders.xlsx");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (ordersQuery.isLoading) {
     return (
@@ -354,6 +364,14 @@ const PurchaseOrdersPage: React.FC = () => {
                 >
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 </button>
+                <button
+                  onClick={exportExcel}
+                  disabled={exporting || filtered.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                  title="Export the table to Excel"
+                >
+                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export
+                </button>
                 {user?.role === "super_admin" && (
                 <button
                   onClick={() => setAccessOpen(true)}
@@ -395,15 +413,18 @@ const PurchaseOrdersPage: React.FC = () => {
                         <th className="px-3 py-2 font-medium text-left">PO #</th>
                         <th className="px-3 py-2 font-medium text-left">Project</th>
                         <th className="px-3 py-2 font-medium text-left">Vendor</th>
-                        <th className="px-3 py-2 font-medium text-left">Purchase Type</th>
                         <th className="px-3 py-2 font-medium text-left">Items</th>
-                        <th className="px-3 py-2 font-medium text-left">Status</th>
                         <th className="px-3 py-2 font-medium text-left">Created</th>
+                        <th className="px-3 py-2 font-medium text-right">Sub Total</th>
+                        <th className="px-3 py-2 font-medium text-right">VAT</th>
+                        <th className="px-3 py-2 font-medium text-right">Grand Total</th>
                         <th className="px-3 py-2 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((o) => (
+                      {filtered.map((o) => {
+                        const totals = purchaseOrderTotals(o);
+                        return (
                         <tr
                           key={o.id}
                           onClick={() => setSelectedPoId(o.id)}
@@ -412,13 +433,14 @@ const PurchaseOrdersPage: React.FC = () => {
                           <td className="px-3 py-3 font-medium text-slate-800">{o.poNumber || `#${o.id}`}</td>
                           <td className="px-3 py-3 text-slate-600">{o.project?.name || "--"}</td>
                           <td className="px-3 py-3 text-slate-600">{o.vendor?.name || "--"}</td>
-                          <td className="px-3 py-3"><PurchaseTypePill type={o.purchaseType} /></td>
                           <td className="px-3 py-3 text-slate-600">
                             {o.items[0]?.itemName}
                             {o.items.length > 1 ? ` +${o.items.length - 1} more` : ""}
                           </td>
-                          <td className="px-3 py-3"><StatusPill status={o.status} /></td>
                           <td className="px-3 py-3 text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</td>
+                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatCost(totals.subTotal)}</td>
+                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatCost(totals.vat)}</td>
+                          <td className="px-3 py-3 font-semibold text-right text-slate-900 whitespace-nowrap">{formatCost(totals.grandTotal)}</td>
                           <td className="px-3 py-3 text-right">
                             {Number(o.createdBy?.id) === Number(user?.id) && (
                               <button
@@ -434,7 +456,8 @@ const PurchaseOrdersPage: React.FC = () => {
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
