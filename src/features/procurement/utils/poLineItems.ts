@@ -64,6 +64,21 @@ export const cleanNumberText = (s: string) => {
   return dot === -1 ? t : t.slice(0, dot + 1) + t.slice(dot + 1).replace(/\./g, "");
 };
 
+/** Sub total / VAT / grand total of a saved PO, the same way the form and the PDF work them out:
+ * VAT is the PO's Tax % charged only on lines marked taxable. */
+export const purchaseOrderTotals = (po: Pick<PurchaseOrder, "items" | "taxPercent">) => {
+  let subTotal = 0;
+  let taxableTotal = 0;
+  for (const item of po.items) {
+    const amount = (Number(item.quantity) || 0) * (item.unitPrice != null ? toNumber(item.unitPrice) : 0);
+    subTotal += amount;
+    if (item.taxable !== false) taxableTotal += amount;
+  }
+  const pct = po.taxPercent != null ? toNumber(po.taxPercent) : 0;
+  const vat = pct > 0 ? taxableTotal * (pct / 100) : 0;
+  return { subTotal, vat, grandTotal: subTotal + vat };
+};
+
 export const rowTotal = (r: ItemRow) => {
   const q = parseFloat(r.quantity);
   const p = parseFloat(r.unitPrice);
