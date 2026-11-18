@@ -83,6 +83,17 @@ const PoLineItemRow = React.memo(function PoLineItemRow({ row, index, customCols
           className={cellInputCls}
         />
       </td>
+      <td className="p-0 text-center border-r border-slate-200">
+        <input
+          type="checkbox"
+          checked={row.taxable}
+          disabled={disabled}
+          onChange={(e) => onUpdate(row.key, { taxable: e.target.checked })}
+          title={row.taxable ? "VAT applies to this item" : "VAT does not apply to this item"}
+          aria-label="VAT applies"
+          className="w-4 h-4 align-middle accent-blue-900"
+        />
+      </td>
       <td className="px-2.5 py-2 font-medium text-left text-slate-800 bg-slate-50/60 border-r border-slate-200">
         {total > 0 ? formatCost(total) : ""}
       </td>

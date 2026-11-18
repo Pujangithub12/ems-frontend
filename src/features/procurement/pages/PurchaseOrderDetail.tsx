@@ -19,7 +19,8 @@ import {
   useDeletePurchaseOrderItemMutation,
   useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
-import { numOrUndef, primaryBtnCls, sectionCardCls } from "../utils/poFormUi";
+import { useProjects } from "../../projects/hooks/useProjects";
+import { inputCls, labelCls, numOrUndef, primaryBtnCls, sectionCardCls } from "../utils/poFormUi";
 import {
   blankRow,
   colsSig,
@@ -274,6 +275,8 @@ export const PurchaseOrderDetailModal: React.FC<{ poId: number; onClose: () => v
 
 type OverviewForm = {
   poNumber: string;
+  /** "" = no project. */
+  projectId: string;
   poDate: string;
   paymentTerms: string;
   incoterms: string;
@@ -290,6 +293,7 @@ type OverviewForm = {
 
 const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   poNumber: po.poNumber || "",
+  projectId: po.project?.id != null ? String(po.project.id) : po.projectId != null ? String(po.projectId) : "",
   poDate: po.poDate ? po.poDate.slice(0, 10) : new Date().toLocaleDateString("en-CA"),
   paymentTerms: po.paymentTerms || "",
   incoterms: po.incoterms || "",
@@ -313,6 +317,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const ordersQuery = useOrganizationPurchaseOrdersQuery();
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
+  const { data: projects = [] } = useProjects();
   // One stable handler for every text field, so the memoised fields below only re-render when their own value changes.
   const setField = useCallback((name: string, value: string) => setForm((prev) => ({ ...prev, [name]: value })), []);
   /** Free-form spec tables (PDF, right above Payment Terms) — a table is dropped from the PDF
@@ -334,7 +339,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const baselineCols = useMemo<CustomCol[]>(() => (po.itemColumns ?? []).map((c) => ({ key: c.key, label: c.label })), [po.itemColumns]);
   const baselineColsSig = useMemo(() => colsSig(baselineCols), [baselineCols]);
   const [customCols, setCustomCols] = useState<CustomCol[]>(baselineCols);
-  const colIds = useMemo(() => ["sn", "item", "hsn", "qty", "unit", ...customCols.map((c) => c.key), "unitPrice", "total", "actions"], [customCols]);
+  const colIds = useMemo(() => ["sn", "item", "hsn", "qty", "unit", ...customCols.map((c) => c.key), "unitPrice", "vat", "total", "actions"], [customCols]);
   const { tableRef, widthOf, tableMinWidth, startResize, resetWidth } = useColumnWidths(colIds);
   const resizeHandle = (id: string) => (
     <span
@@ -472,6 +477,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
               itemName: name,
               itemId: name === original.itemName ? original.itemId ?? null : null,
               hsnCode: row.hsnCode.trim() || null,
+              taxable: row.taxable,
               customValues: customOf(row),
               quantity: qty,
               unit: row.unit.trim() || null,
@@ -488,7 +494,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           // eslint-disable-next-line no-await-in-loop
           await addItemMutation.mutateAsync({
             id: po.id,
-            input: { itemName: name, itemId: null, hsnCode: row.hsnCode.trim() || null, customValues: customOf(row), quantity: qty, unit: row.unit.trim() || null, unitPrice: price },
+            input: { itemName: name, itemId: null, hsnCode: row.hsnCode.trim() || null, taxable: row.taxable, customValues: customOf(row), quantity: qty, unit: row.unit.trim() || null, unitPrice: price },
           });
         }
       }
@@ -593,6 +599,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         id: po.id,
         input: {
           poNumber: trimmedPoNumber,
+          projectId: form.projectId ? Number(form.projectId) : null,
           poDate: form.poDate || null,
           paymentTerms: form.paymentTerms.trim() || null,
           incoterms: form.incoterms.trim() || null,
@@ -655,7 +662,9 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   // VAT comes from the Tax % field above (live, even before it's saved); with no Tax % there is no VAT row.
   const taxPct = parseFloat(form.taxPercent);
   const vatPct = Number.isFinite(taxPct) && taxPct > 0 ? taxPct : 0;
-  const vatAmount = vatPct > 0 ? itemsTotal * (vatPct / 100) : 0;
+  // VAT is charged only on lines whose VAT box is ticked; the others still count toward the total.
+  const taxableTotal = useMemo(() => rows.reduce((sum, r) => (r.taxable ? sum + rowTotal(r) : sum), 0), [rows]);
+  const vatAmount = vatPct > 0 ? taxableTotal * (vatPct / 100) : 0;
   const grandTotal = itemsTotal + vatAmount;
   const lastRowKey = rows.length ? rows[rows.length - 1]!.key : null;
   const fieldsDisabled = !isAdmin;
@@ -743,6 +752,22 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <PoFormField label="PO Number" name="poNumber" value={form.poNumber} onField={setField} disabled={fieldsDisabled} arrowNav />
           <PoFormField label="Date" name="poDate" type="date" value={form.poDate} onField={setField} disabled={fieldsDisabled} />
+          <div>
+            <label className={labelCls}>Project</label>
+            <select
+              value={form.projectId}
+              onChange={(e) => setField("projectId", e.target.value)}
+              disabled={fieldsDisabled}
+              className={inputCls}
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <PoFormField
             label={po.purchaseType === "international" ? "GSTIN No." : "Vendor PAN/VAT No."}
             name="vendorPanVatNumber"
@@ -859,6 +884,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   </th>
                 ))}
                 <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Unit Price{resizeHandle("unitPrice")}</th>
+                <th className="relative px-2.5 py-2 font-medium text-center border-b border-r border-slate-200" title="Tick the items that VAT applies to">VAT{resizeHandle("vat")}</th>
                 <th className="relative px-2.5 py-2 font-medium text-left border-b border-r border-slate-200">Total Price{resizeHandle("total")}</th>
                 <th className="px-2.5 py-2 font-medium text-center border-b border-slate-200">Actions</th>
               </tr>
@@ -882,21 +908,24 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200">
-                <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
+                <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Total</td>
                 <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(itemsTotal)}</td>
                 <td />
               </tr>
               {vatPct > 0 && (
                 <tr className="bg-slate-50">
-                  <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">
+                  <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">
                     Value Added Tax @ {vatPct}%
+                    {Math.abs(taxableTotal - itemsTotal) > 0.005 && (
+                      <span className="ml-1 font-normal text-slate-500">on {formatCost(taxableTotal)} (VAT-applicable items)</span>
+                    )}
                   </td>
                   <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(vatAmount)}</td>
                   <td />
                 </tr>
               )}
               <tr className="bg-slate-100 border-t border-slate-300">
-                <td colSpan={6 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-bold text-slate-800 border-r border-slate-200">Grand Total</td>
+                <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-bold text-slate-800 border-r border-slate-200">Grand Total</td>
                 <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(grandTotal)}</td>
                 <td />
               </tr>

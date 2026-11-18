@@ -449,7 +449,14 @@ const PurchaseOrdersPage: React.FC = () => {
       )}
 
       {selectedPoId != null && (
-        <PurchaseOrderDetailModal poId={selectedPoId} onClose={() => setSelectedPoId(null)} />
+        <PurchaseOrderDetailModal
+          poId={selectedPoId}
+          onClose={() => {
+            setSelectedPoId(null);
+            // The PO may have been edited inside the popup (project, status, items...) — reload the table.
+            void ordersQuery.refetch();
+          }}
+        />
       )}
 
       {accessOpen && <AccessManagementModal page="purchase-orders" onClose={() => setAccessOpen(false)} />}

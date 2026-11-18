@@ -11,6 +11,8 @@ export type ItemRow = {
   quantity: string;
   unit: string;
   unitPrice: string;
+  /** Whether VAT applies to this line. */
+  taxable: boolean;
   custom: Record<string, string>;
 };
 
@@ -27,11 +29,12 @@ export const rowFromItem = (item: PurchaseOrder["items"][number]): ItemRow => ({
   quantity: String(item.quantity),
   unit: item.unit || "",
   unitPrice: item.unitPrice != null ? String(toNumber(item.unitPrice)) : "",
+  taxable: item.taxable !== false,
   custom: { ...(item.customValues ?? {}) },
 });
 
 let newRowSeq = 0;
-export const blankRow = (): ItemRow => ({ key: `n${++newRowSeq}`, id: null, itemName: "", hsnCode: "", quantity: "", unit: "", unitPrice: "", custom: {} });
+export const blankRow = (): ItemRow => ({ key: `n${++newRowSeq}`, id: null, itemName: "", hsnCode: "", quantity: "", unit: "", unitPrice: "", taxable: true, custom: {} });
 
 export const rowIsBlank = (r: ItemRow) =>
   !r.itemName.trim() && !r.hsnCode.trim() && !r.quantity.trim() && !r.unit.trim() && !r.unitPrice.trim() && Object.values(r.custom).every((v) => !v.trim());
@@ -45,6 +48,7 @@ export const rowSig = (r: ItemRow) =>
     r.quantity.trim(),
     r.unit.trim(),
     r.unitPrice.trim(),
+    r.taxable,
     Object.entries(r.custom)
       .map(([k, v]) => [k, v.trim()] as const)
       .filter(([, v]) => v)

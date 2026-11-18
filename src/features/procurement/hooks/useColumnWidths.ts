@@ -12,6 +12,7 @@ export const DEFAULT_COL_WIDTHS: Record<string, number> = {
   qty: 112,
   unit: 112,
   unitPrice: 144,
+  vat: 72,
   total: 144,
   actions: 64,
 };

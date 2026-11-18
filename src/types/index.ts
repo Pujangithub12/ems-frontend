@@ -248,6 +248,8 @@ export type PurchaseOrderItem = {
   description?: string | null;
   /** HS (Harmonized System) customs code for the PO PDF's line-item table — usually only filled in for international purchases. */
   hsnCode?: string | null;
+  /** Whether VAT applies to this line (default true) — the PO's Tax % is only charged on taxable lines. */
+  taxable?: boolean;
   /** Values for the PO's custom columns (PurchaseOrder.itemColumns), keyed by column key. */
   customValues?: Record<string, string> | null;
 };
