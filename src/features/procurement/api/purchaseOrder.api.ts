@@ -23,6 +23,8 @@ export interface AddPurchaseOrderItemInput {
   itemName: string;
   itemId?: number | null;
   hsnCode?: string | null;
+  /** Whether VAT applies to this line (server default: true). */
+  taxable?: boolean;
   customValues?: Record<string, string> | null;
   quantity: number;
   unit?: string | null;
@@ -44,6 +46,8 @@ export interface EditPurchaseOrderItemInput {
   itemName: string;
   itemId?: number | null;
   hsnCode?: string | null;
+  /** Whether VAT applies to this line (server default: true). */
+  taxable?: boolean;
   customValues?: Record<string, string> | null;
   quantity: number;
   unit?: string | null;
@@ -85,6 +89,8 @@ export async function createPurchaseOrder(
 
 export interface PurchaseOrderInput {
   poNumber?: string;
+  /** Project to link the PO to, or null for none. */
+  projectId?: number | null;
   poDate?: string | null;
   paymentTerms?: string | null;
   incoterms?: string | null;
