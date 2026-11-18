@@ -275,6 +275,10 @@ export type ProformaInvoiceItem = {
 
 export type ProformaInvoice = {
   id: number;
+  /** Who created it. Plain admins only see their own unless a super admin gave them access to the whole page. */
+  createdById?: number | null;
+  /** The caller's access on list rows: view is a read-only share. */
+  myAccess?: "view" | "edit";
   piNumber?: string | null;
   piDate?: string | null;
   currency: string;
@@ -506,6 +510,10 @@ export type PurchaseOrder = {
   purchaseType: PurchaseType;
   status: PurchaseOrderStatus;
   createdBy?: { id: number; fullName: string } | null;
+  /** The caller's access on list rows: view is a read-only share. */
+  myAccess?: "view" | "edit";
+  /** Only on the detail response: what the caller may do with this PO. */
+  access?: { canEdit: boolean };
   vendor?: Vendor | null;
   vendorId?: number | null;
   project?: { id: number; name: string } | null;
