@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Plus,
   Pencil,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
@@ -21,6 +22,7 @@ import { useProjects } from "../../projects/hooks/useProjects";
 import VendorField from "../../inventory/components/VendorField";
 import VendorFormModal from "../../inventory/components/VendorFormModal";
 import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
+import AccessManagementModal from "../components/AccessManagementModal";
 import { PurchaseOrderDetailModal } from "./PurchaseOrderDetail";
 
 const STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; label: string }> = {
@@ -242,6 +244,7 @@ const PurchaseOrdersPage: React.FC = () => {
   const [dateSort, setDateSort] = useState<"newest" | "oldest">("newest");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null);
+  const [accessOpen, setAccessOpen] = useState(false);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -351,6 +354,15 @@ const PurchaseOrdersPage: React.FC = () => {
                 >
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 </button>
+                {user?.role === "super_admin" && (
+                <button
+                  onClick={() => setAccessOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="Manage who can access this page"
+                >
+                  <ShieldCheck size={14} /> Access
+                </button>
+              )}
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
@@ -408,7 +420,7 @@ const PurchaseOrdersPage: React.FC = () => {
                           <td className="px-3 py-3"><StatusPill status={o.status} /></td>
                           <td className="px-3 py-3 text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</td>
                           <td className="px-3 py-3 text-right">
-                            {o.createdBy?.id === user?.id && (
+                            {Number(o.createdBy?.id) === Number(user?.id) && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -439,6 +451,8 @@ const PurchaseOrdersPage: React.FC = () => {
       {selectedPoId != null && (
         <PurchaseOrderDetailModal poId={selectedPoId} onClose={() => setSelectedPoId(null)} />
       )}
+
+      {accessOpen && <AccessManagementModal page="purchase-orders" onClose={() => setAccessOpen(false)} />}
 
     </div>
   );

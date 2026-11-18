@@ -111,8 +111,6 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   // Finance can edit a PO while reviewing it for approval (see PurchaseOrderController.updatePurchaseOrder's
   // inline bypass) without holding the broader "projects.procurement" permission admins get.
-  const canEditHeader = isAdmin || user?.role === "finance";
-
   const [headerError, setHeaderError] = useState<string | null>(null);
   const [headerBusy, setHeaderBusy] = useState(false);
 
@@ -120,6 +118,9 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
   const updateMutation = useUpdatePurchaseOrderMutation();
 
   const po = detailQuery.data;
+  // View-only page access (see ProcurementPageAccess) reads the PO but cannot change it.
+  const canEditPo = po?.access?.canEdit !== false;
+  const canEditHeader = (isAdmin || user?.role === "finance") && canEditPo;
 
   const refetchAll = async () => {
     await detailQuery.refetch();
@@ -219,6 +220,9 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
               </>
             )}
             {headerBusy && <Loader2 className="w-4 h-4 text-blue-900 animate-spin" />}
+            {po.access?.canEdit === false && (
+              <span className="px-2 py-1 text-[11px] font-medium rounded-full text-amber-800 bg-amber-50 border border-amber-200">View only</span>
+            )}
           </div>
         </div>
       </div>
@@ -226,7 +230,7 @@ export const PurchaseOrderDetailView: React.FC<{ poId: number; onBack: () => voi
       {/* Content */}
       <div className="flex flex-col flex-1 w-full overflow-hidden">
         <div className="flex-1 p-6 overflow-auto">
-          <OverviewTab po={po} isAdmin={isAdmin} onChanged={refetchAll} onBack={onBack} />
+          <OverviewTab po={po} isAdmin={isAdmin && canEditPo} onChanged={refetchAll} onBack={onBack} />
         </div>
       </div>
     </div>

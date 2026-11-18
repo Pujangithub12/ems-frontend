@@ -15,8 +15,10 @@ import {
   ChevronRight,
   Eye,
   Pencil,
+  ShieldCheck,
   X,
 } from "lucide-react";
+import AccessManagementModal from "../components/AccessManagementModal";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
@@ -143,6 +145,7 @@ const ProformaInvoicesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<ProformaInvoiceStatus | "">("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [previewPi, setPreviewPi] = useState<ProformaInvoice | null>(null);
+  const [accessOpen, setAccessOpen] = useState(false);
   /** Popup shown when the form is submitted with details missing: `blocking` ones must be filled in
    * (Cancel only), `optional` ones can be skipped via "Create anyway" (which submits `input`). */
   const [missingInfo, setMissingInfo] = useState<{ blocking: string[]; optional: string[]; input?: ProformaInvoiceInput } | null>(null);
@@ -516,6 +519,15 @@ const ProformaInvoicesPage: React.FC = () => {
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
               </button>
+              {user?.role === "super_admin" && (
+                <button
+                  onClick={() => setAccessOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="Manage who can access this page"
+                >
+                  <ShieldCheck size={14} /> Access
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={() => {
@@ -866,12 +878,16 @@ const ProformaInvoicesPage: React.FC = () => {
                             {isAdmin && (
                               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    onClick={() => startEdit(pi)}
-                                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 border rounded-lg border-slate-200 hover:bg-slate-50"
-                                  >
-                                    <Pencil size={12} /> Edit
-                                  </button>
+                                  {pi.myAccess === "view" ? (
+                                    <span className="px-2 py-1 text-[11px] font-medium rounded-full text-amber-800 bg-amber-50 border border-amber-200">View only</span>
+                                  ) : (
+                                    <button
+                                      onClick={() => startEdit(pi)}
+                                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-blue-900 border rounded-lg border-slate-200 hover:bg-slate-50"
+                                    >
+                                      <Pencil size={12} /> Edit
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             )}
@@ -1015,6 +1031,8 @@ const ProformaInvoicesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {accessOpen && <AccessManagementModal page="proforma-invoices" onClose={() => setAccessOpen(false)} />}
 
       {previewPi && (
         <PdfPreviewModal
