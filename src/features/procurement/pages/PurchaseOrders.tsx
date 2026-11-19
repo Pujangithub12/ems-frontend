@@ -24,8 +24,7 @@ import VendorField from "../../inventory/components/VendorField";
 import VendorFormModal from "../../inventory/components/VendorFormModal";
 import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 import AccessManagementModal from "../components/AccessManagementModal";
-import { formatCost } from "../../../lib/currency";
-import { purchaseOrderTotals } from "../utils/poLineItems";
+import { formatPoMoney, purchaseOrderTotals } from "../utils/poLineItems";
 import { PurchaseOrderDetailModal } from "./PurchaseOrderDetail";
 
 const STATUS_STYLES: Record<PurchaseOrderStatus, { bg: string; fg: string; label: string }> = {
@@ -258,7 +257,7 @@ const PurchaseOrdersPage: React.FC = () => {
     setExporting(true);
     try {
       const XLSX = await import("xlsx");
-      const header = ["PO #", "Project", "Vendor", "Items", "Created", "Sub Total", "VAT", "Grand Total"];
+      const header = ["PO #", "Project", "Vendor", "Items", "Created", "Currency", "Sub Total", "VAT", "Grand Total"];
       const data = filtered.map((o) => {
         const totals = purchaseOrderTotals(o);
         return [
@@ -267,13 +266,14 @@ const PurchaseOrdersPage: React.FC = () => {
           o.vendor?.name || "",
           o.items.map((i) => i.itemName).join(", "),
           new Date(o.createdAt).toLocaleDateString(),
+          o.currency?.trim() || "Rs",
           totals.subTotal,
           totals.vat,
           totals.grandTotal,
         ];
       });
       const sheet = XLSX.utils.aoa_to_sheet([header, ...data]);
-      sheet["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
+      sheet["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, "Purchase Orders");
       XLSX.writeFile(workbook, "purchase-orders.xlsx");
@@ -438,9 +438,9 @@ const PurchaseOrdersPage: React.FC = () => {
                             {o.items.length > 1 ? ` +${o.items.length - 1} more` : ""}
                           </td>
                           <td className="px-3 py-3 text-slate-500">{new Date(o.createdAt).toLocaleDateString()}</td>
-                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatCost(totals.subTotal)}</td>
-                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatCost(totals.vat)}</td>
-                          <td className="px-3 py-3 font-semibold text-right text-slate-900 whitespace-nowrap">{formatCost(totals.grandTotal)}</td>
+                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatPoMoney(totals.subTotal, o.currency)}</td>
+                          <td className="px-3 py-3 text-right text-slate-700 whitespace-nowrap">{formatPoMoney(totals.vat, o.currency)}</td>
+                          <td className="px-3 py-3 font-semibold text-right text-slate-900 whitespace-nowrap">{formatPoMoney(totals.grandTotal, o.currency)}</td>
                           <td className="px-3 py-3 text-right">
                             {Number(o.createdBy?.id) === Number(user?.id) && (
                               <button

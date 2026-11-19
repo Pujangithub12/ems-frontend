@@ -9,7 +9,7 @@ import PoLineItemRow from "../components/PoLineItemRow";
 import PoSpecTablesEditor, { specTablesFromPo, type SpecTableForm } from "../components/PoSpecTablesEditor";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { preloadPdfFonts } from "../pdf/pdfFonts";
-import { formatCost, toNumber } from "../../../lib/currency";
+import { toNumber } from "../../../lib/currency";
 import { PurchaseOrder, PurchaseOrderStatus, PurchaseType } from "../../../types";
 import {
   usePurchaseOrderDetailQuery,
@@ -23,6 +23,7 @@ import { useProjects } from "../../projects/hooks/useProjects";
 import { inputCls, labelCls, numOrUndef, primaryBtnCls, sectionCardCls } from "../utils/poFormUi";
 import {
   blankRow,
+  formatPoMoney,
   colsSig,
   newColKey,
   parseLineItemsSheet,
@@ -305,7 +306,7 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   customerPanVatNumber: po.customerPanVatNumber || "",
   customerEmail: po.customerEmail || "",
   customerPhone: po.customerPhone || "",
-  currency: po.currency || "",
+  currency: (po.currency || "").toUpperCase(),
 });
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void>; onBack: () => void }> = ({ po, isAdmin, onChanged, onBack }) => {
@@ -319,7 +320,11 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const { data: projects = [] } = useProjects();
   // One stable handler for every text field, so the memoised fields below only re-render when their own value changes.
-  const setField = useCallback((name: string, value: string) => setForm((prev) => ({ ...prev, [name]: value })), []);
+  // The currency label is always kept in capitals (npr -> NPR) as it is typed.
+  const setField = useCallback(
+    (name: string, value: string) => setForm((prev) => ({ ...prev, [name]: name === "currency" ? value.toUpperCase() : value })),
+    [],
+  );
   /** Free-form spec tables (PDF, right above Payment Terms) — a table is dropped from the PDF
    * entirely when it has no title or no non-blank rows (see PurchaseOrderController). */
   const [specTables, setSpecTables] = useState<SpecTableForm[]>(() => specTablesFromPo(po));
@@ -611,7 +616,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           customerPanVatNumber: form.customerPanVatNumber.trim() || null,
           customerEmail: form.customerEmail.trim() || null,
           customerPhone: form.customerPhone.trim() || null,
-          currency: form.currency.trim() || undefined,
+          currency: form.currency.trim().toUpperCase() || undefined,
           specTables: specTables.map((t) => ({
             title: t.title.trim(),
             columns: t.columns.map((c) => c.trim()),
@@ -899,6 +904,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   isAdmin={isAdmin}
                   itemsBusy={itemsBusy}
                   isLast={row.key === lastRowKey}
+                  currency={form.currency}
                   onUpdate={updateRow}
                   onUpdateCustom={updateCustomValue}
                   onRemove={removeRow}
@@ -909,7 +915,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200">
                 <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">Sub Total</td>
-                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(itemsTotal)}</td>
+                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatPoMoney(itemsTotal, form.currency)}</td>
                 <td />
               </tr>
               {vatPct > 0 && (
@@ -917,16 +923,16 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
                   <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-semibold text-slate-700 border-r border-slate-200">
                     Value Added Tax @ {vatPct}%
                     {Math.abs(taxableTotal - itemsTotal) > 0.005 && (
-                      <span className="ml-1 font-normal text-slate-500">on {formatCost(taxableTotal)} (VAT-applicable items)</span>
+                      <span className="ml-1 font-normal text-slate-500">on {formatPoMoney(taxableTotal, form.currency)} (VAT-applicable items)</span>
                     )}
                   </td>
-                  <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(vatAmount)}</td>
+                  <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatPoMoney(vatAmount, form.currency)}</td>
                   <td />
                 </tr>
               )}
               <tr className="bg-slate-100 border-t border-slate-300">
                 <td colSpan={7 + customCols.length} className="px-2.5 py-2 text-right text-[12px] font-bold text-slate-800 border-r border-slate-200">Grand Total</td>
-                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatCost(grandTotal)}</td>
+                <td className="px-2.5 py-2 text-left text-[12px] font-bold text-slate-900 border-r border-slate-200">{formatPoMoney(grandTotal, form.currency)}</td>
                 <td />
               </tr>
             </tfoot>

@@ -1,7 +1,6 @@
 import React from "react";
 import { Trash2 } from "lucide-react";
-import { formatCost } from "../../../lib/currency";
-import { cleanNumberText, rowTotal, type CustomCol, type ItemRow } from "../utils/poLineItems";
+import { cleanNumberText, formatPoMoney, rowTotal, type CustomCol, type ItemRow } from "../utils/poLineItems";
 
 export const cellInputCls =
   "w-full h-full px-2.5 py-2 text-[12px] text-left text-slate-800 bg-transparent border-0 outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:text-slate-600";
@@ -14,6 +13,8 @@ type Props = {
   itemsBusy: boolean;
   /** Tab out of the very last row's last cell starts a new row, like a spreadsheet. */
   isLast: boolean;
+  /** The PO's Currency field, shown as the prefix of the row total. */
+  currency: string;
   onUpdate: (key: string, patch: Partial<ItemRow>) => void;
   onUpdateCustom: (rowKey: string, colKey: string, value: string) => void;
   onRemove: (key: string) => void;
@@ -22,7 +23,7 @@ type Props = {
 
 /** One line-item row. Memoised: the parent keeps unchanged rows referentially equal and its handlers
  * stable, so typing in one cell re-renders only that row instead of the whole table. */
-const PoLineItemRow = React.memo(function PoLineItemRow({ row, index, customCols, isAdmin, itemsBusy, isLast, onUpdate, onUpdateCustom, onRemove, onAddRow }: Props) {
+const PoLineItemRow = React.memo(function PoLineItemRow({ row, index, customCols, isAdmin, itemsBusy, isLast, currency, onUpdate, onUpdateCustom, onRemove, onAddRow }: Props) {
   const disabled = !isAdmin || itemsBusy;
   const total = rowTotal(row);
   return (
@@ -95,7 +96,7 @@ const PoLineItemRow = React.memo(function PoLineItemRow({ row, index, customCols
         />
       </td>
       <td className="px-2.5 py-2 font-medium text-left text-slate-800 bg-slate-50/60 border-r border-slate-200">
-        {total > 0 ? formatCost(total) : ""}
+        {total > 0 ? formatPoMoney(total, currency) : ""}
       </td>
       <td className="px-1 py-1 text-center">
         {isAdmin && (
