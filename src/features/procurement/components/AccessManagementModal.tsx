@@ -4,14 +4,14 @@ import { Loader2, ShieldCheck, X } from "lucide-react";
 import { getErrorMessage } from "../../../lib/errors";
 import { AccessInfo, AccessLevel, AccessPage, fetchAccess, saveAccess } from "../api/procurementAccess.api";
 
-type Choice = "none" | AccessLevel;
+type Choice = AccessLevel;
 
-const CHOICE_LABEL: Record<Choice, string> = { none: "No access", view: "Can view", edit: "Can edit" };
+const CHOICE_LABEL: Record<Choice, string> = { view: "View only", edit: "Can edit" };
 
 /**
- * "Access management" for a whole page (Purchase Orders or Proforma Invoices). A plain admin normally
- * sees only the records they created themselves — this is where a super admin gives other admins access
- * to EVERY record on the page, as view-only or full edit.
+ * "Access management" for a whole page (Purchase Orders or Proforma Invoices). Every admin and finance
+ * member can VIEW all records on the page, and finance can always edit them; this is where a super admin
+ * gives selected admins permission to EDIT any record (an admin can always edit the ones they created).
  */
 const AccessManagementModal: React.FC<{
   page: AccessPage;
@@ -51,7 +51,7 @@ const AccessManagementModal: React.FC<{
   const dirty = useMemo(() => {
     if (!info) return false;
     const before = new Map(info.grants.map((g) => [g.userId, g.level] as const));
-    return info.members.some((m) => (choices[m.id] ?? "none") !== (before.get(m.id) ?? "none"));
+    return info.members.some((m) => (choices[m.id] ?? "view") !== (before.get(m.id) ?? "view"));
   }, [info, choices]);
 
   const handleSave = async () => {
@@ -61,8 +61,8 @@ const AccessManagementModal: React.FC<{
     setSaved(false);
     try {
       const grants = info.members.flatMap((m) => {
-        const level = choices[m.id];
-        return level === "view" || level === "edit" ? [{ userId: m.id, level }] : [];
+        // Viewing is the default for everyone, so only edit permissions are sent.
+        return choices[m.id] === "edit" ? [{ userId: m.id, level: "edit" as const }] : [];
       });
       applyInfo(await saveAccess(page, grants));
       setSaved(true);
@@ -107,20 +107,22 @@ const AccessManagementModal: React.FC<{
           ) : info ? (
             <>
               <p className="mb-3 text-[12px] text-slate-500">
-                Admins only see the {pageName.toLowerCase()} they created themselves. Choose who can see (or edit) <strong>all</strong> {pageName.toLowerCase()} on this page. Super admins and finance always have full access.
+                Admins can view all {pageName.toLowerCase()}, but can only edit the ones they created. Give edit permission to the admins who should be able to change <strong>any</strong> of them. Finance and super admins can always edit everything.
               </p>
               {info.members.length === 0 ? (
-                <p className="py-6 text-[12px] text-center text-slate-400">There are no admins in this organization to give access to.</p>
+                <p className="py-6 text-[12px] text-center text-slate-400">There are no admins in this organization.</p>
               ) : (
                 <div className="overflow-y-auto border divide-y rounded-lg max-h-80 divide-slate-100 border-slate-200">
                   {info.members.map((m) => (
                     <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                       <div className="min-w-0">
                         <p className="text-[13px] font-medium text-slate-800 truncate">{m.fullName}</p>
-                        <p className="text-[11px] text-slate-400 truncate">{m.email}</p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {m.email} · <span className="capitalize">{m.role}</span>
+                        </p>
                       </div>
                       <select
-                        value={choices[m.id] ?? "none"}
+                        value={choices[m.id] ?? "view"}
                         onChange={(e) => {
                           setSaved(false);
                           setChoices((prev) => ({ ...prev, [m.id]: e.target.value as Choice }));
