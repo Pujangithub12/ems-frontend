@@ -65,9 +65,9 @@ export const cleanNumberText = (s: string) => {
 };
 
 /** An amount prefixed with the PO's own currency label exactly as typed in its Currency field (e.g. "USD 1,250.00"),
- * falling back to "Rs" while that field is empty. */
+ * falling back to "NPR" while that field is empty. */
 export const formatPoMoney = (value: number, currency?: string | null) =>
-  `${currency?.trim() || "Rs"} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `${currency?.trim() || "NPR"} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Sub total / VAT / grand total of a saved PO, the same way the form and the PDF work them out:
  * VAT is the PO's Tax % charged only on lines marked taxable. */

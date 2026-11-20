@@ -266,7 +266,7 @@ const PurchaseOrdersPage: React.FC = () => {
           o.vendor?.name || "",
           o.items.map((i) => i.itemName).join(", "),
           new Date(o.createdAt).toLocaleDateString(),
-          o.currency?.trim() || "Rs",
+          o.currency?.trim() || "NPR",
           totals.subTotal,
           totals.vat,
           totals.grandTotal,
