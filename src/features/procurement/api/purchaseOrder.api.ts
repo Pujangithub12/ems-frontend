@@ -91,6 +91,8 @@ export interface PurchaseOrderInput {
   poNumber?: string;
   /** Project to link the PO to, or null for none. */
   projectId?: number | null;
+  /** Vendor to link the PO to, or null for none. */
+  vendorId?: number | null;
   poDate?: string | null;
   paymentTerms?: string | null;
   incoterms?: string | null;

@@ -20,6 +20,9 @@ import {
   useOrganizationPurchaseOrdersQuery,
 } from "../hooks/usePurchaseOrder";
 import { useProjects } from "../../projects/hooks/useProjects";
+import VendorField from "../../inventory/components/VendorField";
+import VendorFormModal from "../../inventory/components/VendorFormModal";
+import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 import { inputCls, labelCls, numOrUndef, primaryBtnCls, sectionCardCls } from "../utils/poFormUi";
 import {
   blankRow,
@@ -278,6 +281,8 @@ type OverviewForm = {
   poNumber: string;
   /** "" = no project. */
   projectId: string;
+  /** "" = no vendor. */
+  vendorId: string;
   poDate: string;
   paymentTerms: string;
   incoterms: string;
@@ -295,6 +300,7 @@ type OverviewForm = {
 const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   poNumber: po.poNumber || "",
   projectId: po.project?.id != null ? String(po.project.id) : po.projectId != null ? String(po.projectId) : "",
+  vendorId: po.vendor?.id != null ? String(po.vendor.id) : po.vendorId != null ? String(po.vendorId) : "",
   poDate: po.poDate ? po.poDate.slice(0, 10) : new Date().toLocaleDateString("en-CA"),
   paymentTerms: po.paymentTerms || "",
   incoterms: po.incoterms || "",
@@ -306,7 +312,8 @@ const formFromPo = (po: PurchaseOrder): OverviewForm => ({
   customerPanVatNumber: po.customerPanVatNumber || "",
   customerEmail: po.customerEmail || "",
   customerPhone: po.customerPhone || "",
-  currency: (po.currency || "").toUpperCase(),
+  // NPR is the default currency until another one is typed.
+  currency: (po.currency || "NPR").toUpperCase(),
 });
 
 const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: () => Promise<void>; onBack: () => void }> = ({ po, isAdmin, onChanged, onBack }) => {
@@ -319,6 +326,10 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
 
   const [form, setForm] = useState<OverviewForm>(() => formFromPo(po));
   const { data: projects = [] } = useProjects();
+  const vendorsQuery = useOrganizationVendorsQuery();
+  const [vendorModalOpen, setVendorModalOpen] = useState(false);
+  // The vendor currently picked in the form (may differ from the saved one until Save Changes).
+  const pickedVendor = vendorsQuery.data?.find((v) => String(v.id) === form.vendorId) ?? (String(po.vendor?.id ?? "") === form.vendorId ? po.vendor : null);
   // One stable handler for every text field, so the memoised fields below only re-render when their own value changes.
   // The currency label is always kept in capitals (npr -> NPR) as it is typed.
   const setField = useCallback(
@@ -605,6 +616,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         input: {
           poNumber: trimmedPoNumber,
           projectId: form.projectId ? Number(form.projectId) : null,
+          vendorId: form.vendorId ? Number(form.vendorId) : null,
           poDate: form.poDate || null,
           paymentTerms: form.paymentTerms.trim() || null,
           incoterms: form.incoterms.trim() || null,
@@ -616,7 +628,7 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
           customerPanVatNumber: form.customerPanVatNumber.trim() || null,
           customerEmail: form.customerEmail.trim() || null,
           customerPhone: form.customerPhone.trim() || null,
-          currency: form.currency.trim().toUpperCase() || undefined,
+          currency: form.currency.trim().toUpperCase() || "NPR",
           specTables: specTables.map((t) => ({
             title: t.title.trim(),
             columns: t.columns.map((c) => c.trim()),
@@ -730,6 +742,40 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
       </div>
 
       <div className={sectionCardCls}>
+        <h3 className="mb-3 text-[13px] font-semibold text-slate-900">Vendor &amp; Project</h3>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Vendor</label>
+            {isAdmin ? (
+              <VendorField
+                vendorId={form.vendorId ? Number(form.vendorId) : null}
+                onSelect={(id) => setField("vendorId", id != null ? String(id) : "")}
+                onAddNew={() => setVendorModalOpen(true)}
+              />
+            ) : (
+              <input value={pickedVendor?.name ?? "--"} disabled className={inputCls} readOnly />
+            )}
+          </div>
+          <div>
+            <label className={labelCls}>Project</label>
+            <select
+              value={form.projectId}
+              onChange={(e) => setField("projectId", e.target.value)}
+              disabled={fieldsDisabled}
+              className={inputCls}
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className={sectionCardCls}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[13px] font-semibold text-slate-900">Purchase Order Details</h3>
           <div className="flex items-center gap-2">
@@ -757,26 +803,10 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
         <div data-arrow-row className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <PoFormField label="PO Number" name="poNumber" value={form.poNumber} onField={setField} disabled={fieldsDisabled} arrowNav />
           <PoFormField label="Date" name="poDate" type="date" value={form.poDate} onField={setField} disabled={fieldsDisabled} />
-          <div>
-            <label className={labelCls}>Project</label>
-            <select
-              value={form.projectId}
-              onChange={(e) => setField("projectId", e.target.value)}
-              disabled={fieldsDisabled}
-              className={inputCls}
-            >
-              <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <PoFormField
             label={po.purchaseType === "international" ? "GSTIN No." : "Vendor PAN/VAT No."}
             name="vendorPanVatNumber"
-            value={po.vendor?.panVatNumber || "--"}
+            value={pickedVendor?.panVatNumber || "--"}
             onField={setField}
             disabled
           />
@@ -983,6 +1013,17 @@ const OverviewTab: React.FC<{ po: PurchaseOrder; isAdmin: boolean; onChanged: ()
             </div>
           </div>
         </div>
+      )}
+
+      {vendorModalOpen && (
+        <VendorFormModal
+          onClose={() => setVendorModalOpen(false)}
+          onSaved={async (vendor) => {
+            await vendorsQuery.refetch();
+            setField("vendorId", String(vendor.id));
+            setVendorModalOpen(false);
+          }}
+        />
       )}
 
       {confirmCancel && (
