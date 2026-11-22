@@ -37,6 +37,7 @@ const Users = lazy(() => import("./features/users/pages/Users"));
 const ProjectPage = lazy(() => import("./features/projects/pages/Projects"));
 const ProjectDetails = lazy(() => import("./features/projects/pages/ProjectDetails"));
 const CalendarPage = lazy(() => import("./features/calendar/pages/Calendar"));
+const AttendancePage = lazy(() => import("./features/attendance/pages/Attendance"));
 const Approvals = lazy(() => import("./features/approvals/pages/Approvals"));
 const Settings = lazy(() => import("./features/settings/pages/Settings"));
 const Profile = lazy(() => import("./features/users/pages/Profile"));
@@ -299,6 +300,7 @@ function App() {
             <Route path="/:organizationId/site-activities" element={<SiteActivities />} />
             <Route path="/:organizationId/users" element={<Users />} />
             <Route path="/:organizationId/calendar" element={<CalendarPage />} />
+            <Route path="/:organizationId/attendance" element={<AttendancePage />} />
             <Route path="/:organizationId/approvals" element={<Approvals />} />
             <Route path="/:organizationId/leaverequests" element={<LeaveRequestsRedirect />} />
             <Route path="/:organizationId/settings" element={<Settings />} />

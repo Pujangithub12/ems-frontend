@@ -34,6 +34,7 @@ import {
   Wallet,
   Receipt,
   FileSignature,
+  CalendarCheck,
 } from "lucide-react";
 
 import SwitchOrganizationModal from "../components/SwitchOrganizationModal";
@@ -357,6 +358,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       badgeCount: tasksBadgeCount,
     },
     {
+      path: `${prefix}/attendance`,
+      label: "Attendance",
+      icon: CalendarCheck,
+      id: "attendance",
+    },
+    {
       path: `${prefix}/announcements`,
       label: "Announcements",
       icon: Megaphone,
@@ -442,6 +449,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     debtors: "Customers who owe money and outstanding receivables",
     requisition: "Purchase requisition form — fill in and preview as PDF",
     tasks: "Assign, track and update tasks",
+    attendance: "Take and review employee attendance",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     approvals: "Review and approve requests",
