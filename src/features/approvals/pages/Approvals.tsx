@@ -16,11 +16,6 @@ import LoadingState from "../../../components/LoadingState";
 import ErrorBanner from "../../../components/ErrorBanner";
 import { getErrorMessage } from "../../../lib/errors";
 import {
-  useLeaveRequests,
-  useCreateLeaveRequest,
-  useUpdateLeaveRequestStatus,
-} from "../hooks/useLeaveRequests";
-import {
   useSiteVisitRequests,
   useCreateSiteVisitRequest,
   useUpdateSiteVisitRequestStatus,
@@ -48,7 +43,8 @@ const Eyebrow: React.FC<{ children: React.ReactNode; className?: string }> = ({
 const getInitials = (name: string) =>
   name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 
-type RequestType = "leave" | "sitevisit" | "expense";
+// Leave requests live on the Attendance page now (see features/attendance/components/LeaveRequestsPanel.tsx).
+type RequestType = "sitevisit" | "expense";
 type TabId = RequestType | "all" | "rejected";
 
 type NormalizedRequest = {
@@ -64,7 +60,6 @@ type NormalizedRequest = {
 };
 
 const TYPE_META: Record<RequestType, { label: string; icon: React.ElementType; fg: string; bg: string }> = {
-  leave: { label: "Leave Request", icon: CalendarDays, fg: "#1E3A8A", bg: "#DBEAFE" },
   sitevisit: { label: "Site Visit", icon: MapPin, fg: "#6D28D9", bg: "#EDE9FE" },
   expense: { label: "Expense", icon: Receipt, fg: "#047857", bg: "#D1FAE5" },
 };
@@ -78,23 +73,19 @@ const Approvals: React.FC = () => {
 
   const { data: hierarchyPeople = [] } = useHierarchy();
 
-  const leaveQuery = useLeaveRequests();
   const siteVisitQuery = useSiteVisitRequests();
   const expenseQuery = useExpenseRequests();
 
-  const createLeave = useCreateLeaveRequest();
   const createSiteVisit = useCreateSiteVisitRequest();
   const createExpense = useCreateExpenseRequest();
 
-  const updateLeaveStatus = useUpdateLeaveRequestStatus();
   const updateSiteVisitStatus = useUpdateSiteVisitRequestStatus();
   const updateExpenseStatus = useUpdateExpenseRequestStatus();
 
   // Who can approve/reject each request type matches this app's default
-  // permission grants (leave.manage / sitevisit.manage / expense.manage):
-  // admin + super_admin for all three, plus finance specifically for expenses.
+  // permission grants (sitevisit.manage / expense.manage):
+  // admin + super_admin for both, plus finance specifically for expenses.
   const canManage: Record<RequestType, boolean> = {
-    leave: role === "admin" || role === "super_admin",
     sitevisit: role === "admin" || role === "super_admin",
     expense: role === "admin" || role === "super_admin" || role === "finance",
   };
@@ -115,15 +106,9 @@ const Approvals: React.FC = () => {
 
   const [tab, setTab] = useState<TabId>("all");
   const [showForm, setShowForm] = useState(false);
-  const [reqType, setReqType] = useState<RequestType>("leave");
+  const [reqType, setReqType] = useState<RequestType>("sitevisit");
   const [formError, setFormError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-
-  // Leave form state
-  const [leaveTitle, setLeaveTitle] = useState("");
-  const [leaveStart, setLeaveStart] = useState("");
-  const [leaveEnd, setLeaveEnd] = useState("");
-  const [leaveReason, setLeaveReason] = useState("");
 
   // Site visit form state
   const [svTitle, setSvTitle] = useState("");
@@ -139,7 +124,6 @@ const Approvals: React.FC = () => {
   const [expReason, setExpReason] = useState("");
 
   const resetForms = () => {
-    setLeaveTitle(""); setLeaveStart(""); setLeaveEnd(""); setLeaveReason("");
     setSvTitle(""); setSvLocation(""); setSvDate(""); setSvReason("");
     setExpTitle(""); setExpAmount(""); setExpCategory(EXPENSE_CATEGORIES[0]); setExpDate(""); setExpReason("");
   };
@@ -150,17 +134,13 @@ const Approvals: React.FC = () => {
     resetForms();
   };
 
-  const submitting = createLeave.isPending || createSiteVisit.isPending || createExpense.isPending;
+  const submitting = createSiteVisit.isPending || createExpense.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     try {
-      if (reqType === "leave") {
-        await createLeave.mutateAsync({
-          title: leaveTitle, startDate: leaveStart, endDate: leaveEnd, reason: leaveReason,
-        });
-      } else if (reqType === "sitevisit") {
+      if (reqType === "sitevisit") {
         await createSiteVisit.mutateAsync({
           title: svTitle, location: svLocation, visitDate: svDate, reason: svReason,
         });
@@ -179,34 +159,21 @@ const Approvals: React.FC = () => {
   const handleStatusUpdate = async (type: RequestType, id: number, status: "approved" | "rejected") => {
     setStatusError(null);
     try {
-      if (type === "leave") await updateLeaveStatus.mutateAsync({ id, status });
-      else if (type === "sitevisit") await updateSiteVisitStatus.mutateAsync({ id, status });
+      if (type === "sitevisit") await updateSiteVisitStatus.mutateAsync({ id, status });
       else await updateExpenseStatus.mutateAsync({ id, status });
     } catch (err) {
       setStatusError(getErrorMessage(err, "Failed to update status"));
     }
   };
 
-  const loading = leaveQuery.isLoading || siteVisitQuery.isLoading || expenseQuery.isLoading;
-  const queryError = leaveQuery.isError
-    ? getErrorMessage(leaveQuery.error, "Failed to load leave requests")
-    : siteVisitQuery.isError
-      ? getErrorMessage(siteVisitQuery.error, "Failed to load site visit requests")
-      : expenseQuery.isError
-        ? getErrorMessage(expenseQuery.error, "Failed to load expense requests")
-        : null;
+  const loading = siteVisitQuery.isLoading || expenseQuery.isLoading;
+  const queryError = siteVisitQuery.isError
+    ? getErrorMessage(siteVisitQuery.error, "Failed to load site visit requests")
+    : expenseQuery.isError
+      ? getErrorMessage(expenseQuery.error, "Failed to load expense requests")
+      : null;
 
   const normalized = useMemo<Record<RequestType, NormalizedRequest[]>>(() => {
-    const leave: NormalizedRequest[] = (leaveQuery.data || []).map((r) => ({
-      id: r.id,
-      type: "leave",
-      title: r.title,
-      reason: r.reason,
-      dateLabel: `${new Date(r.startDate).toLocaleDateString()} - ${new Date(r.endDate).toLocaleDateString()}`,
-      status: r.status,
-      user: r.user,
-      createdAt: r.createdAt,
-    }));
     const sitevisit: NormalizedRequest[] = (siteVisitQuery.data || []).map((r) => ({
       id: r.id,
       type: "sitevisit",
@@ -229,22 +196,20 @@ const Approvals: React.FC = () => {
       user: r.user,
       createdAt: r.createdAt,
     }));
-    return { leave, sitevisit, expense };
-  }, [leaveQuery.data, siteVisitQuery.data, expenseQuery.data]);
+    return { sitevisit, expense };
+  }, [siteVisitQuery.data, expenseQuery.data]);
 
   const tabs = useMemo(() => {
     const activeCount = (type: RequestType) => normalized[type].filter((r) => r.status !== "rejected").length;
     const pendingCount = (type: RequestType) => normalized[type].filter((r) => r.status === "pending").length;
-    const allActiveTotal = activeCount("leave") + activeCount("sitevisit") + activeCount("expense");
-    const allPendingTotal = pendingCount("leave") + pendingCount("sitevisit") + pendingCount("expense");
+    const allActiveTotal = activeCount("sitevisit") + activeCount("expense");
+    const allPendingTotal = pendingCount("sitevisit") + pendingCount("expense");
     const rejectedTotal =
-      normalized.leave.filter((r) => r.status === "rejected").length +
       normalized.sitevisit.filter((r) => r.status === "rejected").length +
       normalized.expense.filter((r) => r.status === "rejected").length;
 
     return [
       { id: "all" as const, label: "All", icon: LayoutGrid, count: allActiveTotal, urgent: allPendingTotal > 0 },
-      { id: "leave" as const, label: TYPE_META.leave.label, icon: TYPE_META.leave.icon, count: activeCount("leave"), urgent: pendingCount("leave") > 0 },
       { id: "sitevisit" as const, label: TYPE_META.sitevisit.label, icon: TYPE_META.sitevisit.icon, count: activeCount("sitevisit"), urgent: pendingCount("sitevisit") > 0 },
       { id: "expense" as const, label: TYPE_META.expense.label, icon: TYPE_META.expense.icon, count: activeCount("expense"), urgent: pendingCount("expense") > 0 },
       { id: "rejected" as const, label: "Rejected", icon: XCircle, count: rejectedTotal, urgent: false },
@@ -253,12 +218,12 @@ const Approvals: React.FC = () => {
 
   const filtered = useMemo<NormalizedRequest[]>(() => {
     if (tab === "rejected") {
-      return [...normalized.leave, ...normalized.sitevisit, ...normalized.expense]
+      return [...normalized.sitevisit, ...normalized.expense]
         .filter((r) => r.status === "rejected")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     if (tab === "all") {
-      return [...normalized.leave, ...normalized.sitevisit, ...normalized.expense]
+      return [...normalized.sitevisit, ...normalized.expense]
         .filter((r) => r.status !== "rejected")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
@@ -278,7 +243,7 @@ const Approvals: React.FC = () => {
 
   // Everyone — including admins/finance who also approve these — can submit their own
   // requests, so all three types are always offered via the "New Request" button.
-  const creatableTypes: RequestType[] = ["leave", "sitevisit", "expense"];
+  const creatableTypes: RequestType[] = ["sitevisit", "expense"];
   const currentTypeCanManage = tab !== "rejected" && tab !== "all" && canManage[tab];
   const currentTypeLabel = tab === "rejected" || tab === "all" ? "" : TYPE_META[tab].label;
   const showNewRequestButton = tab !== "rejected";
@@ -371,54 +336,6 @@ const Approvals: React.FC = () => {
                     ))}
                   </select>
                 </div>
-              )}
-
-              {reqType === "leave" && (
-                <>
-                  <div>
-                    <Eyebrow className="mb-1.5">Title</Eyebrow>
-                    <input
-                      required
-                      value={leaveTitle}
-                      onChange={(e) => setLeaveTitle(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
-                      placeholder="e.g., Annual Vacation"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Eyebrow className="mb-1.5">Start Date</Eyebrow>
-                      <input
-                        required
-                        type="date"
-                        value={leaveStart}
-                        onChange={(e) => setLeaveStart(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <Eyebrow className="mb-1.5">End Date</Eyebrow>
-                      <input
-                        required
-                        type="date"
-                        value={leaveEnd}
-                        onChange={(e) => setLeaveEnd(e.target.value)}
-                        className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 transition-colors"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Eyebrow className="mb-1.5">Reason</Eyebrow>
-                    <textarea
-                      required
-                      rows={3}
-                      value={leaveReason}
-                      onChange={(e) => setLeaveReason(e.target.value)}
-                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 resize-none transition-colors"
-                      placeholder="Briefly explain the reason for your leave..."
-                    />
-                  </div>
-                </>
               )}
 
               {reqType === "sitevisit" && (

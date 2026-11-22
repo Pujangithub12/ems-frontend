@@ -110,10 +110,10 @@ const RootRedirect: React.FC = () => {
   return null;
 };
 
-/** Legacy path — the Approvals page used to live at /leaverequests; keeps old links/bookmarks working. */
+/** Legacy path — leave requests used to live at /leaverequests (then on Approvals); they are on the Attendance page now. */
 const LeaveRequestsRedirect: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
-  return <Navigate replace to={`/${organizationId}/approvals`} />;
+  return <Navigate replace to={`/${organizationId}/attendance`} />;
 };
 
 /**
