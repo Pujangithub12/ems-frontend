@@ -92,7 +92,10 @@ export interface RequisitionFormData {
   requestedBy: string;
   projectLocation: string;
   priority: "normal" | "urgent" | "";
-  items: { description: string; unit: string; qty: string; comment: string }[];
+  /** Cells of the user-added columns are keyed by the column's `key` (absent on requisitions saved before columns existed). */
+  items: { description: string; unit: string; qty: string; comment: string; custom?: Record<string, string> }[];
+  /** User-added columns of the item table, shown between Qty. and Comment. */
+  itemColumns: { key: string; label: string }[];
   reason: string;
   preferredSupplier: string;
   suggestedBrand: string;
@@ -130,7 +133,8 @@ export async function generateRequisitionPdf(form: RequisitionFormData, organiza
       projectLocation: form.projectLocation,
       priority: form.priority,
       // Rows left completely empty are dropped; only filled rows are printed.
-      items: form.items.filter((i) => [i.description, i.unit, i.qty, i.comment].some((v) => v.trim() !== "")),
+      itemColumns: (form.itemColumns ?? []).filter((c) => c.label.trim() !== "").map((c) => ({ key: c.key, label: c.label.trim() })),
+      items: form.items.filter((i) => [i.description, i.unit, i.qty, i.comment, ...Object.values(i.custom ?? {})].some((v) => v.trim() !== "")),
       reason: form.reason,
       preferredSupplier: form.preferredSupplier,
       suggestedBrand: form.suggestedBrand,

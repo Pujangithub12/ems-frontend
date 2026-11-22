@@ -10,6 +10,8 @@ export interface RequisitionItem {
   unit: string;
   qty: string;
   comment: string;
+  /** Values of the user-added columns, keyed by column key. */
+  custom?: Record<string, string>;
 }
 
 export interface RequisitionApproval {
@@ -30,6 +32,8 @@ export interface RequisitionPdfData {
   requestedBy: string;
   projectLocation: string;
   priority: "normal" | "urgent" | "";
+  /** User-added item columns (between Qty. and Comment); only ones with a heading. */
+  itemColumns?: { key: string; label: string }[];
   items: RequisitionItem[];
   reason: string;
   preferredSupplier: string;
@@ -149,20 +153,29 @@ export function buildRequisitionPdf(data: RequisitionPdfData, fonts: PdfFonts): 
   };
   heading("1. ITEM REQUISITION DETAILS");
 
+  // Columns: S.N., Description, Unit, Qty., any user-added columns, Comment. S.N./Unit/Qty. keep their
+  // fixed widths; Description, Comment and the added columns share what is left (about 61/39 between
+  // Description and Comment when there are no added columns, as before).
+  const customCols = data.itemColumns ?? [];
   const colSN = W * 0.069;
-  const colDesc = W * 0.444;
   const colUnit = W * 0.111;
   const colQty = W * 0.09;
-  const colComment = W - colSN - colDesc - colUnit - colQty;
-  const colX = [X, X + colSN, X + colSN + colDesc, X + colSN + colDesc + colUnit, X + colSN + colDesc + colUnit + colQty];
-  const colWs = [colSN, colDesc, colUnit, colQty, colComment];
-  const headerLabels = ["S.N.", "Item Description / Specifications", "Unit", "Qty.", "Comment"];
+  const flexW = W - colSN - colUnit - colQty;
+  const customWeight = 0.8;
+  const weightTotal = 1.55 + 1 + customWeight * customCols.length;
+  const colDesc = (flexW * 1.55) / weightTotal;
+  const colCustom = (flexW * customWeight) / weightTotal;
+  const colComment = flexW / weightTotal;
+  const colWs = [colSN, colDesc, colUnit, colQty, ...customCols.map(() => colCustom), colComment];
+  const colX = colWs.reduce<number[]>((acc, w, i) => (i === 0 ? [X] : [...acc, acc[i - 1]! + colWs[i - 1]!]), []);
+  const headerLabels = ["S.N.", "Item Description / Specifications", "Unit", "Qty.", ...customCols.map((c) => c.label), "Comment"];
+  const commentIdx = colWs.length - 1;
   const headerH = 17;
 
   const drawItemsHeader = () => {
     doc.rect(X, y, W, headerH).fill(NAVY);
     headerLabels.forEach((label, i) => {
-      doc.fillColor("#ffffff").font(F_BOLD).fontSize(7.5).text(label, colX[i]!, y + 5, { width: colWs[i]!, align: "center", lineBreak: false });
+      doc.fillColor("#ffffff").font(F_BOLD).fontSize(7.5).text(label, colX[i]!, y + 5, { width: colWs[i]!, align: "center", lineBreak: false, ellipsis: true });
     });
     y += headerH;
   };
@@ -177,6 +190,7 @@ export function buildRequisitionPdf(data: RequisitionPdfData, fonts: PdfFonts): 
       36,
       textH(item.description, colDesc - 12, F_REG, 8.5) + 14,
       textH(item.comment, colComment - 12, F_REG, 8.5) + 14,
+      ...customCols.map((c) => textH(item.custom?.[c.key] ?? "", colCustom - 12, F_REG, 8.5) + 14),
     );
     if (y + h > bottom()) {
       doc.addPage();
@@ -187,7 +201,8 @@ export function buildRequisitionPdf(data: RequisitionPdfData, fonts: PdfFonts): 
     cell(colX[1]!, y, colWs[1]!, h, { text: item.description });
     cell(colX[2]!, y, colWs[2]!, h, { text: item.unit, align: "center", pad: 3 });
     cell(colX[3]!, y, colWs[3]!, h, { text: item.qty, align: "center", pad: 3 });
-    cell(colX[4]!, y, colWs[4]!, h, { text: item.comment });
+    customCols.forEach((c, ci) => cell(colX[4 + ci]!, y, colWs[4 + ci]!, h, { text: item.custom?.[c.key] ?? "" }));
+    cell(colX[commentIdx]!, y, colWs[commentIdx]!, h, { text: item.comment });
     y += h;
   });
   y += 16;
