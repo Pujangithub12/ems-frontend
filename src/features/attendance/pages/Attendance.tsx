@@ -1,11 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarCheck, Check, ChevronLeft, ChevronRight, Loader2, Save, Search } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Save, Search, Share2, Trash2, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
-import type { AttendanceCounts, AttendanceStatus } from "../api/attendance.api";
+import type { AttendanceCounts, AttendancePerson, AttendanceStatus, ShareAttendanceResult } from "../api/attendance.api";
 import ExportMenu from "../../procurement/components/ExportMenu";
 import { downloadBlob } from "../../../lib/download";
-import { useAttendanceDayQuery, useAttendanceSummaryQuery, useMyAttendanceQuery, useSaveAttendanceMutation } from "../hooks/useAttendance";
+import {
+  useAttendanceDayQuery,
+  useAttendanceSummaryQuery,
+  useDeleteAttendanceEmployeeMutation,
+  useSaveAttendanceEmployeeMutation,
+  useSaveAttendanceMutation,
+  useShareAttendanceMutation,
+} from "../hooks/useAttendance";
 
 type StatusMeta = { key: AttendanceStatus; label: string; /** classes when selected */ on: string; /** text colour for counts */ text: string; pill: string };
 
@@ -77,6 +84,11 @@ const TakeAttendanceTab: React.FC = () => {
   const [search, setSearch] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  // `{ person: null }` = adding a new employee; otherwise editing that one.
+  const [personModal, setPersonModal] = useState<{ person: AttendancePerson | null } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const deleteEmployee = useDeleteAttendanceEmployeeMutation();
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const employees = dayQuery.data?.date === date ? dayQuery.data.employees : [];
   const dirty = JSON.stringify(draft) !== baseline;
@@ -128,22 +140,28 @@ const TakeAttendanceTab: React.FC = () => {
     setJustSaved(false);
     setDraft((d) => Object.fromEntries(employees.map((e) => [e.id, { status: "present" as const, note: d[e.id]?.note ?? "" }])));
   };
-  const clearAll = () => {
-    setJustSaved(false);
-    setDraft((d) => Object.fromEntries(employees.map((e) => [e.id, { status: "" as const, note: d[e.id]?.note ?? "" }])));
-  };
 
   const handleSave = async () => {
     setSaveError(null);
     try {
       await saveMutation.mutateAsync({
         date,
-        records: employees.map((e) => ({ userId: e.id, status: draft[e.id]?.status ?? "", note: draft[e.id]?.note ?? "" })),
+        records: employees.map((e) => ({ employeeId: e.id, status: draft[e.id]?.status ?? "", note: draft[e.id]?.note ?? "" })),
       });
       setBaseline(JSON.stringify(draft));
       setJustSaved(true);
     } catch (err) {
       setSaveError(getErrorMessage(err, "Failed to save attendance."));
+    }
+  };
+
+  const handleDeleteEmployee = async (e: AttendancePerson) => {
+    if (!window.confirm(`Remove ${e.name}? All of their attendance marks will be deleted too. This can't be undone.`)) return;
+    setActionError(null);
+    try {
+      await deleteEmployee.mutateAsync(e.id);
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to remove the employee."));
     }
   };
 
@@ -159,7 +177,7 @@ const TakeAttendanceTab: React.FC = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? employees.filter((e) => e.fullName.toLowerCase().includes(q) || (e.jobPosition ?? "").toLowerCase().includes(q)) : employees;
+    return q ? employees.filter((e) => e.name.toLowerCase().includes(q) || (e.position ?? "").toLowerCase().includes(q)) : employees;
   }, [employees, search]);
 
   const isToday = date === todayStr();
@@ -222,20 +240,45 @@ const TakeAttendanceTab: React.FC = () => {
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employee..." className={`${inputCls} w-64 pl-8 bg-slate-50`} />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setPersonModal({ person: null })}
+                className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+              >
+                <Plus size={13} /> Add Employee
+              </button>
+              <button
+                onClick={() => setShareOpen(true)}
+                disabled={employees.length === 0}
+                className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-blue-900 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                title="Copy these employees and their attendance to another organization"
+              >
+                <Share2 size={13} /> Share
+              </button>
               <button onClick={markAllPresent} className="px-3 py-2 text-[12px] font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50">
                 Mark all present
-              </button>
-              <button onClick={clearAll} className="px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">
-                Clear all
               </button>
             </div>
           </div>
 
+          {actionError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{actionError}</div>}
+
           {/* Employees */}
           <div className="overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
             {filtered.length === 0 ? (
-              <p className="py-14 text-center text-[13px] text-slate-500">{employees.length === 0 ? "There are no employees in this organization yet." : "No employee matches your search."}</p>
+              <div className="flex flex-col items-center gap-3 py-14 text-center">
+                <p className="text-[13px] text-slate-500">
+                  {employees.length === 0 ? "No employees added yet. Add the people you take attendance for." : "No employee matches your search."}
+                </p>
+                {employees.length === 0 && (
+                  <button
+                    onClick={() => setPersonModal({ person: null })}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+                  >
+                    <Plus size={13} /> Add Employee
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
@@ -245,6 +288,7 @@ const TakeAttendanceTab: React.FC = () => {
                       <th className="px-3 py-2 font-medium text-left">Employee</th>
                       <th className="px-3 py-2 font-medium text-left">Status</th>
                       <th className="px-3 py-2 font-medium text-left">Note</th>
+                      <th className="w-20 px-3 py-2 font-medium text-right">Edit</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -254,8 +298,8 @@ const TakeAttendanceTab: React.FC = () => {
                         <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
                           <td className="px-3 py-2.5 text-slate-400">{idx + 1}</td>
                           <td className="px-3 py-2.5">
-                            <p className="text-[13px] font-medium text-slate-800">{e.fullName}</p>
-                            <p className="text-[11px] text-slate-400">{e.jobPosition || <span className="capitalize">{e.role.replace("_", " ")}</span>}</p>
+                            <p className="text-[13px] font-medium text-slate-800">{e.name}</p>
+                            {e.position && <p className="text-[11px] text-slate-400">{e.position}</p>}
                           </td>
                           <td className="px-3 py-2.5">
                             <div className="flex flex-wrap gap-1.5">
@@ -282,6 +326,25 @@ const TakeAttendanceTab: React.FC = () => {
                               className={`${inputCls} w-full min-w-[160px]`}
                             />
                           </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setPersonModal({ person: { id: e.id, name: e.name, position: e.position } })}
+                                className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-blue-900"
+                                title="Edit employee"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                onClick={() => void handleDeleteEmployee(e)}
+                                disabled={deleteEmployee.isPending}
+                                className="p-1.5 rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                title="Remove employee"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -292,6 +355,169 @@ const TakeAttendanceTab: React.FC = () => {
           </div>
         </>
       )}
+
+      {personModal && <EmployeeModal person={personModal.person} onClose={() => setPersonModal(null)} />}
+      {shareOpen && <ShareModal onClose={() => setShareOpen(false)} />}
+    </div>
+  );
+};
+
+/** Pick the organizations to copy this employee list (and optionally all of its attendance) into. */
+const ShareModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { organization, organizations } = useAuth();
+  const targets = organizations.filter((o) => o.id !== organization?.id);
+  const shareMutation = useShareAttendanceMutation();
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(targets.length === 1 ? [targets[0]!.id] : []));
+  const [includeAttendance, setIncludeAttendance] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<ShareAttendanceResult[] | null>(null);
+
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const submit = async () => {
+    setError(null);
+    try {
+      setResults(await shareMutation.mutateAsync({ targetOrganizationIds: Array.from(selected), includeAttendance }));
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to share attendance."));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+          <h3 className="text-[14px] font-semibold text-slate-900">Share attendance</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500" title="Close">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 p-4">
+          {results ? (
+            <div className="flex flex-col gap-2">
+              {results.map((r) => (
+                <div key={r.organizationId} className={`px-3 py-2 text-[12px] border rounded-lg ${r.error ? "text-red-700 bg-red-50 border-red-200" : "text-emerald-800 bg-emerald-50 border-emerald-200"}`}>
+                  <p className="font-medium">{r.organizationName}</p>
+                  <p>
+                    {r.error ??
+                      `${r.employeesAdded} employee${r.employeesAdded === 1 ? "" : "s"} added${r.employeesMatched ? `, ${r.employeesMatched} already there` : ""}${
+                        includeAttendance ? `, ${r.marksCopied} attendance mark${r.marksCopied === 1 ? "" : "s"} copied` : ""
+                      }.`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {error && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{error}</div>}
+              <p className="text-[12px] text-slate-500">
+                Choose the organizations that should get this employee list. People who already exist there (same name) are reused, not duplicated.
+              </p>
+              {targets.length === 0 ? (
+                <p className="py-4 text-center text-[12px] text-slate-400">You don&apos;t belong to any other organization.</p>
+              ) : (
+                <div className="overflow-y-auto border divide-y rounded-lg max-h-56 divide-slate-100 border-slate-200">
+                  {targets.map((o) => (
+                    <label key={o.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+                      <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)} className="w-4 h-4 accent-blue-900" />
+                      <span className="text-[13px] text-slate-800">{o.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={includeAttendance} onChange={(e) => setIncludeAttendance(e.target.checked)} className="w-4 h-4 mt-0.5 accent-blue-900" />
+                <span className="text-[12px] text-slate-700">
+                  Also copy all attendance records
+                  <span className="block text-[11px] text-slate-400">If they already have a mark for the same person and day, it is replaced by this one.</span>
+                </span>
+              </label>
+              <p className="text-[11px] text-slate-400">This is a copy: later changes here don&apos;t update the other organization — share again to refresh it.</p>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60">
+          <button onClick={onClose} className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white">
+            {results ? "Done" : "Cancel"}
+          </button>
+          {!results && (
+            <button
+              onClick={submit}
+              disabled={selected.size === 0 || shareMutation.isPending}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 disabled:opacity-60"
+            >
+              {shareMutation.isPending && <Loader2 size={12} className="animate-spin" />} Share
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Add a new employee, or rename / change the position of an existing one. */
+const EmployeeModal: React.FC<{ person: AttendancePerson | null; onClose: () => void }> = ({ person, onClose }) => {
+  const saveMutation = useSaveAttendanceEmployeeMutation();
+  const [name, setName] = useState(person?.name ?? "");
+  const [position, setPosition] = useState(person?.position ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError("Enter the employee's name.");
+      return;
+    }
+    setError(null);
+    try {
+      await saveMutation.mutateAsync({ id: person?.id ?? null, input: { name: name.trim(), position: position.trim() } });
+      onClose();
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to save the employee."));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
+      <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} className="w-full max-w-md overflow-hidden bg-white border shadow-2xl rounded-xl border-slate-200">
+        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+          <h3 className="text-[14px] font-semibold text-slate-900">{person ? "Edit Employee" : "Add Employee"}</h3>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500" title="Close">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex flex-col gap-3 p-4">
+          {error && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded">{error}</div>}
+          <div>
+            <label className="block mb-1 text-[11px] font-medium text-slate-900">Name</label>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Employee name" className={`${inputCls} w-full`} />
+          </div>
+          <div>
+            <label className="block mb-1 text-[11px] font-medium text-slate-900">Position (optional)</label>
+            <input value={position} onChange={(e) => setPosition(e.target.value)} maxLength={120} placeholder="e.g. Site Engineer" className={`${inputCls} w-full`} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-white">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saveMutation.isPending}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800 disabled:opacity-60"
+          >
+            {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />} {person ? "Save" : "Add"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
@@ -327,12 +553,12 @@ const SummaryTab: React.FC = () => {
       const n = new Date(yy!, mm!, 0).getDate();
       const dates = Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
       const { monthLabel } = await import("../pdf/attendanceSummaryPdf");
-      const header = ["Employee", "Position / Role", ...dates.map((_, i) => String(i + 1)), "Present", "Absent", "On Leave", "Days marked"];
+      const header = ["Employee", "Position", ...dates.map((_, i) => String(i + 1)), "Present", "Absent", "On Leave", "Days marked"];
       const data = rows.map((r) => {
         const byDate = new Map(r.days.map((d) => [d.date, d.status] as const));
         return [
-          r.fullName,
-          r.jobPosition || r.role.replace("_", " "),
+          r.name,
+          r.position ?? "",
           ...dates.map((d) => {
             const st = byDate.get(d);
             return st ? CELL[st].letter : "";
@@ -438,8 +664,8 @@ const SummaryTab: React.FC = () => {
                 return (
                   <tr key={r.id} className="group">
                     <td className="sticky left-0 z-10 px-3 py-1.5 bg-white border-b border-r border-slate-100 group-hover:bg-slate-50">
-                      <p className="text-[12.5px] font-medium text-slate-800 whitespace-nowrap">{r.fullName}</p>
-                      <p className="text-[10.5px] text-slate-400 whitespace-nowrap">{r.jobPosition || <span className="capitalize">{r.role.replace("_", " ")}</span>}</p>
+                      <p className="text-[12.5px] font-medium text-slate-800 whitespace-nowrap">{r.name}</p>
+                      {r.position && <p className="text-[10.5px] text-slate-400 whitespace-nowrap">{r.position}</p>}
                     </td>
                     {dayCols.map((d) => {
                       const mark = byDate.get(d.date);
@@ -480,117 +706,49 @@ const SummaryTab: React.FC = () => {
 };
 
 // =====================================================================================
-// My attendance (everyone)
-// =====================================================================================
-
-const MyAttendanceTab: React.FC = () => {
-  const [month, setMonth] = useState(thisMonth);
-  const mineQuery = useMyAttendanceQuery(month);
-  const data = mineQuery.data?.month === month ? mineQuery.data : null;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <label className="text-[12px] font-medium text-slate-700">Month</label>
-        <input type="month" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inputCls} />
-      </div>
-      {mineQuery.isLoading ? (
-        <LoadingBlock text="Loading your attendance…" />
-      ) : mineQuery.isError ? (
-        <ErrorBlock error={mineQuery.error} fallback="Failed to load your attendance." onRetry={() => void mineQuery.refetch()} />
-      ) : data ? (
-        <>
-          <div className="grid grid-cols-3 gap-2">
-            {STATUSES.map((s) => (
-              <CountChip key={s.key} label={s.label} value={data.counts[s.key]} className={s.text} />
-            ))}
-          </div>
-          <div className="overflow-hidden bg-white border rounded-xl shadow-md border-slate-200">
-            {data.records.length === 0 ? (
-              <p className="py-14 text-center text-[13px] text-slate-500">No attendance has been recorded for you this month.</p>
-            ) : (
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 text-[11px] uppercase tracking-wide">
-                    <th className="px-3 py-2 font-medium text-left">Date</th>
-                    <th className="px-3 py-2 font-medium text-left">Status</th>
-                    <th className="px-3 py-2 font-medium text-left">Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.records.map((r) => (
-                    <tr key={r.date} className="border-b border-slate-100 last:border-0">
-                      <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">{shortDay(r.date)}</td>
-                      <td className="px-3 py-2.5">
-                        <StatusPill status={r.status} />
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-500">{r.note || "--"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-};
-
-// =====================================================================================
 // Page
 // =====================================================================================
 
-type TabKey = "take" | "summary" | "mine";
+type TabKey = "take" | "summary";
 
 /**
- * Attendance — admins and super admins take daily attendance for the organization's employees (one status per
- * person per day, plus an optional note) and review monthly totals. Everyone can see their own record.
+ * Attendance — admins and super admins keep their own list of employees (typed in here, independent of the
+ * People / users page), take daily attendance for them (one status per person per day, plus an optional note)
+ * and review or export the monthly register.
  */
 const Attendance: React.FC = () => {
   const { user } = useAuth();
   const canTake = user?.role === "admin" || user?.role === "super_admin";
-  const tabs: { key: TabKey; label: string }[] = canTake
-    ? [
-        { key: "take", label: "Take Attendance" },
-        { key: "summary", label: "Monthly Summary" },
-        { key: "mine", label: "My Attendance" },
-      ]
-    : [{ key: "mine", label: "My Attendance" }];
-  const [tab, setTab] = useState<TabKey>(canTake ? "take" : "mine");
+  const [tab, setTab] = useState<TabKey>("take");
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "take", label: "Take Attendance" },
+    { key: "summary", label: "Monthly Summary" },
+  ];
 
   return (
     <div className="w-full min-h-full p-6 bg-white lg:px-8 lg:py-8">
       <div className="flex flex-col w-full min-w-0 gap-5">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-blue-900 rounded-full bg-blue-50">
-            <CalendarCheck size={16} />
-          </div>
-          <div>
-            <h2 className="text-[17px] font-semibold text-slate-900">Attendance</h2>
-            <p className="text-[12px] text-slate-500">{canTake ? "Mark who is present each day and review the month." : "Your attendance records."}</p>
-          </div>
-        </div>
-
-        {tabs.length > 1 && (
-          <div className="flex gap-1 border-b border-slate-200">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-4 py-2 text-[12.5px] font-medium -mb-px border-b-2 transition-colors ${
-                  tab === t.key ? "text-blue-900 border-blue-900" : "text-slate-500 border-transparent hover:text-slate-800"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+        {!canTake ? (
+          <p className="py-14 text-center text-[13px] text-slate-500">Only admins can take attendance.</p>
+        ) : (
+          <>
+            <div className="flex gap-1 border-b border-slate-200">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-4 py-2 text-[12.5px] font-medium -mb-px border-b-2 transition-colors ${
+                    tab === t.key ? "text-blue-900 border-blue-900" : "text-slate-500 border-transparent hover:text-slate-800"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {tab === "take" && <TakeAttendanceTab />}
+            {tab === "summary" && <SummaryTab />}
+          </>
         )}
-
-        {tab === "take" && canTake && <TakeAttendanceTab />}
-        {tab === "summary" && canTake && <SummaryTab />}
-        {tab === "mine" && <MyAttendanceTab />}
       </div>
     </div>
   );

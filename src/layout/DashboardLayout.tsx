@@ -550,6 +550,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
               if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
+              if (it.id === "attendance" && !isAdmin) return null; // attendance is taken by admins only
               if (it.id === "purchase-orders") {
                 // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                 // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
@@ -632,6 +633,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
                   if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
+              if (it.id === "attendance" && !isAdmin) return null; // attendance is taken by admins only
                   if (it.id === "purchase-orders") {
                     // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                     // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
