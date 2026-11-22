@@ -413,7 +413,7 @@ const SummaryTab: React.FC = () => {
         </div>
       ) : (
         <div className="overflow-x-auto bg-white border rounded-xl shadow-md border-slate-200">
-          <table className="text-[11px] border-separate border-spacing-0">
+          <table className="w-full min-w-max text-[11px] border-separate border-spacing-0">
             <thead>
               <tr className="text-slate-500">
                 <th className="sticky left-0 z-10 min-w-[180px] px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide bg-white border-b border-r border-slate-200">
