@@ -4,8 +4,8 @@ import type React from "react";
 const STORAGE_KEY = "po-line-item-col-widths";
 export const MIN_COL_WIDTH = 48;
 
-/** Default pixel width per column id. The "item" column has none: it soaks up the leftover table width
- * until the user drags it. Custom columns fall back to {@link DEFAULT_CUSTOM_WIDTH}. */
+/** Default pixel width per column id for the PO line-item table. The "item" column has none: it soaks up
+ * the leftover table width until the user drags it. Custom columns fall back to {@link DEFAULT_CUSTOM_WIDTH}. */
 export const DEFAULT_COL_WIDTHS: Record<string, number> = {
   sn: 64,
   hsn: 128,
@@ -17,11 +17,22 @@ export const DEFAULT_COL_WIDTHS: Record<string, number> = {
   actions: 64,
 };
 export const DEFAULT_CUSTOM_WIDTH = 160;
-const ITEM_MIN_DEFAULT = 220;
+const FLEXIBLE_MIN_DEFAULT = 220;
 
-function loadWidths(): Record<string, number> {
+type Options = {
+  /** localStorage key the dragged widths are remembered under (one per table). */
+  storageKey?: string;
+  /** Default widths for this table's column ids. */
+  defaults?: Record<string, number>;
+  /** Columns with no fixed default width: they share whatever width is left until dragged. */
+  flexibleIds?: string[];
+  /** Width of any id that is neither in `defaults` nor flexible (e.g. user-added columns). */
+  fallbackWidth?: number;
+};
+
+function loadWidths(storageKey: string): Record<string, number> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
     if (!parsed || typeof parsed !== "object") return {};
     const out: Record<string, number> = {};
     for (const [k, v] of Object.entries(parsed)) if (typeof v === "number" && v >= MIN_COL_WIDTH) out[k] = v;
@@ -32,24 +43,26 @@ function loadWidths(): Record<string, number> {
 }
 
 /**
- * Drag-to-resize column widths for the line-item table. During a drag the <col> element and the table's
+ * Drag-to-resize column widths for a spreadsheet-style table. During a drag the <col> element and the table's
  * min-width are written straight to the DOM (no React re-render per mouse move); the new width is committed
- * to state — and remembered in localStorage — once on release.
+ * to state — and remembered in localStorage — once on release. Defaults to the PO line-item table's setup.
  */
-export function useColumnWidths(columnIds: string[]) {
-  const [widths, setWidths] = useState<Record<string, number>>(loadWidths);
+export function useColumnWidths(columnIds: string[], options: Options = {}) {
+  const { storageKey = STORAGE_KEY, defaults = DEFAULT_COL_WIDTHS, flexibleIds = ["item"], fallbackWidth = DEFAULT_CUSTOM_WIDTH } = options;
+  const [widths, setWidths] = useState<Record<string, number>>(() => loadWidths(storageKey));
   const tableRef = useRef<HTMLTableElement>(null);
 
   const widthOf = useCallback(
-    (id: string) => widths[id] ?? DEFAULT_COL_WIDTHS[id] ?? (id === "item" ? undefined : DEFAULT_CUSTOM_WIDTH),
+    (id: string) => widths[id] ?? defaults[id] ?? (flexibleIds.includes(id) ? undefined : fallbackWidth),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults / flexibleIds are per-table constants
     [widths],
   );
 
-  const tableMinWidth = columnIds.reduce((sum, id) => sum + (widthOf(id) ?? ITEM_MIN_DEFAULT), 0);
+  const tableMinWidth = columnIds.reduce((sum, id) => sum + (widthOf(id) ?? FLEXIBLE_MIN_DEFAULT), 0);
 
   const persist = (next: Record<string, number>) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       /* storage unavailable — widths just won't be remembered */
     }
@@ -63,6 +76,7 @@ export function useColumnWidths(columnIds: string[]) {
       persist(next);
       return next;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persist only closes over the constant storageKey
   }, []);
 
   const startResize = useCallback(
@@ -105,6 +119,7 @@ export function useColumnWidths(columnIds: string[]) {
       handle.addEventListener("pointerup", onUp);
       handle.addEventListener("pointercancel", onUp);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persist only closes over the constant storageKey
     [tableMinWidth],
   );
 
