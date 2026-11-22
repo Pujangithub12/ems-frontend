@@ -455,7 +455,7 @@ const Dashboard: React.FC = () => {
       icon: Clock,
       iconBg: "bg-amber-50",
       iconText: "text-amber-700",
-      onClick: () => navigate(`/${organization?.id}/approvals`),
+      onClick: () => navigate(`/${organization?.id}/attendance`),
     },
     {
       label: "Done This Week",

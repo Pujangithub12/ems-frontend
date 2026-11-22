@@ -191,24 +191,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const approvalsBadgeCount = React.useMemo(() => {
     if (!currentUserId) return 0;
     const canManage = {
-      leave: currentUserRole === "admin" || currentUserRole === "super_admin",
       sitevisit: currentUserRole === "admin" || currentUserRole === "super_admin",
       expense:
         currentUserRole === "admin" ||
         currentUserRole === "super_admin" ||
         currentUserRole === "finance",
     };
-    const canActOn = (type: "leave" | "sitevisit" | "expense", requesterUserId?: number) => {
+    const canActOn = (type: "sitevisit" | "expense", requesterUserId?: number) => {
       if (!canManage[type] || requesterUserId == null) return false;
       if (type === "expense" && currentUserRole === "finance") return true;
       if (currentUserRole === "super_admin") return true;
       return hierarchyCanApprove(hierarchyPeople, currentUserId, currentUserRole, requesterUserId);
     };
 
-    const pending: Array<{ type: "leave" | "sitevisit" | "expense"; userId?: number }> = [
-      ...leaveRequests
-        .filter((r) => r.status === "pending")
-        .map((r) => ({ type: "leave" as const, userId: r.user?.id })),
+    const pending: Array<{ type: "sitevisit" | "expense"; userId?: number }> = [
       ...siteVisitRequests
         .filter((r) => r.status === "pending")
         .map((r) => ({ type: "sitevisit" as const, userId: r.user?.id })),
@@ -223,7 +219,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     // Not an approver for anyone right now — fall back to "my own requests
     // still awaiting approval" so the badge stays meaningful for regular employees.
     return pending.filter((r) => r.userId === currentUserId).length;
-  }, [currentUserId, currentUserRole, hierarchyPeople, leaveRequests, siteVisitRequests, expenseRequests]);
+  }, [currentUserId, currentUserRole, hierarchyPeople, siteVisitRequests, expenseRequests]);
+
+  // Leave requests are handled on the Attendance page now, so they get their own badge on that link: pending
+  // requests this person can approve, or — for someone who approves nobody — their own still-pending requests.
+  const attendanceBadgeCount = React.useMemo(() => {
+    if (!currentUserId) return 0;
+    const pending = leaveRequests.filter((r) => r.status === "pending");
+    const isApprover = currentUserRole === "admin" || currentUserRole === "super_admin";
+    const actionable = isApprover
+      ? pending.filter((r) => {
+          if (r.user?.id == null) return false;
+          if (currentUserRole === "super_admin") return true;
+          return hierarchyCanApprove(hierarchyPeople, currentUserId, currentUserRole, r.user.id);
+        }).length
+      : 0;
+    if (actionable > 0) return actionable;
+    return pending.filter((r) => r.user?.id === currentUserId).length;
+  }, [currentUserId, currentUserRole, hierarchyPeople, leaveRequests]);
 
   const tasksBadgeCount = React.useMemo(() => {
     if (!currentUserId) return 0;
@@ -243,12 +256,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   // again after that visit (e.g. a new pending request comes in).
   const isOnAnnouncementsPage = location.pathname === `/${paramOrganizationId}/announcements`;
   const isOnApprovalsPage = location.pathname === `/${paramOrganizationId}/approvals`;
+  const isOnAttendancePage = location.pathname === `/${paramOrganizationId}/attendance`;
   const visibleAnnouncementsBadgeCount = useSidebarBadgeSeen(
     "announcements",
     paramOrganizationId,
     currentUserId,
     isOnAnnouncementsPage,
     announcementsBadgeCount,
+  );
+  const visibleAttendanceBadgeCount = useSidebarBadgeSeen(
+    "attendance",
+    paramOrganizationId,
+    currentUserId,
+    isOnAttendancePage,
+    attendanceBadgeCount,
   );
   const visibleApprovalsBadgeCount = useSidebarBadgeSeen(
     "approvals",
@@ -362,6 +383,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       label: "Attendance",
       icon: CalendarCheck,
       id: "attendance",
+      badgeCount: visibleAttendanceBadgeCount,
     },
     {
       path: `${prefix}/announcements`,
@@ -449,7 +471,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     debtors: "Customers who owe money and outstanding receivables",
     requisition: "Purchase requisition form — fill in and preview as PDF",
     tasks: "Assign, track and update tasks",
-    attendance: "Take and review employee attendance",
+    attendance: "Take attendance and manage leave requests",
     announcements: "Company-wide updates and notices",
     calendar: "Events, deadlines and schedules",
     approvals: "Review and approve requests",
@@ -550,7 +572,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           <div className="flex flex-col gap-0.5">
             {navItems.map((it) => {
               if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
-              if (it.id === "attendance" && !isAdmin) return null; // attendance is taken by admins only
               if (it.id === "purchase-orders") {
                 // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                 // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance
@@ -633,7 +654,6 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <div className="flex flex-col gap-0.5">
                 {navItems.map((it) => {
                   if (it.id === "vendors" || it.id === "proforma-invoices" || it.id === "quotations" || it.id === "items" || it.id === "finance" || it.id === "debtors" || it.id === "requisition") return null;
-              if (it.id === "attendance" && !isAdmin) return null; // attendance is taken by admins only
                   if (it.id === "purchase-orders") {
                     // The whole Procurement dropdown (Purchase Orders, Proforma Invoices,
                     // Quotations, Vendors, Items, Finance) is available to admin/super_admin/finance

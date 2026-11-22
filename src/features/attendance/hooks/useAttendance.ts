@@ -4,10 +4,15 @@ import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
   createAttendanceEmployee,
   deleteAttendanceEmployee,
+  fetchAttendanceAccess,
   fetchAttendanceDay,
+  fetchAttendancePermissions,
+  fetchAttendanceSharing,
   fetchAttendanceSummary,
+  saveAttendanceAccess,
   saveAttendanceDay,
   shareAttendance,
+  stopSharingAttendance,
   updateAttendanceEmployee,
   type AttendancePersonInput,
   type AttendanceRecordInput,
@@ -47,11 +52,52 @@ export function useSaveAttendanceMutation() {
   });
 }
 
-/** Copies this organization's attendance employees / marks to other organizations. The data lands in THOSE organizations, so nothing here changes. */
+export function useAttendancePermissionsQuery() {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.attendancePermissions(wsId),
+    queryFn: fetchAttendancePermissions,
+    enabled: Number.isFinite(wsId),
+  });
+}
+
+export function useAttendanceAccessQuery(enabled = true) {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.attendanceAccess(wsId),
+    queryFn: fetchAttendanceAccess,
+    enabled: enabled && Number.isFinite(wsId),
+  });
+}
+
+export function useSaveAttendanceAccessMutation() {
+  const invalidate = useInvalidateAttendance();
+  return useMutation({ mutationFn: (userIds: number[]) => saveAttendanceAccess(userIds), onSuccess: invalidate });
+}
+
+export function useAttendanceSharingQuery(enabled = true) {
+  const wsId = useOrganizationId();
+  return useQuery({
+    queryKey: queryKeys.attendanceSharing(wsId),
+    queryFn: fetchAttendanceSharing,
+    enabled: enabled && Number.isFinite(wsId),
+  });
+}
+
+/** Linking or unlinking organizations changes which list every attendance query reads, so refresh all of them. */
 export function useShareAttendanceMutation() {
+  const invalidate = useInvalidateAttendance();
   return useMutation({
-    mutationFn: ({ targetOrganizationIds, includeAttendance }: { targetOrganizationIds: number[]; includeAttendance: boolean }) =>
-      shareAttendance(targetOrganizationIds, includeAttendance),
+    mutationFn: (targetOrganizationIds: number[]) => shareAttendance(targetOrganizationIds),
+    onSuccess: invalidate,
+  });
+}
+
+export function useStopSharingAttendanceMutation() {
+  const invalidate = useInvalidateAttendance();
+  return useMutation({
+    mutationFn: (organizationId: number) => stopSharingAttendance(organizationId),
+    onSuccess: invalidate,
   });
 }
 
