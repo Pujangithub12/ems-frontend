@@ -3,6 +3,8 @@ import { AlertCircle, CalendarCheck, Check, ChevronLeft, ChevronRight, Loader2, 
 import { useAuth } from "../../../context/AuthProvider";
 import { getErrorMessage } from "../../../lib/errors";
 import type { AttendanceCounts, AttendanceStatus } from "../api/attendance.api";
+import ExportMenu from "../../procurement/components/ExportMenu";
+import { downloadBlob } from "../../../lib/download";
 import { useAttendanceDayQuery, useAttendanceSummaryQuery, useMyAttendanceQuery, useSaveAttendanceMutation } from "../hooks/useAttendance";
 
 type StatusMeta = { key: AttendanceStatus; label: string; /** classes when selected */ on: string; /** text colour for counts */ text: string; pill: string };
@@ -310,9 +312,63 @@ const CELL: Record<AttendanceStatus, { letter: string; cls: string }> = {
  * marked day (hover a cell for the full status and any note), followed by the month's totals.
  */
 const SummaryTab: React.FC = () => {
+  const { organization } = useAuth();
   const [month, setMonth] = useState(thisMonth);
   const summaryQuery = useAttendanceSummaryQuery(month);
   const rows = summaryQuery.data?.month === month ? summaryQuery.data.employees : [];
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  /** The register as a spreadsheet: one row per employee, one column per day (P / A / L), then totals. */
+  const exportExcel = async () => {
+    setExportError(null);
+    try {
+      const XLSX = await import("xlsx");
+      const [yy, mm] = month.split("-").map(Number);
+      const n = new Date(yy!, mm!, 0).getDate();
+      const dates = Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+      const { monthLabel } = await import("../pdf/attendanceSummaryPdf");
+      const header = ["Employee", "Position / Role", ...dates.map((_, i) => String(i + 1)), "Present", "Absent", "On Leave", "Days marked"];
+      const data = rows.map((r) => {
+        const byDate = new Map(r.days.map((d) => [d.date, d.status] as const));
+        return [
+          r.fullName,
+          r.jobPosition || r.role.replace("_", " "),
+          ...dates.map((d) => {
+            const st = byDate.get(d);
+            return st ? CELL[st].letter : "";
+          }),
+          r.present,
+          r.absent,
+          r.on_leave,
+          r.marked,
+        ];
+      });
+      const sheet = XLSX.utils.aoa_to_sheet([
+        [`${organization?.name ?? ""} — Attendance Register — ${monthLabel(month)}`],
+        ["P = Present, A = Absent, L = On Leave, blank = not marked"],
+        [],
+        header,
+        ...data,
+      ]);
+      sheet["!cols"] = [{ wch: 24 }, { wch: 18 }, ...dates.map(() => ({ wch: 3.5 })), { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 12 }];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "Attendance");
+      XLSX.writeFile(workbook, `attendance-${month}.xlsx`);
+    } catch (err) {
+      setExportError(getErrorMessage(err, "Failed to export to Excel."));
+    }
+  };
+
+  const exportPdf = async () => {
+    setExportError(null);
+    try {
+      const { generateAttendanceSummaryPdf } = await import("../pdf/attendanceSummaryPdf");
+      const blob = await generateAttendanceSummaryPdf({ organizationName: organization?.name ?? "Attendance", month, rows });
+      downloadBlob(blob, `attendance-${month}.pdf`);
+    } catch (err) {
+      setExportError(getErrorMessage(err, "Failed to export to PDF."));
+    }
+  };
 
   const [y, m] = month.split("-").map(Number);
   const daysInMonth = new Date(y!, m!, 0).getDate();
@@ -330,6 +386,10 @@ const SummaryTab: React.FC = () => {
           <label className="text-[12px] font-medium text-slate-700">Month</label>
           <input type="month" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inputCls} />
         </div>
+        {rows.length > 0 && <ExportMenu onExportExcel={() => void exportExcel()} onExportPdf={exportPdf} />}
+      </div>
+      {exportError && <div className="px-3 py-2 text-[12px] text-red-700 bg-red-50 border border-red-200 rounded-lg">{exportError}</div>}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex flex-wrap items-center gap-3 text-[11.5px] text-slate-600">
           {STATUSES.map((st) => (
             <span key={st.key} className="flex items-center gap-1.5">
