@@ -2,14 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
 import {
+  createAttendanceEmployee,
+  deleteAttendanceEmployee,
   fetchAttendanceDay,
   fetchAttendanceSummary,
-  fetchMyAttendance,
   saveAttendanceDay,
+  shareAttendance,
+  updateAttendanceEmployee,
+  type AttendancePersonInput,
   type AttendanceRecordInput,
 } from "../api/attendance.api";
 
-/** Every employee with their status for one day (admins / super admins only). */
+/** Every employee with their status for one day. */
 export function useAttendanceDayQuery(date: string, enabled = true) {
   const wsId = useOrganizationId();
   return useQuery({
@@ -28,21 +32,42 @@ export function useAttendanceSummaryQuery(month: string, enabled = true) {
   });
 }
 
-export function useMyAttendanceQuery(month: string, enabled = true) {
+/** Everything attendance shows depends on the employee list and the marks, so any change refreshes all of it. */
+function useInvalidateAttendance() {
   const wsId = useOrganizationId();
-  return useQuery({
-    queryKey: queryKeys.attendanceMine(wsId, month),
-    queryFn: () => fetchMyAttendance(month),
-    enabled: enabled && Number.isFinite(wsId) && !!month,
-  });
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "attendance"] });
 }
 
 export function useSaveAttendanceMutation() {
-  const wsId = useOrganizationId();
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidateAttendance();
   return useMutation({
     mutationFn: ({ date, records }: { date: string; records: AttendanceRecordInput[] }) => saveAttendanceDay(date, records),
-    // Saving changes this day, the monthly counts and anyone's own record, so refresh all attendance queries.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...queryKeys.all(wsId), "attendance"] }),
+    onSuccess: invalidate,
+  });
+}
+
+/** Copies this organization's attendance employees / marks to other organizations. The data lands in THOSE organizations, so nothing here changes. */
+export function useShareAttendanceMutation() {
+  return useMutation({
+    mutationFn: ({ targetOrganizationIds, includeAttendance }: { targetOrganizationIds: number[]; includeAttendance: boolean }) =>
+      shareAttendance(targetOrganizationIds, includeAttendance),
+  });
+}
+
+export function useSaveAttendanceEmployeeMutation() {
+  const invalidate = useInvalidateAttendance();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number | null; input: AttendancePersonInput }) =>
+      id == null ? createAttendanceEmployee(input) : updateAttendanceEmployee(id, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteAttendanceEmployeeMutation() {
+  const invalidate = useInvalidateAttendance();
+  return useMutation({
+    mutationFn: (id: number) => deleteAttendanceEmployee(id),
+    onSuccess: invalidate,
   });
 }

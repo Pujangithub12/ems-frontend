@@ -145,8 +145,8 @@ export async function generateAttendanceSummaryPdf({ organizationName, month, ro
     const byDate = new Map(r.days.map((d) => [d.date, d.status] as const));
 
     centerText(String(idx + 1), M, snW, y, rowH, "Body", 7.5, MUTED);
-    const sub = r.jobPosition || r.role.replace("_", " ");
-    const name = fit(r.fullName, nameW - 10, "Bold", 7.8);
+    const sub = r.position ?? "";
+    const name = fit(r.name, nameW - 10, "Bold", 7.8);
     doc.fillColor(TEXT).font("Bold").fontSize(7.8).text(name, xName + 5, y + 2.8, { lineBreak: false });
     doc.fillColor(MUTED).font("Body").fontSize(6).text(fit(sub, nameW - 10, "Body", 6), xName + 5, y + 11, { lineBreak: false });
 
