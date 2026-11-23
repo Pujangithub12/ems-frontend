@@ -1,6 +1,6 @@
 import api from "../../../api/axios";
 
-export type AttendanceStatus = "present" | "absent" | "on_leave";
+export type AttendanceStatus = "present" | "absent" | "on_leave" | "site_visit";
 
 /** A person attendance is taken for — typed in on the Attendance page, not linked to the users table. */
 export type AttendancePerson = { id: number; name: string; position: string | null; /** The company this person works for. */ company: string | null };

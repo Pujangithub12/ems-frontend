@@ -10,10 +10,10 @@ const LINE = "#000000";
 const TEXT = "#111111";
 const MUTED = "#555555";
 const SAT_BG = "#F2F2F2";
-const STATUS_ORDER: AttendanceStatus[] = ["present", "absent", "on_leave"];
-const LETTER: Record<AttendanceStatus, string> = { present: "P", absent: "A", on_leave: "L" };
-const LABEL: Record<AttendanceStatus, string> = { present: "PRESENT", absent: "ABSENT", on_leave: "ON LEAVE" };
-const COLOR: Record<AttendanceStatus, string> = { present: "#0B6B3A", absent: "#B42318", on_leave: "#5B21B6" };
+const STATUS_ORDER: AttendanceStatus[] = ["present", "absent", "on_leave", "site_visit"];
+const LETTER: Record<AttendanceStatus, string> = { present: "P", absent: "A", on_leave: "L", site_visit: "S" };
+const LABEL: Record<AttendanceStatus, string> = { present: "PRESENT", absent: "ABSENT", on_leave: "ON LEAVE", site_visit: "SITE VISIT" };
+const COLOR: Record<AttendanceStatus, string> = { present: "#0B6B3A", absent: "#B42318", on_leave: "#5B21B6", site_visit: "#0369A1" };
 
 export type AttendancePdfInput = {
   organizationName: string;
@@ -96,7 +96,7 @@ export async function generateAttendanceSummaryPdf({ organizationName, month, ro
   y = doc.y + 1;
   doc.fillColor(TEXT).font("Bold").fontSize(11).text(`ATTENDANCE REGISTER — ${monthLabel(month).toUpperCase()}`, M, y, { width: W, align: "center" });
   y = doc.y + 3;
-  doc.fillColor(MUTED).font("Body").fontSize(8).text("P = Present     A = Absent     L = On Leave     (blank = not marked)", M, y, { width: W, align: "center" });
+  doc.fillColor(MUTED).font("Body").fontSize(8).text("P = Present     A = Absent     L = On Leave     S = Site Visit     (blank = not marked)", M, y, { width: W, align: "center" });
   y = doc.y + 8;
 
   const drawHeader = () => {
@@ -138,7 +138,7 @@ export async function generateAttendanceSummaryPdf({ organizationName, month, ro
   drawHeader();
 
   // ---- one row per employee ----
-  const daily: Record<AttendanceStatus, number[]> = { present: days.map(() => 0), absent: days.map(() => 0), on_leave: days.map(() => 0) };
+  const daily: Record<AttendanceStatus, number[]> = { present: days.map(() => 0), absent: days.map(() => 0), on_leave: days.map(() => 0), site_visit: days.map(() => 0) };
   rows.forEach((r, idx) => {
     if (y + rowH > bottom) newPage();
     shadeSaturdays(y, rowH);
