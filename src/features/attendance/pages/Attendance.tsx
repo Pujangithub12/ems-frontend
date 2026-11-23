@@ -29,6 +29,7 @@ const STATUSES: StatusMeta[] = [
   { key: "present", label: "Present", on: "bg-emerald-600 border-emerald-600 text-white", text: "text-emerald-700", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   { key: "absent", label: "Absent", on: "bg-red-600 border-red-600 text-white", text: "text-red-700", pill: "bg-red-50 text-red-700 border-red-200" },
   { key: "on_leave", label: "On Leave", on: "bg-violet-600 border-violet-600 text-white", text: "text-violet-700", pill: "bg-violet-50 text-violet-700 border-violet-200" },
+  { key: "site_visit", label: "Site Visit", on: "bg-sky-600 border-sky-600 text-white", text: "text-sky-700", pill: "bg-sky-50 text-sky-700 border-sky-200" },
 ];
 const STATUS_BY_KEY = Object.fromEntries(STATUSES.map((s) => [s.key, s])) as Record<AttendanceStatus, StatusMeta>;
 
@@ -199,7 +200,7 @@ const TakeAttendanceTab: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   };
 
   const counts = useMemo(() => {
-    const c: AttendanceCounts & { unmarked: number } = { present: 0, absent: 0, on_leave: 0, unmarked: 0 };
+    const c: AttendanceCounts & { unmarked: number } = { present: 0, absent: 0, on_leave: 0, site_visit: 0, unmarked: 0 };
     for (const e of employees) {
       const s = draft[e.id]?.status;
       if (s) c[s] += 1;
@@ -273,7 +274,7 @@ const TakeAttendanceTab: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
       ) : (
         <>
           {/* Counts */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             {STATUSES.map((s) => (
               <CountChip key={s.key} label={s.label} value={counts[s.key]} className={s.text} />
             ))}
@@ -780,6 +781,7 @@ const CELL: Record<AttendanceStatus, { letter: string; cls: string }> = {
   present: { letter: "P", cls: "bg-emerald-100 text-emerald-800" },
   absent: { letter: "A", cls: "bg-red-100 text-red-700" },
   on_leave: { letter: "L", cls: "bg-violet-100 text-violet-700" },
+  site_visit: { letter: "S", cls: "bg-sky-100 text-sky-700" },
 };
 
 /**
@@ -802,7 +804,7 @@ const SummaryTab: React.FC = () => {
       const n = new Date(yy!, mm!, 0).getDate();
       const dates = Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
       const { monthLabel } = await import("../pdf/attendanceSummaryPdf");
-      const header = ["Employee", "Position", "Company", ...dates.map((_, i) => String(i + 1)), "Present", "Absent", "On Leave", "Days marked"];
+      const header = ["Employee", "Position", "Company", ...dates.map((_, i) => String(i + 1)), "Present", "Absent", "On Leave", "Site Visit", "Days marked"];
       const data = rows.map((r) => {
         const byDate = new Map(r.days.map((d) => [d.date, d.status] as const));
         return [
@@ -816,12 +818,13 @@ const SummaryTab: React.FC = () => {
           r.present,
           r.absent,
           r.on_leave,
+          r.site_visit,
           r.marked,
         ];
       });
       const sheet = XLSX.utils.aoa_to_sheet([
         [`${organization?.name ?? ""} — Attendance Register — ${monthLabel(month)}`],
-        ["P = Present, A = Absent, L = On Leave, blank = not marked"],
+        ["P = Present, A = Absent, L = On Leave, S = Site Visit, blank = not marked"],
         [],
         header,
         ...data,
