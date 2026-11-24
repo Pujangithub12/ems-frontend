@@ -35,7 +35,6 @@ import {
   Trash2,
   MoreVertical,
   Calendar,
-  FolderKanban,
   Folder,
   TrendingUp,
   FileText,
@@ -46,6 +45,7 @@ import {
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import TaskListRow from "../components/TaskListRow";
+import { buildTaskGroups, GroupBySwitch, TaskGroupSection, useCollapsedGroups, useGroupBy, type GroupBy } from "../components/TaskGroups";
 import { useStableCallback } from "../hooks/useStableCallback";
 import TaskProgressUpdates from "../components/TaskProgressUpdates";
 import {
@@ -179,9 +179,6 @@ const MyTasks: React.FC = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
-    new Set(),
-  );
 
   type DetailedSubTask = {
     id: string | number;
@@ -1048,54 +1045,11 @@ const MyTasks: React.FC = () => {
     [tasks, user, deferredSearch, filterProjectName, filterPriority, filterStatus],
   );
 
-  type ProjectGroup = {
-    key: string;
-    name: string;
-    projectId: number | null;
-    tasks: Task[];
-  };
-
-  const projectGroups: ProjectGroup[] = useMemo(() => {
-    const map = new Map<string, ProjectGroup>();
-    filteredTasks.forEach((task) => {
-      const projectId = task.project?.id ?? null;
-      const name = task.project?.name || task.projectName || "No Project";
-      const key = projectId != null ? `p-${projectId}` : `name-${name}`;
-      if (!map.has(key)) {
-        map.set(key, { key, name, projectId, tasks: [] });
-      }
-      map.get(key)!.tasks.push(task);
-    });
-    const groups = Array.from(map.values()).sort((a, b) => {
-      if (a.name === "No Project") return 1;
-      if (b.name === "No Project") return -1;
-      return a.name.localeCompare(b.name);
-    });
-    groups.forEach((g) => {
-      g.tasks.sort(
-        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-      );
-    });
-    return groups;
-  }, [filteredTasks]);
-
-  const toggleGroup = (key: string) => {
-    setCollapsedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const expandAllGroups = () => setCollapsedProjects(new Set());
-  const collapseAllGroups = () =>
-    setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
-  const allGroupsCollapsed =
-    projectGroups.length > 0 &&
-    projectGroups.every((g) => collapsedProjects.has(g.key));
-  const toggleAllGroups = () =>
-    allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
+  const GROUP_OPTIONS: GroupBy[] = ["due", "project"];
+  const [groupBy, setGroupBy] = useGroupBy("ems.tasks.my.groupBy", "due", GROUP_OPTIONS);
+  const taskGroups = useMemo(() => buildTaskGroups(filteredTasks, groupBy), [filteredTasks, groupBy]);
+  const { collapsed: collapsedGroups, toggle: toggleGroup, allCollapsed: allGroupsCollapsed, toggleAll: toggleAllGroups } =
+    useCollapsedGroups(taskGroups);
 
   // Stable wrappers so the memoised task rows aren't re-rendered by every unrelated state change.
   const onRowStatusChange = useStableCallback((taskId: number, status: string) => { void handleStatusChange(taskId, status); });
@@ -1186,14 +1140,18 @@ const MyTasks: React.FC = () => {
           >
             <option value="">All Statuses</option>
             <option value="to_do">To Do</option>
-            <option value="inprogress">In Progress</option>
+            <option value="in_progress">In Progress</option>
             <option value="on_hold">On Hold</option>
           </select>
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
         </div>
+        <div className="ml-auto">
+          <GroupBySwitch value={groupBy} onChange={setGroupBy} options={GROUP_OPTIONS} />
+        </div>
+        {groupBy !== "none" && (
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -1202,6 +1160,7 @@ const MyTasks: React.FC = () => {
           )}
           {allGroupsCollapsed ? "Expand all" : "Collapse all"}
         </button>
+        )}
         <button
           onClick={() => openAddTaskModal()}
           className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
@@ -1222,7 +1181,7 @@ const MyTasks: React.FC = () => {
         </div>
       )}
 
-      {/* Content: grouped by project */}
+      {/* Content: grouped by the chosen Group by option */}
       {tasksLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-xl shadow-md border-slate-200">
           <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
@@ -1253,89 +1212,29 @@ const MyTasks: React.FC = () => {
       ) : (
         <>
           <div className="space-y-3">
-            {projectGroups.map((group) => {
-              const isCollapsed = collapsedProjects.has(group.key);
-              const doneCount = group.tasks.filter(
-                (t) => t.status === "completed",
-              ).length;
-              const pct = group.tasks.length
-                ? Math.round((doneCount / group.tasks.length) * 100)
-                : 0;
-
-              return (
-                <div
-                  key={group.key}
-                  className="overflow-hidden transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
-                >
-                  <button
-                    onClick={() => toggleGroup(group.key)}
-                    className="flex items-center w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/60"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    )}
-                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50 ring-1 ring-black/5">
-                      <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[14px] text-slate-900 truncate">
-                        {group.name}
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {doneCount} of {group.tasks.length} done
-                      </div>
-                    </div>
-                    <div className="items-center flex-1 hidden max-w-xs gap-2 sm:flex">
-                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-blue-900"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span
-                        className="text-[11px] text-slate-400 w-9 text-right"
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {pct}%
-                      </span>
-                    </div>
-                    <span
-                      className="text-[11px] text-white font-semibold bg-blue-900 px-2.5 py-1 rounded-md flex-shrink-0"
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      {group.tasks.length}
-                    </span>
-                  </button>
-
-                  {!isCollapsed && (
-                    <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
-                      {group.tasks.map((task) => (
-                        <TaskListRow
-                          key={task.id}
-                          task={task}
-                          variant="my"
-                          onStatusChange={onRowStatusChange}
-                          onOpen={onRowOpen}
-                          onShowFeedback={onRowShowFeedback}
-                          onDelete={onRowDelete}
-                        />
-                      ))}
-                      <button
-                        onClick={() =>
-                          openAddTaskModal(group.projectId ?? undefined)
-                        }
-                        className="flex items-center w-full gap-1.5 px-2.5 py-2.5 mt-1 text-[12px] text-slate-500 border-t border-slate-100 hover:text-blue-900 hover:bg-slate-50/60 transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add task to{" "}
-                        {group.name}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {taskGroups.map((group) => (
+              <TaskGroupSection
+                key={group.key}
+                group={group}
+                collapsed={collapsedGroups.has(group.key)}
+                onToggle={() => toggleGroup(group.key)}
+                showHeader={groupBy !== "none"}
+                onAddTask={groupBy === "project" ? openAddTaskModal : undefined}
+              >
+                {group.tasks.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    variant="my"
+                    showProject={groupBy !== "project"}
+                    onStatusChange={onRowStatusChange}
+                    onOpen={onRowOpen}
+                    onShowFeedback={onRowShowFeedback}
+                    onDelete={onRowDelete}
+                  />
+                ))}
+              </TaskGroupSection>
+            ))}
           </div>
         </>
       )}

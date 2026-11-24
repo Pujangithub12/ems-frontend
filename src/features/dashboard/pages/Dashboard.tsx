@@ -12,6 +12,7 @@ import { useLeaveRequests } from "../../approvals/hooks/useLeaveRequests";
 import { useSiteVisitRequests } from "../../approvals/hooks/useSiteVisitRequests";
 import { useDashboard } from "../hooks/useDashboard";
 import { useEvents } from "../../calendar/hooks/useEvents";
+import { daysRemainingLabel, getStatusMeta, isOverdue, StatusPill } from "../../tasks/utils/taskDisplay";
 import {
   Cloud,
   Clock,
@@ -28,6 +29,8 @@ import {
   Wand2,
   PartyPopper,
   CalendarX2,
+  FolderKanban,
+  ListChecks,
 } from "lucide-react";
 
 // ---- Types ---------------------------------------------------------------
@@ -124,15 +127,40 @@ const SCHEDULE_TYPE_ORDER: Record<string, number> = { deadline: 0, event: 1, hol
 
 type TeamSegment = { label: string; count: number; pct: number; color: string };
 
-// ---- Coming soon placeholder (Supply Chain / Construction Progress depend
-// on data this app doesn't track yet) ---------------------------------------
+// ---- Layout helpers ----------------------------------------------------------
 
-const ComingSoon: React.FC<{ className?: string }> = ({ className = "py-14" }) => (
-  <div className={`flex flex-1 flex-col items-center justify-center text-center ${className}`}>
-    <div className="flex items-center justify-center w-11 h-11 mb-2.5 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
-      <Wand2 className="w-5 h-5 text-slate-400" />
+const Card: React.FC<{
+  title: string;
+  subtitle?: string;
+  action?: { label: string; onClick: () => void };
+  className?: string;
+  children: React.ReactNode;
+}> = ({ title, subtitle, action, className = "", children }) => (
+  <section className={`flex flex-col overflow-hidden bg-white border shadow-sm rounded-xl border-slate-200 ${className}`}>
+    <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
+      <h3 className="font-semibold text-[13.5px] text-slate-900">{title}</h3>
+      {subtitle && <span className="text-[11px] text-slate-400">{subtitle}</span>}
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="flex items-center flex-shrink-0 gap-1 ml-auto text-[11.5px] font-medium text-blue-900 hover:text-blue-700"
+        >
+          {action.label}
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
-    <div className="text-slate-400 text-[13px] font-medium">Coming soon</div>
+    <div className="flex-1">{children}</div>
+  </section>
+);
+
+const EmptyState: React.FC<{ icon: React.ElementType; title: string; text: string }> = ({ icon: Icon, title, text }) => (
+  <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+    <div className="flex items-center justify-center w-11 h-11 mb-2.5 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
+      <Icon className="w-5 h-5 text-slate-400" />
+    </div>
+    <div className="font-medium text-[13px] text-slate-900">{title}</div>
+    <div className="text-slate-400 text-[12px] mt-0.5 max-w-xs">{text}</div>
   </div>
 );
 
@@ -390,6 +418,19 @@ const Dashboard: React.FC = () => {
     };
   }, [projects, ongoingProjects]);
 
+  // Open top-level tasks assigned to the signed-in user, soonest due first.
+  const myOpenTasks = useMemo(() => {
+    const me = Number(user?.id);
+    return allTasks
+      .filter((t) => t.status !== "completed" && t.parentTaskId == null && t.assignedUsers?.some((u) => u.id === me))
+      .sort((a, b) => {
+        const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+        const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+        return da - db;
+      });
+  }, [allTasks, user?.id]);
+  const myUpcoming = myOpenTasks.slice(0, 6);
+
   const todaysEvents = useMemo(() => {
     const now = new Date();
     return calendarEvents
@@ -469,56 +510,36 @@ const Dashboard: React.FC = () => {
     },
   ];
 
-  // Hero row — the 3 headline numbers, styled after the reference's bold
-  // circular-badge cards. No trend arrows: the app doesn't track historical
-  // comparisons for these yet, so a ↑/↓ delta here would just be invented.
-  const heroStats = [
-    {
-      label: "Active Projects",
-      value: ongoingProjects.length,
-      caption: "In progress across the org",
-      icon: Building2,
-      color: "#10b981",
-      onClick: () => navigate(`/${organization?.id}/project`),
-    },
-    {
-      label: "Total Tasks",
-      value: allTasks.length,
-      caption: "Across all projects",
-      icon: SquarePen,
-      color: "#2563eb",
-      onClick: () => navigate(`/${organization?.id}/tasks`),
-    },
-    {
-      label: "Team Members",
-      value: teamCount,
-      caption: "Active in your organization",
-      icon: UsersIcon,
-      color: "#db2777",
-      onClick: () => navigate(`/${organization?.id}/users`),
-    },
+  // Organization overview — the headline counts, shown as one compact strip.
+  const overview = [
+    { label: "Active Projects", value: ongoingProjects.length, icon: Building2, color: "#10b981", onClick: () => navigate(`/${organization?.id}/project`) },
+    { label: "Total Tasks", value: allTasks.length, icon: ListChecks, color: "#2563eb", onClick: () => navigate(`/${organization?.id}/tasks`) },
+    { label: "Team Members", value: teamCount, icon: UsersIcon, color: "#db2777", onClick: () => navigate(`/${organization?.id}/users`) },
   ];
+  const [myTasksKpi, dueTodayKpi, overdueKpi, highPriorityKpi, toApproveKpi, doneWeekKpi] = kpis;
+  // Things that may need action today get their own cards; the rest sit in the overview strip.
+  const attention = [dueTodayKpi, overdueKpi, highPriorityKpi, toApproveKpi];
+  const quiet = [myTasksKpi, doneWeekKpi];
+
+  const taskTotal = allTasks.length;
 
   return (
-    <div className="w-full min-h-full px-6 py-5 bg-[#F7F8FA] lg:px-8 lg:py-6">
+    <div className="w-full min-h-full px-4 py-5 bg-[#F7F8FA] sm:px-6 lg:px-8 lg:py-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
-          <h2 className="font-semibold text-[20px] tracking-tight text-slate-900">
+          <p className="text-[12px] font-medium text-slate-400">
+            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h2 className="mt-0.5 font-semibold text-[22px] tracking-tight text-slate-900">
             {greeting}, {firstName}
           </h2>
-          <p className="text-slate-500 mt-0.5 text-[12.5px]">
-            Here's what's happening across your organization.
-          </p>
+          <p className="text-slate-500 mt-0.5 text-[12.5px]">Here&apos;s what needs your attention today.</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600 shadow-sm">
             <Cloud className="w-3.5 h-3.5 text-blue-500" />
             26°C · Kathmandu
-          </span>
-          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600 shadow-sm">
-            <CalendarDays className="w-3.5 h-3.5 text-emerald-500" />
-            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </span>
           <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[12px] text-slate-600 shadow-sm">
             <Clock className="w-3.5 h-3.5 text-violet-500" />
@@ -529,108 +550,233 @@ const Dashboard: React.FC = () => {
 
       {dashboardError && <ErrorBanner message={dashboardError} className="mb-4" />}
 
-      <div className="grid grid-cols-1 gap-4 mb-5 sm:grid-cols-3">
-        {heroStats.map((h) => (
-          <div
-            key={h.label}
-            className="relative px-4 py-3 bg-white border rounded-2xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200"
-          >
+      {/* Needs attention */}
+      <div className="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4">
+        {attention.map((k) => {
+          const hot = k.value > 0;
+          return (
             <button
-              onClick={h.onClick}
-              aria-label={`View ${h.label}`}
-              className="absolute flex items-center justify-center w-5 h-5 transition-colors border rounded-full top-2.5 right-2.5 border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300"
+              key={k.label}
+              onClick={k.onClick}
+              className="relative p-4 overflow-hidden text-left transition-all bg-white border shadow-sm group rounded-xl border-slate-200 hover:shadow-md hover:-translate-y-0.5"
             >
-              <ArrowRight className="w-2.5 h-2.5 -rotate-45" />
+              <span className="absolute inset-x-0 top-0 h-1" style={{ background: hot ? k.accent : "#e2e8f0" }} />
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium text-slate-500">{k.label}</span>
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg" style={{ background: `${k.accent}14` }}>
+                  <k.icon className="w-4 h-4" style={{ color: k.accent }} />
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span
+                  className="text-[26px] font-bold leading-none tracking-tight tabular-nums"
+                  style={{ color: hot ? k.accent : "#0f172a" }}
+                >
+                  {dashboardLoading ? "…" : k.value}
+                </span>
+                <span className="text-[11.5px] text-slate-400">{k.sub}</span>
+              </div>
+              <span className="flex items-center gap-1 mt-2 text-[11px] font-medium text-slate-400 group-hover:text-blue-900">
+                View <ArrowRight className="w-3 h-3" />
+              </span>
             </button>
-            <div className="flex items-center gap-1.5">
-              <span className="flex items-center justify-center flex-shrink-0 rounded-full w-5 h-5" style={{ background: h.color }}>
-                <h.icon className="w-3 h-3 text-white" strokeWidth={2} />
-              </span>
-              <span className="text-[12px] font-medium text-slate-500 truncate">{h.label}</span>
-            </div>
-            <div className="flex items-baseline gap-1.5 mt-1.5">
-              <span className="text-[20px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums">
-                {h.value}
-              </span>
-            </div>
-            <p className="mt-1 text-[10px] text-slate-400 truncate">{h.caption}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="mb-5 -mx-6 overflow-x-auto px-6 lg:mx-0 lg:overflow-visible lg:px-0">
-        <div className="flex min-w-max bg-white border divide-x rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200 divide-slate-100 lg:min-w-0">
-          {kpis.map((item) => (
+      {/* Organization overview strip */}
+      <div className="px-4 mb-5 -mx-4 overflow-x-auto sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:overflow-visible">
+        <div className="flex bg-white border divide-x shadow-sm min-w-max rounded-xl border-slate-200 divide-slate-100 lg:min-w-0">
+          {overview.map((o) => (
             <button
-              key={item.label}
-              onClick={item.onClick}
-              className="flex-1 min-w-[128px] px-4 py-3 text-left transition-colors lg:min-w-0 hover:bg-slate-50"
+              key={o.label}
+              onClick={o.onClick}
+              className="flex items-center flex-1 gap-3 px-4 py-3 text-left transition-colors min-w-[150px] hover:bg-slate-50"
             >
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="flex items-center justify-center flex-shrink-0 rounded-full w-5 h-5"
-                  style={{ background: `${item.accent}1A` }}
-                >
-                  <item.icon className="w-3 h-3" style={{ color: item.accent }} strokeWidth={2} />
+              <span className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg" style={{ background: o.color }}>
+                <o.icon className="w-4 h-4 text-white" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[18px] font-semibold leading-none text-slate-900 tabular-nums">{o.value}</span>
+                <span className="block mt-1 text-[11.5px] text-slate-500 truncate">{o.label}</span>
+              </span>
+            </button>
+          ))}
+          {quiet.map((k) => (
+            <button
+              key={k.label}
+              onClick={k.onClick}
+              className="flex items-center flex-1 gap-3 px-4 py-3 text-left transition-colors min-w-[150px] hover:bg-slate-50"
+            >
+              <span className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg" style={{ background: `${k.accent}1A` }}>
+                <k.icon className="w-4 h-4" style={{ color: k.accent }} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[18px] font-semibold leading-none text-slate-900 tabular-nums">
+                  {dashboardLoading ? "…" : k.value}
                 </span>
-                <span className="text-[12px] font-medium text-slate-500 truncate">{item.label}</span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1.5">
-                <span className="text-[20px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums">
-                  {dashboardLoading ? "…" : item.value}
+                <span className="block mt-1 text-[11.5px] text-slate-500 truncate">
+                  {k.label} <span className="text-slate-400">· {k.sub}</span>
                 </span>
-                {item.sub && <span className="text-[11px] text-slate-400 truncate">{item.sub}</span>}
-              </div>
+              </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Task Progress + Project Status — real breakdowns styled after the
-          reference's chunky chart cards (textured bar chart + rounded-cap
-          ring chart), placed right after the headline numbers. */}
-      <div className="grid grid-cols-1 gap-5 mb-5 lg:grid-cols-2">
-        <div className="overflow-hidden bg-white border shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] rounded-xl border-slate-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Task Progress</div>
-            <div className="text-[11px] text-slate-400">{allTasks.length} total</div>
-          </div>
-          <div className="p-4">
-            <div className="flex flex-wrap items-center gap-4 mb-4">
-              {taskStatusBreakdown.map((seg) => (
-                <div key={seg.label} className="flex items-center gap-1.5 text-[11.5px]">
-                  <span className="flex-shrink-0 w-2 h-2 rounded-full" style={{ background: seg.color }} />
-                  <span className="text-slate-500">{seg.label}</span>
-                  <span className="font-semibold text-slate-900">{seg.pct}%</span>
-                </div>
-              ))}
+      {/* My upcoming tasks + Today's schedule */}
+      <div className="grid grid-cols-1 gap-5 mb-5 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-2"
+          title="My Upcoming Tasks"
+          subtitle={myOpenTasks.length ? `${myOpenTasks.length} open` : undefined}
+          action={{ label: "Open Tasks", onClick: () => navigate(`/${organization?.id}/tasks`) }}
+        >
+          {myUpcoming.length > 0 ? (
+            <div>
+              {myUpcoming.map((t) => {
+                const overdue = isOverdue(t.dueDate, t.status);
+                const remaining = daysRemainingLabel(t.dueDate, t.status);
+                const status = getStatusMeta(t.status);
+                const project = t.project?.name || t.projectName || "";
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => navigate(`/${organization?.id}/tasks`)}
+                    className="flex items-center w-full gap-3 px-4 py-3 text-left transition-colors border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                  >
+                    <span className="flex-shrink-0 w-2 h-2 rounded-full" style={{ background: status.fg }} title={status.label} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13px] font-medium text-slate-900 truncate">{t.title}</span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[11px] text-slate-500">
+                        {project ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 max-w-[200px]">
+                            <FolderKanban className="flex-shrink-0 w-3 h-3" />
+                            <span className="truncate">{project}</span>
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">No project</span>
+                        )}
+                        <span>{status.label}</span>
+                      </span>
+                    </span>
+                    <span className="hidden sm:block flex-shrink-0 w-[76px]">
+                      <StatusPill type="priority" value={t.priority} />
+                    </span>
+                    <span className="flex-shrink-0 w-[112px] text-right leading-tight">
+                      <span className={`block text-[12px] ${overdue ? "text-red-600 font-medium" : "text-slate-700"}`}>
+                        {t.dueDate ? formatDate(t.dueDate) : "—"}
+                      </span>
+                      {remaining && (
+                        <span
+                          className={`block text-[11px] mt-0.5 ${
+                            overdue ? "text-red-500" : remaining === "Due today" ? "text-amber-600" : "text-slate-400"
+                          }`}
+                        >
+                          {remaining}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-end justify-around gap-4 h-[120px]">
-              {taskStatusBreakdown.map((seg) => (
-                <div key={seg.label} className="flex flex-col items-center justify-end flex-1 h-full min-w-0">
-                  <span className="mb-1.5 text-[11px] font-semibold text-slate-600 tabular-nums">{seg.count}</span>
-                  <div
-                    className="w-full rounded-t-lg"
-                    style={{
-                      height: `${Math.max(6, seg.pct)}px`,
-                      backgroundColor: seg.color,
-                      backgroundImage:
-                        "repeating-linear-gradient(135deg, rgba(255,255,255,0.28) 0px, rgba(255,255,255,0.28) 2px, transparent 2px, transparent 7px)",
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+          ) : (
+            <EmptyState icon={CheckCircle2} title="You're all caught up" text="No open tasks are assigned to you." />
+          )}
+        </Card>
 
-        <div className="overflow-hidden bg-white border shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] rounded-xl border-slate-200">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Project Status</div>
-          </div>
-          <div className="flex items-center gap-5 p-4">
+        {/* Today's Schedule — real events/deadlines from the Calendar for today */}
+        <Card title="Today's Schedule" action={{ label: "Calendar", onClick: () => navigate(`/${organization?.id}/calendar`) }}>
+          {eventsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
+            </div>
+          ) : todaysEvents.length > 0 ? (
+            <div className="p-4 space-y-2">
+              {todaysEvents.map((ev) => {
+                const meta = scheduleTypeMeta(ev.type);
+                return (
+                  <div key={ev.id} className="flex items-center gap-2.5 p-2 rounded-lg border border-slate-100">
+                    <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg" style={{ background: meta.bg }}>
+                      <meta.icon className="w-4 h-4" style={{ color: meta.fg }} />
+                    </div>
+                    <div className="flex-1 min-w-0 font-medium text-[12.5px] text-slate-900 truncate">{ev.title}</div>
+                    <span
+                      className="flex-shrink-0 text-[9.5px] uppercase tracking-[0.04em] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: meta.bg, color: meta.fg }}
+                    >
+                      {meta.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState icon={CalendarX2} title="Nothing scheduled today" text="Add an event or deadline from the calendar." />
+          )}
+        </Card>
+      </div>
+
+      {/* Projects */}
+      <div className="grid grid-cols-1 gap-5 mb-5 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-2"
+          title="Project Progress Snapshot"
+          subtitle={ongoingProjects.length ? `${ongoingProjects.length} ongoing` : undefined}
+          action={{ label: "All Projects", onClick: () => navigate(`/${organization?.id}/project`) }}
+        >
+          {projectsLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
+            </div>
+          ) : topProjects.length > 0 ? (
+            <div>
+              {topProjects.map((p) => {
+                const meta = HEALTH_META[p.health];
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => navigate(`/${organization?.id}/project/${p.id}/details`)}
+                    className="flex items-center w-full gap-3 px-4 py-3 text-left transition-colors border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                  >
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ring-1 ${meta.iconBg} ${meta.ring}`}>
+                      <Building2 className={`w-4 h-4 ${meta.text}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[13px] text-slate-900 truncate">{p.name}</span>
+                        <span
+                          className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${meta.iconBg} ${meta.text}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${p.progress}%` }} />
+                        </div>
+                        <span className="text-[11px] text-slate-500 w-8 flex-shrink-0 text-right tabular-nums">{p.progress}%</span>
+                      </div>
+                    </div>
+                    <div className="hidden sm:block flex-shrink-0 w-[120px] text-right leading-tight">
+                      <div className="text-[12px] text-slate-700">{p.scheduleLabel}</div>
+                      {p.dueDate && <div className="text-[11px] text-slate-400 mt-0.5">Due {formatDate(p.dueDate)}</div>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState icon={Building2} title="No ongoing projects" text="All projects are completed, or none have been created yet." />
+          )}
+        </Card>
+
+        <Card title="Project Status">
+          <div className="flex flex-col items-center gap-4 p-4 sm:flex-row lg:flex-col xl:flex-row">
             <RingChart segments={projectStatusBreakdown.segments} total={projectStatusBreakdown.total} totalLabel="PROJECTS" />
-            <div className="flex-1 min-w-0 space-y-2.5">
+            <div className="flex-1 w-full min-w-0 space-y-2.5">
               {projectStatusBreakdown.segments.map((seg) => (
                 <div key={seg.label}>
                   <div className="flex items-center justify-between mb-1 text-[11.5px]">
@@ -649,189 +795,76 @@ const Dashboard: React.FC = () => {
               ))}
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
-      {/* Project Progress Snapshot + Today's Schedule */}
-      <div className="grid grid-cols-1 gap-5 mb-5 lg:grid-cols-3">
-        <div className="bg-white border rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] lg:col-span-2 border-slate-200 overflow-hidden">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Project Progress Snapshot</div>
-            <button
-              onClick={() => navigate(`/${organization?.id}/project`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[11.5px] font-medium text-blue-900 hover:text-blue-700"
-            >
-              View All Projects
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {projectsLoading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-10">
-              <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
-            </div>
-          ) : topProjects.length > 0 ? (
-            <div className="px-4 pb-2">
-              <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.8fr)] gap-3 py-2 text-[10px] tracking-[0.08em] uppercase text-slate-400 font-mono border-b border-slate-100">
-                <span>Project</span>
-                <span>Progress</span>
-                <span>Status</span>
-                <span>Schedule</span>
-              </div>
-              {topProjects.map((p, idx) => {
-                const meta = HEALTH_META[p.health];
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => navigate(`/${organization?.id}/project/${p.id}/details`)}
-                    className={`w-full text-left grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,0.8fr)] gap-3 items-center py-3 hover:bg-slate-50 transition-colors ${
-                      idx < topProjects.length - 1 ? "border-b border-slate-100" : ""
-                    }`}
-                  >
-                    <div className="flex items-center min-w-0 gap-2.5">
-                      <div className={`flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 ring-1 ${meta.iconBg} ${meta.ring}`}>
-                        <Building2 className={`w-3.5 h-3.5 ${meta.text}`} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold text-[12.5px] text-slate-900 truncate">{p.name}</div>
-                        {p.description && (
-                          <div className="text-slate-400 text-[11px] truncate">{p.description}</div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${p.progress}%` }} />
-                      </div>
-                      <span className="text-[11px] text-slate-500 w-8 flex-shrink-0">{p.progress}%</span>
-                    </div>
-                    <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${meta.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                      {meta.label}
-                    </div>
-                    <div className="text-[12px] text-slate-500">{p.scheduleLabel}</div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="flex items-center justify-center w-12 h-12 mb-3 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
-                <Building2 className="w-6 h-6 text-slate-400" />
-              </div>
-              <div className="font-semibold text-[14px] text-slate-900 mb-1">No ongoing projects</div>
-              <div className="text-slate-500 text-[12px] max-w-xs">
-                All projects are completed, or none have been created yet.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Today's Schedule — real events/deadlines from the Calendar for today */}
-        <div className="bg-white border rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200 overflow-hidden flex flex-col">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Today's Schedule</div>
-            <button
-              onClick={() => navigate(`/${organization?.id}/calendar`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[11.5px] font-medium text-blue-900 hover:text-blue-700"
-            >
-              View Calendar
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="p-4 flex-1">
-            {eventsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
-              </div>
-            ) : todaysEvents.length > 0 ? (
-              <div className="space-y-2.5">
-                {todaysEvents.map((ev) => {
-                  const meta = scheduleTypeMeta(ev.type);
-                  return (
-                    <div key={ev.id} className="flex items-center gap-2.5">
-                      <div
-                        className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg"
-                        style={{ background: meta.bg }}
-                      >
-                        <meta.icon className="w-4 h-4" style={{ color: meta.fg }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[12.5px] text-slate-900 truncate">{ev.title}</div>
-                      </div>
-                      <span
-                        className="flex-shrink-0 text-[9.5px] uppercase tracking-[0.04em] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ background: meta.bg, color: meta.fg }}
-                      >
-                        {meta.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <div className="flex items-center justify-center w-10 h-10 mb-2.5 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-slate-200">
-                  <CalendarX2 className="w-5 h-5 text-slate-400" />
-                </div>
-                <div className="font-medium text-[13px] text-slate-900">Nothing scheduled today</div>
-                <div className="text-slate-400 text-[12px] mt-0.5">
-                  Add an event or deadline from the calendar.
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* Tasks + team */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Team Availability — real counts from today's approved leave/site-visit requests */}
-        <div className="bg-white border rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200 overflow-hidden flex flex-col">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Team Availability</div>
-            <button
-              onClick={() => navigate(`/${organization?.id}/users`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[11.5px] font-medium text-blue-900 hover:text-blue-700"
-            >
-              View Team
-            </button>
-          </div>
-          <div className="flex flex-col items-center flex-1 gap-3 p-4">
-            <TeamDonut segments={teamAvailability} total={teamCount} />
-            <div className="w-full space-y-1.5 min-w-0">
-              {teamAvailability.map((seg) => (
-                <div key={seg.label} className="flex gap-2 items-center text-[11.5px]">
-                  <span className="flex-shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
-                  <span className="flex-1 truncate text-slate-600">{seg.label}</span>
-                  <span className="font-semibold text-slate-900">{seg.count}</span>
-                  <span className="w-9 text-right text-slate-400">({seg.pct}%)</span>
+        {/* Task Progress — every task's current status as one stacked bar */}
+        <Card title="Task Progress" subtitle={`${taskTotal} total`}>
+          <div className="p-4">
+            <div className="flex h-3 overflow-hidden rounded-full bg-slate-100">
+              {taskStatusBreakdown
+                .filter((seg) => seg.count > 0)
+                .map((seg) => (
+                  <div
+                    key={seg.label}
+                    style={{ width: `${(seg.count / Math.max(1, taskTotal)) * 100}%`, background: seg.color }}
+                    title={`${seg.label}: ${seg.count}`}
+                  />
+                ))}
+            </div>
+            <div className="mt-4 space-y-2.5">
+              {taskStatusBreakdown.map((seg) => (
+                <div key={seg.label} className="flex items-center gap-2 text-[12px]">
+                  <span className="flex-shrink-0 w-2.5 h-2.5 rounded-sm" style={{ background: seg.color }} />
+                  <span className="flex-1 text-slate-600">{seg.label}</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{seg.count}</span>
+                  <span className="w-10 text-right text-slate-400 tabular-nums">{seg.pct}%</span>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Supply Chain — procurement/inventory tracking isn't built yet */}
-        <div className="bg-white border rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200 overflow-hidden flex flex-col">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900">Supply Chain</div>
+        {/* Team Availability — real counts from today's approved leave/site-visit requests */}
+        <Card title="Team Availability" action={{ label: "Team", onClick: () => navigate(`/${organization?.id}/users`) }}>
+          <div className="flex items-center gap-4 p-4">
+            <TeamDonut segments={teamAvailability} total={teamCount} />
+            <div className="flex-1 min-w-0 space-y-2">
+              {teamAvailability.map((seg) => (
+                <div key={seg.label} className="flex gap-2 items-center text-[12px]">
+                  <span className="flex-shrink-0 w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: seg.color }} />
+                  <span className="flex-1 truncate text-slate-600">{seg.label}</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{seg.count}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <ComingSoon />
-        </div>
+        </Card>
 
-        {/* Construction Progress Today — no construction-metric fields exist on Project/Task yet */}
-        <div className="bg-white border rounded-xl shadow-[0_2px_6px_rgba(15,23,42,0.06),0_10px_24px_-6px_rgba(15,23,42,0.10)] border-slate-200 overflow-hidden flex flex-col">
-          <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-            <div className="font-semibold text-[13.5px] text-slate-900 truncate">Construction Progress</div>
+        {/* Supply Chain / Construction Progress — no backing data in the app yet */}
+        <Card title="Coming Soon">
+          <div className="p-4 space-y-2.5">
+            <div className="flex items-center gap-3 p-3 border border-dashed rounded-lg border-slate-200">
+              <span className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-full bg-slate-50 ring-1 ring-slate-200">
+                <Wand2 className="w-4 h-4 text-slate-400" />
+              </span>
+              <span className="flex-1 min-w-0 text-[12.5px] font-medium text-slate-600 truncate">Supply Chain</span>
+              <span className="text-[11px] text-slate-400">Soon</span>
+            </div>
             <button
               onClick={() => navigate(`/${organization?.id}/project`)}
-              className="flex items-center flex-shrink-0 gap-1 ml-auto text-[11.5px] font-medium text-blue-900 hover:text-blue-700"
+              className="flex items-center w-full gap-3 p-3 text-left transition-colors border border-dashed rounded-lg border-slate-200 hover:bg-slate-50"
             >
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-full bg-slate-50 ring-1 ring-slate-200">
+                <Wand2 className="w-4 h-4 text-slate-400" />
+              </span>
+              <span className="flex-1 min-w-0 text-[12.5px] font-medium text-slate-600 truncate">Construction Progress</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
             </button>
           </div>
-          <ComingSoon />
-        </div>
+        </Card>
       </div>
     </div>
   );
