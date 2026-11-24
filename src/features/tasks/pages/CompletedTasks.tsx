@@ -7,22 +7,22 @@ import type { Task } from "../api/tasks.api";
 import type { Project } from "../../../types";
 import {
   Search,
-  Check,
   X,
   ChevronDown,
-  ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Loader2,
   AlertCircle,
   Calendar,
-  FolderKanban,
   TrendingUp,
   ListChecks,
   CheckCircle2,
   User as UserRoundIcon,
 } from "lucide-react";
-import { formatDate, formatLongDate, getStatusMeta, Eyebrow, StatusPill } from "../utils/taskDisplay";
+import { formatLongDate, getStatusMeta, Eyebrow } from "../utils/taskDisplay";
+import TaskListRow from "../components/TaskListRow";
+import { useStableCallback } from "../hooks/useStableCallback";
+import { buildTaskGroups, GroupBySwitch, TaskGroupSection, useCollapsedGroups, useGroupBy, type GroupBy } from "../components/TaskGroups";
 
 const CompletedTasks: React.FC = () => {
   const {
@@ -44,7 +44,6 @@ const CompletedTasks: React.FC = () => {
   const [projectFilterOpen, setProjectFilterOpen] = useState(false);
   const projectFilterRef = useRef<HTMLDivElement>(null);
 
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [showAllMembers, setShowAllMembers] = useState(false);
 
@@ -90,49 +89,13 @@ const CompletedTasks: React.FC = () => {
     [completedTasks, searchTerm, filterProjectName],
   );
 
-  type ProjectGroup = {
-    key: string;
-    name: string;
-    projectId: number | null;
-    tasks: Task[];
-  };
-
-  const projectGroups: ProjectGroup[] = useMemo(() => {
-    const map = new Map<string, ProjectGroup>();
-    filteredTasks.forEach((task) => {
-      const projectId = task.project?.id ?? null;
-      const name = task.project?.name || task.projectName || "No Project";
-      const key = projectId != null ? `p-${projectId}` : `name-${name}`;
-      if (!map.has(key)) map.set(key, { key, name, projectId, tasks: [] });
-      map.get(key)!.tasks.push(task);
-    });
-    const groups = Array.from(map.values()).sort((a, b) => {
-      if (a.name === "No Project") return 1;
-      if (b.name === "No Project") return -1;
-      return a.name.localeCompare(b.name);
-    });
-    groups.forEach((g) => {
-      g.tasks.sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
-    });
-    return groups;
-  }, [filteredTasks]);
-
-  const toggleGroup = (key: string) => {
-    setCollapsedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-  const expandAllGroups = () => setCollapsedProjects(new Set());
-  const collapseAllGroups = () =>
-    setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
-  const allGroupsCollapsed =
-    projectGroups.length > 0 &&
-    projectGroups.every((g) => collapsedProjects.has(g.key));
-  const toggleAllGroups = () =>
-    allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
+  const GROUP_OPTIONS: GroupBy[] = ["project"];
+  const [groupBy, setGroupBy] = useGroupBy("ems.tasks.completed.groupBy", "project", GROUP_OPTIONS);
+  const taskGroups = useMemo(() => buildTaskGroups(filteredTasks, groupBy, true), [filteredTasks, groupBy]);
+  const { collapsed: collapsedGroups, toggle: toggleGroup, allCollapsed: allGroupsCollapsed, toggleAll: toggleAllGroups } =
+    useCollapsedGroups(taskGroups);
+  const onRowStatusChange = useStableCallback((taskId: number) => { void handleUnComplete(taskId); });
+  const onRowOpen = useStableCallback((task: Task) => setExpandedTaskId((prev) => (prev === task.id ? null : task.id)));
 
   return (
     <>
@@ -194,9 +157,13 @@ const CompletedTasks: React.FC = () => {
             </div>
           )}
         </div>
+        <div className="ml-auto">
+          <GroupBySwitch value={groupBy} onChange={setGroupBy} options={GROUP_OPTIONS} />
+        </div>
+        {groupBy !== "none" && (
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -205,13 +172,14 @@ const CompletedTasks: React.FC = () => {
           )}
           {allGroupsCollapsed ? "Expand all" : "Collapse all"}
         </button>
+        )}
       </div>
 
       {statusError && (
         <ErrorBanner message={statusError} onDismiss={() => setStatusError(null)} />
       )}
 
-      {/* Content: grouped by project */}
+      {/* Content: grouped by the chosen Group by option */}
       {loading ? (
         <div className="bg-white border rounded-xl shadow-md border-slate-200">
           <div className="flex flex-col items-center justify-center gap-3 py-20">
@@ -241,99 +209,27 @@ const CompletedTasks: React.FC = () => {
       ) : (
         <div className="space-y-5">
           <div className="space-y-3">
-            {projectGroups.map((group) => {
-              const isCollapsed = collapsedProjects.has(group.key);
-              return (
-                <div
-                  key={group.key}
-                  className="overflow-hidden transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
-                >
-                  <button
-                    onClick={() => toggleGroup(group.key)}
-                    className="flex items-center w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/60"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    )}
-                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50 ring-1 ring-black/5">
-                      <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[14px] text-slate-900 truncate">
-                        {group.name}
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {group.tasks.length} completed
-                      </div>
-                    </div>
-                    <span
-                      className="text-[11px] text-white font-semibold bg-blue-900 px-2.5 py-1 rounded-md flex-shrink-0"
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      {group.tasks.length}
-                    </span>
-                  </button>
-
-                  {!isCollapsed && (
-                    <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
-                      {group.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="flex items-center gap-3 px-2.5 py-2.5 rounded-md hover:bg-slate-50/60 transition-colors opacity-70"
-                        >
-                          <button
-                            onClick={() => handleUnComplete(task.id)}
-                            className="w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center flex-shrink-0 transition-colors bg-emerald-600 border-emerald-600"
-                            title="Mark as pending"
-                          >
-                            <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                          </button>
-                          <button
-                            onClick={() =>
-                              setExpandedTaskId(expandedTaskId === task.id ? null : task.id)
-                            }
-                            className="flex-1 min-w-0 text-left"
-                          >
-                            <p className="text-[13px] font-medium text-slate-900 truncate line-through">
-                              {task.title}
-                            </p>
-                            <p className="flex items-center gap-1 text-[11px] mt-0.5 text-slate-500">
-                              <Calendar className="w-3 h-3" /> Due {formatDate(task.dueDate)}
-                              {task.createdBy && (
-                                <span className="text-slate-400">
-                                  {" "}
-                                  · Assigned by {task.createdBy.fullName}
-                                </span>
-                              )}
-                            </p>
-                          </button>
-                          <div className="flex-shrink-0">
-                            <StatusPill type="priority" value={task.priority} />
-                          </div>
-                          <div className="flex-shrink-0 -space-x-1 flex">
-                            {task.assignedUsers.length === 0 ? (
-                              <span className="text-[11px] text-slate-400">Unassigned</span>
-                            ) : (
-                              task.assignedUsers.slice(0, 3).map((u) => (
-                                <div
-                                  key={u.id}
-                                  className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 border-2 border-white rounded-full"
-                                  title={u.fullName}
-                                >
-                                  {u.fullName.charAt(0)}
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {taskGroups.map((group) => (
+              <TaskGroupSection
+                key={group.key}
+                group={group}
+                collapsed={collapsedGroups.has(group.key)}
+                onToggle={() => toggleGroup(group.key)}
+                showHeader={groupBy !== "none"}
+                compact
+              >
+                {group.tasks.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    variant="completed"
+                    showProject={groupBy !== "project"}
+                    onStatusChange={onRowStatusChange}
+                    onOpen={onRowOpen}
+                  />
+                ))}
+              </TaskGroupSection>
+            ))}
           </div>
         </div>
       )}

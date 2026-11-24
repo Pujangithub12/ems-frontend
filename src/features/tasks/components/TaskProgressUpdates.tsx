@@ -184,7 +184,10 @@ const TaskProgressUpdates: React.FC<Props> = ({ taskId, canWrite, canGiveFeedbac
                     value={feedbackDrafts[u.id] || ""}
                     onChange={(e) => setFeedbackDrafts((prev) => ({ ...prev, [u.id]: e.target.value }))}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") sendFeedback(u.id);
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        sendFeedback(u.id);
+                      }
                     }}
                     className="flex-1 px-3 py-1.5 text-[12px] bg-slate-50 rounded-lg border border-slate-200 outline-none focus:bg-white focus:border-blue-400 transition-colors"
                   />

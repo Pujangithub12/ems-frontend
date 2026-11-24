@@ -33,7 +33,6 @@ import {
   ChevronsUpDown,
   UserPlus,
   MessageSquare,
-  FolderKanban,
   Folder,
   TrendingUp,
   FileText,
@@ -44,6 +43,7 @@ import {
 } from "lucide-react";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import TaskListRow from "../components/TaskListRow";
+import { buildTaskGroups, GroupBySwitch, TaskGroupSection, useCollapsedGroups, useGroupBy, type GroupBy } from "../components/TaskGroups";
 import { useStableCallback } from "../hooks/useStableCallback";
 import TaskProgressUpdates from "../components/TaskProgressUpdates";
 import {
@@ -156,9 +156,6 @@ const AssignedTasks: React.FC = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
-    new Set(),
-  );
   const [editProgress, setEditProgress] = useState(0);
 
   const [newProjectId, setNewProjectId] = useState<number | null>(null);
@@ -329,54 +326,11 @@ const AssignedTasks: React.FC = () => {
     [assignedTasks, deferredSearch, filterProjectName, filterPriority, filterStatus, filterEmployee],
   );
 
-  type ProjectGroup = {
-    key: string;
-    name: string;
-    projectId: number | null;
-    tasks: Task[];
-  };
-
-  const projectGroups: ProjectGroup[] = useMemo(() => {
-    const map = new Map<string, ProjectGroup>();
-    filteredTasks.forEach((task) => {
-      const projectId = task.project?.id ?? null;
-      const name = task.project?.name || task.projectName || "No Project";
-      const key = projectId != null ? `p-${projectId}` : `name-${name}`;
-      if (!map.has(key)) {
-        map.set(key, { key, name, projectId, tasks: [] });
-      }
-      map.get(key)!.tasks.push(task);
-    });
-    const groups = Array.from(map.values()).sort((a, b) => {
-      if (a.name === "No Project") return 1;
-      if (b.name === "No Project") return -1;
-      return a.name.localeCompare(b.name);
-    });
-    groups.forEach((g) => {
-      g.tasks.sort(
-        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-      );
-    });
-    return groups;
-  }, [filteredTasks]);
-
-  const toggleGroup = (key: string) => {
-    setCollapsedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const expandAllGroups = () => setCollapsedProjects(new Set());
-  const collapseAllGroups = () =>
-    setCollapsedProjects(new Set(projectGroups.map((g) => g.key)));
-  const allGroupsCollapsed =
-    projectGroups.length > 0 &&
-    projectGroups.every((g) => collapsedProjects.has(g.key));
-  const toggleAllGroups = () =>
-    allGroupsCollapsed ? expandAllGroups() : collapseAllGroups();
+  const GROUP_OPTIONS: GroupBy[] = ["due", "project"];
+  const [groupBy, setGroupBy] = useGroupBy("ems.tasks.assigned.groupBy", "due", GROUP_OPTIONS);
+  const taskGroups = useMemo(() => buildTaskGroups(filteredTasks, groupBy), [filteredTasks, groupBy]);
+  const { collapsed: collapsedGroups, toggle: toggleGroup, allCollapsed: allGroupsCollapsed, toggleAll: toggleAllGroups } =
+    useCollapsedGroups(taskGroups);
 
   const convertToDetailed = (subTasks: any[]): DetailedSubTask[] =>
     subTasks.map((st) => ({
@@ -921,8 +875,8 @@ const AssignedTasks: React.FC = () => {
   const flattenSubTasks = (list: DetailedSubTask[]): DetailedSubTask[] =>
     list.flatMap((st) => [st, ...flattenSubTasks(st.subTasks || [])]);
 
+  /** Loads the progress updates / sub-task feedback for a task (shown inside the edit form). */
   const handleShowTaskFeedback = async (taskId: number) => {
-    setShowTaskFeedbackPopup(true);
     setFeedbackPopupTaskId(taskId);
     setLoadingTaskFeedback(true);
     try {
@@ -1319,9 +1273,10 @@ const AssignedTasks: React.FC = () => {
 
   // Stable wrappers so the memoised task rows aren't re-rendered by every unrelated state change.
   const onRowStatusChange = useStableCallback((taskId: number, status: string) => { void handleStatusChange(taskId, status); });
-  const onRowOpen = useStableCallback((task: Task) => setExpandedTaskId((prev) => (prev === task.id ? null : task.id)));
-  const onRowShowFeedback = useStableCallback((taskId: number) => { void handleShowTaskFeedback(taskId); });
-  const onRowEdit = useStableCallback((task: Task) => handleEditClick(task));
+  const onRowOpen = useStableCallback((task: Task) => {
+    handleEditClick(task);
+    void handleShowTaskFeedback(task.id);
+  });
   const onRowDelete = useStableCallback((taskId: number) => handleDeleteClick(taskId));
 
   return (
@@ -1462,9 +1417,13 @@ const AssignedTasks: React.FC = () => {
             </div>
           )}
         </div>
+        <div className="ml-auto">
+          <GroupBySwitch value={groupBy} onChange={setGroupBy} options={GROUP_OPTIONS} />
+        </div>
+        {groupBy !== "none" && (
         <button
           onClick={toggleAllGroups}
-          className="flex items-center gap-1.5 px-3 py-2 ml-auto text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
         >
           {allGroupsCollapsed ? (
             <ChevronsUpDown className="w-3.5 h-3.5" />
@@ -1473,6 +1432,7 @@ const AssignedTasks: React.FC = () => {
           )}
           {allGroupsCollapsed ? "Expand all" : "Collapse all"}
         </button>
+        )}
         <button
           onClick={() => openAddTaskModal()}
           className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
@@ -1493,7 +1453,7 @@ const AssignedTasks: React.FC = () => {
         </div>
       )}
 
-      {/* Content: grouped by project */}
+      {/* Content: grouped by the chosen Group by option */}
       {tasksLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20 bg-white border rounded-xl shadow-md border-slate-200">
           <Loader2 className="w-6 h-6 text-blue-900 animate-spin" />
@@ -1526,90 +1486,28 @@ const AssignedTasks: React.FC = () => {
       ) : (
         <div className="space-y-5">
           <div className="space-y-3">
-            {projectGroups.map((group) => {
-              const isCollapsed = collapsedProjects.has(group.key);
-              const doneCount = group.tasks.filter(
-                (t) => t.status === "completed",
-              ).length;
-              const pct = group.tasks.length
-                ? Math.round((doneCount / group.tasks.length) * 100)
-                : 0;
-
-              return (
-                <div
-                  key={group.key}
-                  className="overflow-hidden transition-shadow bg-white border rounded-xl shadow-md border-slate-200 hover:shadow-lg"
-                >
-                  <button
-                    onClick={() => toggleGroup(group.key)}
-                    className="flex items-center w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/60"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="flex-shrink-0 w-4 h-4 text-slate-400" />
-                    )}
-                    <span className="flex items-center justify-center flex-shrink-0 rounded-md w-6 h-6 bg-blue-50 ring-1 ring-black/5">
-                      <FolderKanban className="w-3.5 h-3.5 text-blue-900" />
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[14px] text-slate-900 truncate">
-                        {group.name}
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {doneCount} of {group.tasks.length} done
-                      </div>
-                    </div>
-                    <div className="items-center flex-1 hidden max-w-xs gap-2 sm:flex">
-                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-blue-900"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <span
-                        className="text-[11px] text-slate-400 w-9 text-right"
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {pct}%
-                      </span>
-                    </div>
-                    <span
-                      className="text-[11px] text-white font-semibold bg-blue-900 px-2.5 py-1 rounded-lg flex-shrink-0"
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      {group.tasks.length}
-                    </span>
-                  </button>
-
-                  {!isCollapsed && (
-                    <div className="border-t border-slate-200 px-2.5 py-2 space-y-1">
-                      {group.tasks.map((task) => (
-                        <TaskListRow
-                          key={task.id}
-                          task={task}
-                          variant="assigned"
-                          onStatusChange={onRowStatusChange}
-                          onOpen={onRowOpen}
-                          onShowFeedback={onRowShowFeedback}
-                          onEdit={onRowEdit}
-                          onDelete={onRowDelete}
-                        />
-                      ))}
-                      <button
-                        onClick={() =>
-                          openAddTaskModal(group.projectId ?? undefined)
-                        }
-                        className="flex items-center w-full gap-1.5 px-2.5 py-2.5 mt-1 text-[12px] text-slate-500 border-t border-slate-100 hover:text-blue-900 hover:bg-slate-50/60 transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add task to{" "}
-                        {group.name}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {taskGroups.map((group) => (
+              <TaskGroupSection
+                key={group.key}
+                group={group}
+                collapsed={collapsedGroups.has(group.key)}
+                onToggle={() => toggleGroup(group.key)}
+                showHeader={groupBy !== "none"}
+                onAddTask={groupBy === "project" ? openAddTaskModal : undefined}
+              >
+                {group.tasks.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    variant="assigned"
+                    showProject={groupBy !== "project"}
+                    onStatusChange={onRowStatusChange}
+                    onOpen={onRowOpen}
+                    onDelete={onRowDelete}
+                  />
+                ))}
+              </TaskGroupSection>
+            ))}
           </div>
         </div>
       )}
@@ -1910,1000 +1808,420 @@ const AssignedTasks: React.FC = () => {
 
       {/* Task Edit Modal */}
       {showUpdateModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200/70 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
-              <div>
-                <Eyebrow>Edit Task</Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  Update task details
-                </h3>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
+          <form
+            onSubmit={handleEditSubmit}
+            className="flex flex-col w-full max-w-3xl max-h-[92vh] overflow-hidden bg-white border shadow-2xl rounded-2xl border-slate-200/70"
+          >
+            {/* Header */}
+            <div className="flex items-start gap-3 px-6 py-4 border-b border-slate-200">
+              <span className="flex items-center justify-center flex-shrink-0 mt-0.5 rounded-lg w-9 h-9 bg-blue-50 ring-1 ring-blue-100">
+                <Edit2 className="w-4 h-4 text-blue-900" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Edit Task</p>
+                <h3 className="font-semibold text-[16px] text-slate-900 truncate">{editTitle || "Untitled task"}</h3>
               </div>
               <button
+                type="button"
                 onClick={closeTaskModal}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <form
-              onSubmit={handleEditSubmit}
-              className="flex-1 p-6 space-y-4 overflow-y-auto"
-            >
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto">
               {editTaskError && (
-                <div className="flex items-center gap-2 p-3 text-xs font-medium border text-rose-700 bg-rose-50 rounded-lg border-rose-100">
-                  <AlertCircle className="w-4 h-4" />
+                <div className="flex items-center gap-2 px-3 py-2.5 mx-6 mt-4 text-[12px] font-medium border text-rose-700 bg-rose-50 rounded-lg border-rose-100">
+                  <AlertCircle className="flex-shrink-0 w-4 h-4" />
                   {editTaskError}
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Eyebrow className="mb-1.5">Project Name</Eyebrow>
-                <select
-                  value={editProjectId || ""}
-                  onChange={(e) =>
-                    setEditProjectId(
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                >
-                  <option value="" disabled>
-                    Select a project
-                  </option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1.5 md:col-span-2">
-                  <Eyebrow className="mb-1.5">Task Title</Eyebrow>
-                  <input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                    placeholder="Task title"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Priority</Eyebrow>
-                  <select
-                    value={editPriority}
-                    onChange={(e) => setEditPriority(e.target.value)}
-                    className="w-full px-3 py-2 text-[13px] font-medium bg-slate-50 border border-slate-200 rounded-lg appearance-none cursor-pointer outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                  >
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Eyebrow className="mb-1.5">Description</Eyebrow>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors resize-none"
-                  placeholder="Task description"
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Due Date</Eyebrow>
-                  <input
-                    type="date"
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Eyebrow className="mb-1.5">Progress</Eyebrow>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editProgress}
-                    onChange={(e) => setEditProgress(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <Eyebrow className="mb-1.5">Sub-Tasks</Eyebrow>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditSubTasks([
-                        ...editSubTasks,
-                        { id: Date.now().toString(), title: "", subTasks: [] },
-                      ])
-                    }
-                    className="flex items-center gap-1 px-3 py-1 text-[11px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Sub-Task
-                  </button>
-                </div>
-                <div className="min-h-[60px] p-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/50">
-                  {editSubTasks.length === 0 ? (
-                    <p className="py-2 text-xs text-center text-slate-400">
-                      No sub-tasks yet
-                    </p>
-                  ) : (
-                    editSubTasks.map((subTask, idx) => (
-                      <div
-                        key={subTask.id}
-                        className="flex items-center gap-2 p-2 bg-white border rounded-lg border-slate-200"
+              <div className="grid md:grid-cols-[minmax(0,1fr)_260px]">
+                {/* Main column */}
+                <div className="p-6 space-y-5">
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Task title</label>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 text-[14px] font-medium text-slate-900 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
+                      placeholder="What needs to be done?"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Description</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={4}
+                      className="w-full px-3 py-2 text-[13px] text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition resize-y"
+                      placeholder="Add more detail, notes or links…"
+                    />
+                  </div>
+
+                  {/* Sub-tasks */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[12px] font-medium text-slate-600">
+                        Sub-tasks
+                        {editSubTasks.length > 0 && (
+                          <span className="ml-1.5 px-1.5 py-0.5 text-[10.5px] font-semibold rounded-full bg-slate-100 text-slate-500">
+                            {editSubTasks.length}
+                          </span>
+                        )}
+                      </label>
+                      <span className="text-[11px] text-slate-400">Days = estimated effort</span>
+                    </div>
+                    <div className="overflow-hidden border rounded-lg border-slate-200">
+                      {editSubTasks.length === 0 ? (
+                        <p className="px-3 py-4 text-[12px] text-center text-slate-400">No sub-tasks yet</p>
+                      ) : (
+                        editSubTasks.map((subTask, idx) => (
+                          <div
+                            key={subTask.id}
+                            className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-100 group/st"
+                          >
+                            <span className="w-5 text-[11px] text-center text-slate-400 tabular-nums">{idx + 1}</span>
+                            <input
+                              value={subTask.title}
+                              onChange={(e) => {
+                                const updated = [...editSubTasks];
+                                updated[idx] = { ...subTask, title: e.target.value };
+                                setEditSubTasks(updated);
+                              }}
+                              className="flex-1 min-w-0 px-2 py-1.5 text-[13px] bg-transparent rounded-md outline-none focus:bg-slate-50"
+                              placeholder="Sub-task title"
+                            />
+                            <div className="flex items-center flex-shrink-0 gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={subTask.estimatedDays ?? ""}
+                                onChange={(e) => {
+                                  const updated = [...editSubTasks];
+                                  updated[idx] = { ...subTask, estimatedDays: e.target.value };
+                                  setEditSubTasks(updated);
+                                }}
+                                className="w-14 px-2 py-1 text-[12px] text-right bg-slate-50 border border-slate-200 rounded-md outline-none focus:bg-white focus:border-blue-400"
+                                placeholder="0"
+                                title="Estimated days — weights this sub-task's share of the task's progress"
+                              />
+                              <span className="text-[11px] text-slate-400">days</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const u = [...editSubTasks];
+                                u.splice(idx, 1);
+                                setEditSubTasks(u);
+                              }}
+                              className="p-1 transition-colors rounded-md text-slate-300 hover:text-red-600 hover:bg-red-50"
+                              title="Remove sub-task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSubTasks([...editSubTasks, { id: Date.now().toString(), title: "", subTasks: [] }])
+                        }
+                        className="flex items-center w-full gap-1.5 px-3 py-2 text-[12px] font-medium text-blue-900 bg-slate-50/60 hover:bg-blue-50 transition-colors"
                       >
-                        <input
-                          value={subTask.title}
-                          onChange={(e) => {
-                            const updated = [...editSubTasks];
-                            updated[idx] = {
-                              ...subTask,
-                              title: e.target.value,
-                            };
-                            setEditSubTasks(updated);
-                          }}
-                          className="flex-1 px-3 py-1.5 text-[13px] bg-slate-50 border rounded-lg border-slate-200 focus:outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                          placeholder="Sub-task title"
-                        />
+                        <Plus className="w-3.5 h-3.5" /> Add sub-task
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Attachments</label>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => setEditFiles(e.target.files)}
+                      className="hidden"
+                      id="edit-task-files"
+                    />
+                    <label
+                      htmlFor="edit-task-files"
+                      className="flex items-center gap-3 px-4 py-3 transition-colors border-2 border-dashed rounded-lg cursor-pointer border-slate-200 hover:border-blue-400 hover:bg-blue-50/40"
+                    >
+                      <span className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-slate-100">
+                        <Paperclip className="w-4 h-4 text-slate-500" />
+                      </span>
+                      <span className="text-[12.5px]">
+                        {editFiles?.length ? (
+                          <span className="font-medium text-blue-900">{editFiles.length} file(s) selected</span>
+                        ) : (
+                          <>
+                            <span className="font-medium text-slate-700">Click to upload</span>
+                            <span className="block text-[11px] text-slate-400">Add task resources</span>
+                          </>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Side column — properties */}
+                <div className="p-6 space-y-5 border-t md:border-t-0 md:border-l border-slate-200 bg-slate-50/60">
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Project</label>
+                    <select
+                      value={editProjectId || ""}
+                      onChange={(e) => setEditProjectId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
+                    >
+                      <option value="" disabled>
+                        Select a project
+                      </option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Priority</label>
+                    <div className="grid grid-cols-3 gap-1 p-1 bg-white border rounded-lg border-slate-200">
+                      {[
+                        { v: "low", label: "Low", on: "bg-emerald-600 text-white" },
+                        { v: "medium", label: "Medium", on: "bg-amber-500 text-white" },
+                        { v: "high", label: "High", on: "bg-red-600 text-white" },
+                      ].map((p) => (
+                        <button
+                          key={p.v}
+                          type="button"
+                          onClick={() => setEditPriority(p.v)}
+                          className={`py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                            editPriority === p.v ? p.on : "text-slate-500 hover:bg-slate-100"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">Due date</label>
+                    <input
+                      type="date"
+                      value={editDueDate}
+                      onChange={(e) => setEditDueDate(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 text-[13px] bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[12px] font-medium text-slate-600">Progress</label>
+                      <div className="flex items-center gap-0.5">
                         <input
                           type="number"
                           min="0"
-                          step="0.5"
-                          value={subTask.estimatedDays ?? ""}
-                          onChange={(e) => {
-                            const updated = [...editSubTasks];
-                            updated[idx] = {
-                              ...subTask,
-                              estimatedDays: e.target.value,
-                            };
-                            setEditSubTasks(updated);
-                          }}
-                          className="w-16 px-2.5 py-1.5 text-[13px] bg-slate-50 border rounded-lg border-slate-200 focus:outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                          placeholder="Days"
-                          title="Estimated days — weights this sub-task's share of the task's progress"
+                          max="100"
+                          value={editProgress}
+                          onChange={(e) => setEditProgress(Number(e.target.value))}
+                          className="w-12 px-1.5 py-0.5 text-[12px] font-semibold text-right bg-white border border-slate-200 rounded-md outline-none focus:border-blue-400"
                         />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const u = [...editSubTasks];
-                            u.splice(idx, 1);
-                            setEditSubTasks(u);
-                          }}
-                          className="p-1 transition-colors rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <span className="text-[12px] text-slate-500">%</span>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Eyebrow className="mb-1.5">Attachments</Eyebrow>
-                <div className="relative">
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => setEditFiles(e.target.files)}
-                    className="hidden"
-                    id="edit-task-files"
-                  />
-                  <label
-                    htmlFor="edit-task-files"
-                    className="flex flex-col items-center justify-center w-full gap-1 px-4 py-3 text-[11px] transition-all border-2 border-dashed cursor-pointer rounded-lg bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-900 hover:text-blue-900 group"
-                  >
-                    <Paperclip className="w-3.5 h-3.5" />
-                    {editFiles?.length ? (
-                      <span className="font-medium">
-                        {editFiles.length} file(s) selected
-                      </span>
-                    ) : (
-                      "Upload task resources"
-                    )}
-                  </label>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Eyebrow className="mb-1.5">Assign To</Eyebrow>
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search users..."
-                        value={userSearchTerm}
-                        onChange={(e) => setUserSearchTerm(e.target.value)}
-                        className="w-full py-1.5 pr-3 text-[13px] transition-all border pl-9 rounded-lg bg-slate-50 border-slate-200 focus:outline-none focus:bg-white focus:border-blue-400"
-                      />
                     </div>
-                    <div className="overflow-y-auto max-h-[100px] p-2 space-y-1 bg-white rounded-lg border border-slate-200">
-                      {assignableUsers
-                        .filter((u) =>
-                          u.fullName
-                            .toLowerCase()
-                            .includes(userSearchTerm.toLowerCase()),
-                        )
-                        .map((u) => {
-                          const isSelected = editUserIds.includes(u.id);
-                          return (
-                            <label
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={editProgress}
+                      onChange={(e) => setEditProgress(Number(e.target.value))}
+                      className="w-full accent-blue-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1.5 text-[12px] font-medium text-slate-600">
+                      Assignees
+                      {editUserIds.length > 0 && <span className="ml-1 text-slate-400">({editUserIds.length})</span>}
+                    </label>
+                    {editUserIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {assignableUsers
+                          .filter((u) => editUserIds.includes(u.id))
+                          .map((u) => (
+                            <span
                               key={u.id}
-                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all text-[12px] ${isSelected ? "text-blue-900 bg-blue-50" : "hover:bg-slate-50 text-slate-600"}`}
+                              className="inline-flex items-center gap-1 py-0.5 pl-0.5 pr-1.5 text-[11.5px] font-medium text-blue-900 bg-blue-50 border border-blue-100 rounded-full"
                             >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  if (e.target.checked)
-                                    setEditUserIds([...editUserIds, u.id]);
-                                  else
-                                    setEditUserIds(
-                                      editUserIds.filter((id) => id !== u.id),
-                                    );
-                                }}
-                                className="w-3.5 h-3.5 text-blue-900 rounded border-slate-300 focus:ring-blue-900"
-                              />
-                              {u.fullName}
-                            </label>
-                          );
-                        })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={closeTaskModal}
-                  className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editingTaskLoading}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {editingTaskLoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                  Update
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Task Details Popup */}
-      {expandedTaskId &&
-        (() => {
-          const t = assignedTasks.find((task) => task.id === expandedTaskId);
-          if (!t) return null;
-          const statusMeta = getStatusMeta(t.status);
-          return (
-            <div className="fixed inset-0 z-[60] flex items-stretch justify-end bg-slate-900/50 backdrop-blur-sm animate-drawer-fade-in">
-              <div className="w-full max-w-xl h-full overflow-hidden bg-white border-l shadow-2xl border-slate-100 flex flex-col animate-drawer-slide-in">
-                <div className="flex items-start justify-end flex-shrink-0 px-7 pt-6 pb-5">
-                  <div className="flex flex-col items-end flex-shrink-0 gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                        style={{ background: statusMeta.bg, color: statusMeta.fg }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: statusMeta.fg }}
-                        />
-                        {statusMeta.label}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setExpandedTaskId(null);
-                          setShowAllMembers(false);
-                        }}
-                        className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1.5 w-28">
-                      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${t.progress}%`, background: statusMeta.fg }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-medium text-slate-500 flex-shrink-0">
-                        {t.progress}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="border-t border-slate-100" />
-                <div className="flex-1 px-7 py-6 space-y-6 overflow-y-auto">
-                  <div>
-                    <div className="mb-2.5">
-                      <SectionLabel>Task Name</SectionLabel>
-                    </div>
-                    {editingTitleTaskId === t.id ? (
-                      <div className="flex items-center gap-2 pl-1.5">
-                        <input
-                          value={editTitleValue}
-                          onChange={(e) => setEditTitleValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleSaveTitle(t.id);
-                            } else if (e.key === "Escape") {
-                              setEditingTitleTaskId(null);
-                            }
-                          }}
-                          autoFocus
-                          className="flex-1 min-w-0 px-2 py-1 text-[18px] font-semibold text-slate-900 border border-blue-300 rounded-lg outline-none focus:border-blue-900"
-                        />
-                        <button
-                          onClick={() => handleSaveTitle(t.id)}
-                          disabled={savingTitle}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Save"
-                        >
-                          {savingTitle ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Check className="w-4 h-4" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setEditingTitleTaskId(null)}
-                          disabled={savingTitle}
-                          className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="Cancel"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 pl-1.5">
-                        <h3 className="text-[18px] font-semibold text-slate-900 truncate">
-                          {t.title}
-                        </h3>
-                        {t.createdBy?.id === user?.id && (
-                          <button
-                            onClick={() => {
-                              setEditingTitleTaskId(t.id);
-                              setEditTitleValue(t.title);
-                            }}
-                            className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
-                            title="Edit task name"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="mb-2.5">
-                      <SectionLabel>Project</SectionLabel>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[13px] text-slate-500 pl-1.5">
-                      <span className="font-medium text-blue-900 truncate">
-                        {t.project?.name || t.projectName || "No Project"}
-                      </span>
-                      <span>·</span>
-                      {editingDueDateTaskId === t.id ? (
-                        <>
-                          <input
-                            type="date"
-                            value={editDueDateValue}
-                            onChange={(e) => setEditDueDateValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleSaveDueDate(t.id);
-                              } else if (e.key === "Escape") {
-                                setEditingDueDateTaskId(null);
-                              }
-                            }}
-                            autoFocus
-                            className="px-2 py-0.5 text-[12px] border border-blue-300 rounded-lg outline-none focus:border-blue-900"
-                          />
-                          <button
-                            onClick={() => handleSaveDueDate(t.id)}
-                            disabled={savingDueDate}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Save"
-                          >
-                            {savingDueDate ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => setEditingDueDateTaskId(null)}
-                            disabled={savingDueDate}
-                            className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                            title="Cancel"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex items-center gap-1 text-slate-500 flex-shrink-0">
-                            <Calendar className="w-3 h-3" />
-                            Due {formatLongDate(t.dueDate)}
-                          </span>
-                          {daysRemainingLabel(t.dueDate, t.status) && (
-                            <>
-                              <span>·</span>
-                              <span className="font-medium text-red-600 flex-shrink-0">
-                                {daysRemainingLabel(t.dueDate, t.status)}
+                              <span className="flex items-center justify-center w-5 h-5 text-[9px] font-semibold text-white rounded-full bg-blue-900">
+                                {u.fullName.charAt(0).toUpperCase()}
                               </span>
-                            </>
-                          )}
-                          {t.createdBy?.id === user?.id && (
-                            <button
-                              onClick={() => {
-                                setEditingDueDateTaskId(t.id);
-                                setEditDueDateValue(t.dueDate.slice(0, 10));
-                              }}
-                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
-                              title="Edit due date"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-2.5">
-                      <SectionLabel>Priority</SectionLabel>
-                    </div>
-                    <div className="flex items-center gap-2 pl-1.5">
-                      {editingPriorityTaskId === t.id ? (
-                        <>
-                          <select
-                            value={editPriorityValue}
-                            onChange={(e) => setEditPriorityValue(e.target.value)}
-                            autoFocus
-                            className="px-2 py-1 text-[12px] font-medium bg-white border border-blue-300 rounded-lg outline-none focus:border-blue-900"
-                          >
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
-                          </select>
-                          <button
-                            onClick={() => handleSavePriority(t.id)}
-                            disabled={savingPriority}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Save"
-                          >
-                            {savingPriority ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => setEditingPriorityTaskId(null)}
-                            disabled={savingPriority}
-                            className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                            title="Cancel"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <StatusPill type="priority" value={t.priority} />
-                          {t.createdBy?.id === user?.id && (
-                            <button
-                              onClick={() => {
-                                setEditingPriorityTaskId(t.id);
-                                setEditPriorityValue(t.priority);
-                              }}
-                              className="p-1 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Edit priority"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-2.5">
-                      <SectionLabel>Description</SectionLabel>
-                    </div>
-                    {editingDescriptionTaskId === t.id ? (
-                      <div className="p-3 space-y-2 rounded-lg border border-blue-300 bg-slate-50/50 ml-1.5">
-                        <textarea
-                          value={editDescriptionValue}
-                          onChange={(e) => setEditDescriptionValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") setEditingDescriptionTaskId(null);
-                          }}
-                          autoFocus
-                          rows={4}
-                          className="w-full text-slate-700 text-[13px] leading-relaxed bg-white border border-slate-200 rounded-lg p-2 outline-none focus:border-blue-400 resize-none"
-                        />
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setEditingDescriptionTaskId(null)}
-                            disabled={savingDescription}
-                            className="px-3 py-1.5 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => handleSaveDescription(t.id)}
-                            disabled={savingDescription}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors disabled:opacity-70"
-                          >
-                            {savingDescription && <Loader2 className="w-3 h-3 animate-spin" />}
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => {
-                          if (t.createdBy?.id !== user?.id) return;
-                          setEditingDescriptionTaskId(t.id);
-                          setEditDescriptionValue(t.description || "");
-                        }}
-                        className={`p-3 rounded-lg border border-slate-200 bg-slate-50/50 ml-1.5 ${
-                          t.createdBy?.id === user?.id
-                            ? "cursor-pointer hover:border-blue-300 transition-colors"
-                            : ""
-                        }`}
-                        title={t.createdBy?.id === user?.id ? "Click to edit" : undefined}
-                      >
-                        <p className="text-slate-600 text-[13px] leading-relaxed whitespace-pre-wrap">
-                          {t.description || "No description provided."}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-6 border-t border-slate-100">
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <ListChecks className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                      <SectionLabel>Sub-Tasks</SectionLabel>
-                    </div>
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="text"
-                        value={newSubTaskTitle[expandedTaskId] || ""}
-                        onChange={(e) =>
-                          setNewSubTaskTitle((prev) => ({
-                            ...prev,
-                            [expandedTaskId]: e.target.value,
-                          }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addSubTaskToTask(expandedTaskId);
-                          }
-                        }}
-                        className="flex-1 px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                        placeholder="Enter sub-task title"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={newSubTaskEstimatedDays[expandedTaskId] || ""}
-                        onChange={(e) =>
-                          setNewSubTaskEstimatedDays((prev) => ({
-                            ...prev,
-                            [expandedTaskId]: e.target.value,
-                          }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addSubTaskToTask(expandedTaskId);
-                          }
-                        }}
-                        className="w-24 px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                        placeholder="Days"
-                        title="Estimated days — weights this sub-task's share of the task's progress"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => addSubTaskToTask(expandedTaskId)}
-                        className="flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {(taskSubTasks[expandedTaskId] || []).length === 0 ? (
-                        <p className="py-4 text-center text-slate-400 text-[12px]">
-                          No sub-tasks yet
-                        </p>
-                      ) : (
-                        (taskSubTasks[expandedTaskId] || []).map((st) =>
-                          renderSubTaskItem(st),
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {t.childTasks && t.childTasks.length > 0 && (
-                    <div className="pt-6 border-t border-slate-100">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <ListTree className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <SectionLabel>Linked Tasks</SectionLabel>
-                      </div>
-                      <div className="space-y-1.5">
-                        {t.childTasks.map((child) => {
-                          const childMeta = getStatusMeta(child.status || "to_do");
-                          return (
-                            <button
-                              key={child.id}
-                              onClick={() => setExpandedTaskId(child.id)}
-                              className="flex items-center justify-between w-full gap-2 px-3 py-1.5 text-left border rounded-lg border-slate-200 hover:bg-slate-50"
-                            >
-                              <span className="text-[13px] text-slate-700 truncate">{child.title}</span>
-                              <span className="flex items-center gap-2 flex-shrink-0">
-                                <span className="text-[11px] text-slate-400">
-                                  {typeof child.progress === "number" ? `${child.progress}%` : ""}
-                                </span>
-                                <span
-                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap"
-                                  style={{ background: childMeta.bg, color: childMeta.fg }}
-                                >
-                                  {childMeta.label}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-6 border-t border-slate-100">
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-2">
-                        <UserRoundIcon className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                        <SectionLabel>Assigned To</SectionLabel>
-                      </div>
-                        <div ref={addMemberRef} className="relative">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPendingMemberIds([]);
-                              setMemberSearchTerm("");
-                              setShowAddMemberPopover((o) => !o);
-                            }}
-                            className="flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-blue-900 rounded-lg hover:bg-blue-50 transition-colors"
-                          >
-                            <UserPlus className="w-3.5 h-3.5" /> Add
-                          </button>
-                          {showAddMemberPopover && (
-                            <div className="absolute right-0 z-30 mt-1 bg-white border rounded-xl shadow-2xl w-60 border-slate-200/70 overflow-hidden">
-                              <div className="p-2 border-b border-slate-100">
-                                <div className="relative">
-                                  <Search className="absolute w-3 h-3 -translate-y-1/2 left-2.5 top-1/2 text-slate-400" />
-                                  <input
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Search users..."
-                                    value={memberSearchTerm}
-                                    onChange={(e) =>
-                                      setMemberSearchTerm(e.target.value)
-                                    }
-                                    className="w-full py-1.5 pr-2 text-[12px] border rounded-lg outline-none pl-7 bg-slate-50 border-slate-200 focus:bg-white focus:border-blue-400"
-                                  />
-                                </div>
-                              </div>
-                              <div className="overflow-y-auto max-h-40">
-                                {assignableUsers
-                                  .filter(
-                                    (u) =>
-                                      !t.assignedUsers.some((a) => a.id === u.id) &&
-                                      u.fullName
-                                        .toLowerCase()
-                                        .includes(memberSearchTerm.toLowerCase()),
-                                  )
-                                  .map((u) => (
-                                    <label
-                                      key={u.id}
-                                      className="flex items-center gap-2 rounded-lg mx-1.5 px-3 py-1.5 text-[12px] cursor-pointer text-slate-700 hover:bg-slate-50 transition-colors"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={pendingMemberIds.includes(u.id)}
-                                        onChange={(e) => {
-                                          if (e.target.checked)
-                                            setPendingMemberIds((prev) => [
-                                              ...prev,
-                                              u.id,
-                                            ]);
-                                          else
-                                            setPendingMemberIds((prev) =>
-                                              prev.filter((id) => id !== u.id),
-                                            );
-                                        }}
-                                        className="w-3.5 h-3.5 text-blue-900 border-slate-300 rounded focus:ring-blue-900"
-                                      />
-                                      {u.fullName}
-                                    </label>
-                                  ))}
-                                {assignableUsers.filter(
-                                  (u) =>
-                                    !t.assignedUsers.some((a) => a.id === u.id) &&
-                                    u.fullName
-                                      .toLowerCase()
-                                      .includes(memberSearchTerm.toLowerCase()),
-                                ).length === 0 && (
-                                  <p className="px-3 py-2 text-[11px] italic text-slate-400">
-                                    No users to add.
-                                  </p>
-                                )}
-                              </div>
-                              <div className="p-2 border-t border-slate-100">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    pendingMemberIds.length === 0 || savingMembers
-                                  }
-                                  onClick={() => handleAddMembers(t.id)}
-                                  className="flex items-center justify-center w-full gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white transition-colors rounded-lg shadow-sm bg-blue-900 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {savingMembers && (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  )}
-                                  Add{" "}
-                                  {pendingMemberIds.length > 0
-                                    ? `(${pendingMemberIds.length})`
-                                    : ""}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        {t.assignedUsers.length === 0 ? (
-                          <p className="text-slate-400 text-[12px]">Unassigned</p>
-                        ) : (
-                          <>
-                            {t.assignedUsers.slice(0, 2).map((u) => (
-                              <div
-                                key={u.id}
-                                className="flex items-center gap-2 px-1.5 py-1 -mx-1.5 rounded-lg hover:bg-slate-50 transition-colors"
-                              >
-                                <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 text-[11px] font-semibold text-white rounded-full bg-blue-900">
-                                  {u.fullName.charAt(0)}
-                                </div>
-                                <span className="text-[13px] font-medium text-slate-800 truncate">
-                                  {u.fullName}
-                                </span>
-                              </div>
-                            ))}
-                            {t.assignedUsers.length > 2 && (
+                              <span className="max-w-[110px] truncate">{u.fullName}</span>
                               <button
                                 type="button"
-                                onClick={() => setShowAllMembers(true)}
-                                className="text-[12px] font-medium text-blue-900 hover:underline"
+                                onClick={() => setEditUserIds(editUserIds.filter((id) => id !== u.id))}
+                                className="text-blue-400 hover:text-red-600"
+                                title={`Remove ${u.fullName}`}
                               >
-                                View all ({t.assignedUsers.length})
+                                <X className="w-3 h-3" />
                               </button>
-                            )}
-                          </>
-                        )}
+                            </span>
+                          ))}
                       </div>
-                      {t.createdBy && (
-                        <p className="pt-2 mt-2 text-[11px] text-slate-400 border-t border-slate-100">
-                          Assigned by{" "}
-                          <span className="font-medium text-slate-600">
-                            {t.createdBy.fullName}
-                          </span>
-                        </p>
-                      )}
+                    )}
+                    <div className="overflow-hidden bg-white border rounded-lg border-slate-200">
+                      <div className="relative border-b border-slate-100">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search people…"
+                          value={userSearchTerm}
+                          onChange={(e) => setUserSearchTerm(e.target.value)}
+                          className="w-full py-2 pr-3 text-[12.5px] pl-8 outline-none"
+                        />
+                      </div>
+                      <div className="max-h-[150px] overflow-y-auto p-1">
+                        {assignableUsers
+                          .filter((u) => u.fullName.toLowerCase().includes(userSearchTerm.toLowerCase()))
+                          .map((u) => {
+                            const isSelected = editUserIds.includes(u.id);
+                            return (
+                              <label
+                                key={u.id}
+                                className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-[12.5px] transition-colors ${
+                                  isSelected ? "bg-blue-50 text-blue-900" : "text-slate-600 hover:bg-slate-50"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setEditUserIds([...editUserIds, u.id]);
+                                    else setEditUserIds(editUserIds.filter((id) => id !== u.id));
+                                  }}
+                                  className="w-3.5 h-3.5 text-blue-900 rounded border-slate-300 focus:ring-blue-900"
+                                />
+                                <span className="truncate">{u.fullName}</span>
+                              </label>
+                            );
+                          })}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-          );
-        })()}
-
-      {/* View All Assigned Members Popup */}
-      {showAllMembers &&
-        expandedTaskId &&
-        (() => {
-          const t = assignedTasks.find((task) => task.id === expandedTaskId);
-          if (!t) return null;
-          return (
-            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
-              <div className="flex flex-col w-full max-w-sm overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70 max-h-[80vh]">
-                <div className="flex items-center justify-between flex-shrink-0 px-5 py-3 border-b border-slate-200 bg-slate-50/60">
-                  <Eyebrow>Assigned Members ({t.assignedUsers.length})</Eyebrow>
-                  <button
-                    onClick={() => setShowAllMembers(false)}
-                    className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex-1 p-3 space-y-1 overflow-y-auto">
-                  {t.assignedUsers.length === 0 ? (
-                    <p className="py-4 text-center text-slate-400 text-[12px]">
-                      No members assigned.
-                    </p>
-                  ) : (
-                    t.assignedUsers.map((u) => (
-                      <div
-                        key={u.id}
-                        className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-50"
-                      >
-                        <div className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-[12px] font-semibold text-white rounded-full bg-blue-900">
-                          {u.fullName.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-slate-800 truncate">
-                            {u.fullName}
-                          </p>
-                          {u.email && (
-                            <p className="text-[11px] text-slate-400 truncate">
-                              {u.email}
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMember(t.id, u.id)}
-                          disabled={removingMemberId === u.id}
-                          className="flex-shrink-0 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Remove member"
-                        >
-                          {removingMemberId === u.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <X className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* Task Sub-Task Feedback Popup */}
-      {showTaskFeedbackPopup && (() => {
-        const feedbackTask = assignedTasks.find((task) => task.id === feedbackPopupTaskId);
-        // Only the person who assigned this task may give feedback — matches
-        // the same check enforced on the backend.
-        const canGiveFeedback = feedbackTask?.createdBy?.id === user?.id;
-        return (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
-          <div className="flex flex-col w-full max-w-lg overflow-hidden bg-white border rounded-xl shadow-2xl border-slate-200/70 max-h-[80vh]">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
-              <div>
-                <Eyebrow>Progress &amp; Feedback</Eyebrow>
-                <h3 className="font-semibold text-[15px] text-slate-900 mt-0.5">
-                  {feedbackTask?.title || "Updates on this task's sub-tasks"}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowTaskFeedbackPopup(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 p-5 space-y-3 overflow-y-auto">
-              {feedbackPopupTaskId != null && (
-                <TaskProgressUpdates
-                  taskId={feedbackPopupTaskId}
-                  canWrite={!!feedbackTask?.assignedUsers.some((u) => Number(u.id) === Number(user?.id))}
-                  canGiveFeedback={canGiveFeedback}
-                />
-              )}
-              <SectionLabel className="pt-2">Sub-task updates</SectionLabel>
-              {loadingTaskFeedback ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
-                </div>
-              ) : taskFeedbackList.length === 0 ? (
-                <p className="py-8 text-center text-slate-400 text-[12px]">
-                  No updates have been posted on this task's sub-tasks yet.
-                </p>
-              ) : (
-                taskFeedbackList.map((fb) => (
-                  <div
-                    key={fb.commentId}
-                    className="p-3 border rounded-lg border-slate-200 bg-slate-50/50"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <span className="text-[11px] font-semibold text-blue-900 truncate">
-                        {fb.subTaskTitle}
-                      </span>
-                      <span
-                        className="flex-shrink-0 text-[10px] text-slate-400"
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                      >
-                        {new Date(fb.date).toLocaleDateString()}
-                      </span>
+              {/* Progress & Feedback */}
+              {editingTaskId != null && (() => {
+                const feedbackTask = assignedTasks.find((task) => task.id === editingTaskId);
+                // Only the person who assigned this task may give feedback — matches the backend check.
+                const canGiveFeedback = feedbackTask?.createdBy?.id === user?.id;
+                return (
+                  <div className="px-6 py-5 space-y-3 border-t border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-emerald-700" />
+                      <h4 className="text-[13px] font-semibold text-slate-900">Progress &amp; Feedback</h4>
                     </div>
-                    <p className="text-[12px] text-slate-500 italic">
-                      "{fb.commentText}"
-                      {fb.authorName && (
-                        <span className="not-italic text-slate-400"> — {fb.authorName}</span>
-                      )}
-                    </p>
-                    {fb.feedback ? (
-                      <div className="flex items-start gap-2 p-2 mt-2 border rounded-lg bg-white border-slate-200">
-                        <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
-                        <p className="text-[12px] text-slate-800">{fb.feedback}</p>
+                    <TaskProgressUpdates
+                      taskId={editingTaskId}
+                      canWrite={!!feedbackTask?.assignedUsers.some((u) => Number(u.id) === Number(user?.id))}
+                      canGiveFeedback={canGiveFeedback}
+                    />
+                    <SectionLabel className="pt-2">Sub-task updates</SectionLabel>
+                    {loadingTaskFeedback ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="w-5 h-5 text-blue-900 animate-spin" />
                       </div>
+                    ) : taskFeedbackList.length === 0 ? (
+                      <p className="py-4 text-center text-slate-400 text-[12px]">
+                        No updates have been posted on this task&apos;s sub-tasks yet.
+                      </p>
                     ) : (
-                      canGiveFeedback && (
-                        <div className="flex gap-2 mt-2">
-                          <input
-                            type="text"
-                            placeholder="Add feedback..."
-                            value={feedbackTexts[fb.commentId] || ""}
-                            onChange={(e) =>
-                              setFeedbackTexts({
-                                ...feedbackTexts,
-                                [fb.commentId]: e.target.value,
-                              })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSendTaskFeedback(fb);
-                            }}
-                            className="flex-1 px-3 py-1.5 text-[12px] bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSendTaskFeedback(fb)}
-                            className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
-                          >
-                            Send
-                          </button>
-                        </div>
-                      )
+                      <div className="space-y-2">
+                        {taskFeedbackList.map((fb) => (
+                          <div key={fb.commentId} className="p-3 border rounded-lg border-slate-200 bg-slate-50/50">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[11px] font-semibold text-blue-900 truncate">{fb.subTaskTitle}</span>
+                              <span className="flex-shrink-0 text-[10px] text-slate-400">
+                                {new Date(fb.date).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-[12px] text-slate-500 italic">
+                              &quot;{fb.commentText}&quot;
+                              {fb.authorName && <span className="not-italic text-slate-400"> — {fb.authorName}</span>}
+                            </p>
+                            {fb.feedback ? (
+                              <div className="flex items-start gap-2 p-2 mt-2 bg-white border rounded-lg border-slate-200">
+                                <MessageSquare className="flex-shrink-0 w-3.5 h-3.5 mt-0.5 text-emerald-700" />
+                                <p className="text-[12px] text-slate-800">{fb.feedback}</p>
+                              </div>
+                            ) : (
+                              canGiveFeedback && (
+                                <div className="flex gap-2 mt-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Add feedback..."
+                                    value={feedbackTexts[fb.commentId] || ""}
+                                    onChange={(e) => setFeedbackTexts({ ...feedbackTexts, [fb.commentId]: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleSendTaskFeedback(fb);
+                                      }
+                                    }}
+                                    className="flex-1 px-3 py-1.5 text-[12px] bg-white rounded-lg border border-slate-200 focus:outline-none focus:border-blue-400 transition-colors"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendTaskFeedback(fb)}
+                                    className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
+                                  >
+                                    Send
+                                  </button>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                ))
-              )}
+                );
+              })()}
             </div>
-          </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={closeTaskModal}
+                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editingTaskLoading}
+                className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {editingTaskLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Save changes
+              </button>
+            </div>
+          </form>
         </div>
-        );
-      })()}
+      )}
 
       {/* Activity Popup */}
       {showActivityPopup && (
@@ -2935,334 +2253,6 @@ const AssignedTasks: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Sub-Task Update Popup */}
-      {showSubTaskUpdatePopup && editingSubTask && expandedTaskId && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200/70 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 rounded-full bg-blue-50 ring-1 ring-black/5">
-                  <Edit2 className="w-4 h-4 text-blue-900" />
-                </div>
-                <div className="min-w-0">
-                  <Eyebrow>Update Sub-Task</Eyebrow>
-                  <h3 className="font-semibold text-[15px] text-slate-900 truncate mt-0.5">
-                    {editingSubTask.title}
-                  </h3>
-                </div>
-              </div>
-              <div className="flex items-center flex-shrink-0 gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSubTaskUpdatePopup(false);
-                    setShowSubTaskActivityPopup(true);
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium text-blue-900 rounded-lg hover:bg-blue-50 transition-colors"
-                >
-                  <Clock className="w-3.5 h-3.5" /> Activity
-                </button>
-                <button
-                  onClick={() => setShowSubTaskUpdatePopup(false)}
-                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 p-5 space-y-3 overflow-y-auto">
-              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center flex-shrink-0 w-7 h-7 rounded-lg bg-emerald-50 ring-1 ring-black/5">
-                      <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
-                    </div>
-                    <SectionLabel>Progress</SectionLabel>
-                  </div>
-                  <span
-                    className="font-semibold text-[16px] text-slate-900"
-                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                  >
-                    {subTaskProgress}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={subTaskProgress}
-                  onChange={(e) => setSubTaskProgress(Number(e.target.value))}
-                  className="w-full accent-blue-900"
-                />
-              </div>
-
-              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                  <SectionLabel>Update Description</SectionLabel>
-                </div>
-                <textarea
-                  value={newSubTaskUpdateTitle}
-                  onChange={(e) => setNewSubTaskUpdateTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-[13px] bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-blue-400 transition-colors resize-none"
-                  rows={3}
-                  placeholder="Describe your update..."
-                />
-                <input
-                  type="file"
-                  multiple
-                  onChange={(e) => setSubTaskUpdateFiles(e.target.files)}
-                  className="hidden"
-                  id="subtask-attachment"
-                />
-                <label
-                  htmlFor="subtask-attachment"
-                  className="inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors border rounded-lg cursor-pointer border-slate-200 text-slate-600 hover:border-blue-900 hover:text-blue-900"
-                >
-                  <Paperclip className="w-3.5 h-3.5" />
-                  {subTaskUpdateFiles?.length
-                    ? `${subTaskUpdateFiles.length} file(s) attached`
-                    : "Attach files"}
-                </label>
-              </div>
-
-              <div className="p-2.5 rounded-lg shadow-md shadow-slate-200/70">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="flex-shrink-0 w-3.5 h-3.5 text-slate-400" />
-                  <SectionLabel>Previous Updates</SectionLabel>
-                </div>
-                <div className="space-y-2 max-h-[120px] overflow-y-auto">
-                  {editingSubTask.history &&
-                  editingSubTask.history.length > 0 ? (
-                    editingSubTask.history.slice(0, 3).map((hist) => (
-                      <div
-                        key={hist.id}
-                        className="flex items-start justify-between gap-2 pb-2 text-[12px] border-b border-slate-100 last:border-0 last:pb-0"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-slate-800 truncate">
-                            {hist.title}
-                          </p>
-                          <p
-                            className="text-[10px] text-slate-400 mt-0.5"
-                            style={{
-                              fontFamily: "'JetBrains Mono', monospace",
-                            }}
-                          >
-                            {new Date(hist.date).toLocaleString()}
-                          </p>
-                        </div>
-                        <span className="flex-shrink-0 text-[11px] font-semibold text-slate-600">
-                          {hist.progress}%
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="py-2 text-[12px] italic text-center text-slate-400">
-                      No previous updates available
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-shrink-0 justify-end gap-3 px-6 py-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSubTaskUpdatePopup(false);
-                  setEditingSubTask(null);
-                }}
-                className="px-4 py-2 text-[13px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubTaskUpdate}
-                className="px-4 py-2 text-[13px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
-              >
-                Save Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sub-Task Activity Popup */}
-      {showSubTaskActivityPopup && editingSubTask && expandedTaskId && (() => {
-        const currentTask = assignedTasks.find((task) => task.id === expandedTaskId);
-        // Only the person who assigned this task may give feedback on the
-        // assignee's update — matches the same check enforced on the backend.
-        const canGiveFeedback = currentTask?.createdBy?.id === user?.id;
-        return (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200/70 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-slate-50/60">
-              <div>
-                <Eyebrow>Activity & Feedback</Eyebrow>
-                <h3 className="font-semibold text-[17px] text-slate-900 mt-0.5">
-                  {editingSubTask.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowSubTaskActivityPopup(false)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 p-6 space-y-5 overflow-y-auto">
-              <div>
-                <SectionLabel className="mb-2">Progress History</SectionLabel>
-                <div className="space-y-2">
-                  {editingSubTask.history &&
-                  editingSubTask.history.length > 0 ? (
-                    editingSubTask.history.map((hist: any) => (
-                      <div
-                        key={hist.id}
-                        className="p-3 border rounded-lg bg-slate-50 border-slate-200"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 rounded-full">
-                            {hist.authorName?.charAt(0) || "U"}
-                          </div>
-                          <span className="text-[12px] font-medium text-slate-700">
-                            {hist.authorName || "Unknown User"}
-                          </span>
-                          <span
-                            className="text-[10px] text-slate-400"
-                            style={{
-                              fontFamily: "'JetBrains Mono', monospace",
-                            }}
-                          >
-                            {new Date(hist.date).toLocaleString()}
-                          </span>
-                        </div>
-                        <p className="text-[12px] font-medium text-slate-800">
-                          {hist.title}{" "}
-                          <span className="font-normal text-slate-500">
-                            ({hist.progress}%)
-                          </span>
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="py-2 text-[12px] italic text-center text-slate-500">
-                      No history yet
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <SectionLabel className="mb-2">Comments & Feedback</SectionLabel>
-                <div className="space-y-2">
-                  {subTaskComments.map((comment: any) => (
-                    <div
-                      key={comment.id}
-                      className="p-3 border rounded-lg bg-slate-50 border-slate-200"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="flex items-center justify-center w-6 h-6 text-[9px] font-semibold text-white bg-blue-900 rounded-full">
-                          {comment.author.fullName.charAt(0)}
-                        </div>
-                        <span className="text-[12px] font-medium text-slate-700">
-                          {comment.author.fullName}
-                        </span>
-                        <span
-                          className="text-[10px] text-slate-400"
-                          style={{
-                            fontFamily: "'JetBrains Mono', monospace",
-                          }}
-                        >
-                          {new Date(comment.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="mb-2 text-[13px] text-slate-800">
-                        {comment.commentText}
-                      </p>
-                      {comment.feedback && (
-                        <div className="p-2 bg-white border border-blue-200 rounded-lg">
-                          <p
-                            className="text-[10px] font-bold text-blue-900 uppercase tracking-wider mb-1"
-                            style={{
-                              fontFamily: "'JetBrains Mono', monospace",
-                            }}
-                          >
-                            Feedback
-                          </p>
-                          <p className="text-[12px] text-slate-700">
-                            {comment.feedback}
-                          </p>
-                        </div>
-                      )}
-                      {!comment.feedback && canGiveFeedback && (
-                          <div className="flex gap-2 mt-2">
-                            <input
-                              type="text"
-                              placeholder="Add feedback..."
-                              value={feedbackTexts[comment.id] || ""}
-                              onChange={(e) =>
-                                setFeedbackTexts({
-                                  ...feedbackTexts,
-                                  [comment.id]: e.target.value,
-                                })
-                              }
-                              className="flex-1 px-3 py-1.5 text-[12px] bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:bg-white focus:border-blue-400 transition-colors"
-                            />
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!feedbackTexts[comment.id]) {
-                                  alert("Please enter some feedback first!");
-                                  return;
-                                }
-                                try {
-                                  console.log(
-                                    "Sending feedback from AssignedTasks.tsx:",
-                                    {
-                                      expandedTaskId,
-                                      subtaskId: editingSubTask?.id,
-                                      commentId: comment.id,
-                                      feedback: feedbackTexts[comment.id],
-                                    },
-                                  );
-                                  await updateCommentFeedbackMutation.mutateAsync({
-                                    taskId: Number(expandedTaskId),
-                                    subTaskId: Number(editingSubTask?.id),
-                                    commentId: comment.id,
-                                    feedback: feedbackTexts[comment.id],
-                                  });
-                                  const data = await commentsFetchMutation.mutateAsync({
-                                    taskId: Number(expandedTaskId),
-                                    subTaskId: Number(editingSubTask?.id),
-                                  });
-                                  setSubTaskComments(data);
-                                  setFeedbackTexts({
-                                    ...feedbackTexts,
-                                    [comment.id]: "",
-                                  });
-                                } catch (err) {
-                                  console.error("Failed to add feedback:", err);
-                                  setActionError(getErrorMessage(err, "Failed to add feedback."));
-                                }
-                              }}
-                              className="px-3 py-1.5 text-[12px] font-medium text-white bg-blue-900 rounded-lg shadow-sm hover:bg-blue-800 transition-colors"
-                            >
-                              Send
-                            </button>
-                          </div>
-                        )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal
