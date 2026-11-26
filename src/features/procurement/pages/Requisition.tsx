@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { AlertCircle, ClipboardList, Eye, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ClipboardList, Download, Eye, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../../../context/AuthProvider";
 import PdfPreviewModal from "../components/PdfPreviewModal";
 import RequisitionFormModal, { blankRequisitionForm } from "../components/RequisitionFormModal";
+import RequisitionExportModal from "../components/RequisitionExportModal";
 import { preloadPdfFonts } from "../pdf/pdfFonts";
 import { getErrorMessage } from "../../../lib/errors";
-import { useRequisitionsQuery, useDeleteRequisitionMutation } from "../hooks/useRequisitions";
-import type { RequisitionRecord } from "../api/requisition.api";
+import { useRequisitionsQuery, useDeleteRequisitionMutation, useSetRequisitionStatusMutation } from "../hooks/useRequisitions";
+import type { RequisitionRecord, RequisitionStatus } from "../api/requisition.api";
 
 // The PDF is drawn in the browser (see ../pdf/generatePdf.ts): warm the fonts and the (lazy)
 // pdfkit chunk in the background so "Preview PDF" opens without waiting on either.
@@ -18,6 +19,14 @@ const fmtDate = (iso?: string | null) =>
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+const STATUS_META: Record<RequisitionStatus, { label: string; cls: string }> = {
+  in_process: { label: "In Process", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  approved: { label: "Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  declined: { label: "Declined", cls: "bg-red-50 text-red-700 border-red-200" },
+};
+const STATUS_ORDER: RequisitionStatus[] = ["in_process", "approved", "declined"];
+const statusOf = (r: RequisitionRecord): RequisitionStatus => (STATUS_META[r.status] ? r.status : "in_process");
+
 /**
  * Requisitions — every saved purchase requisition in a table (like the Purchase Orders page). Clicking
  * a row opens its form in a popup with the full details; "New Requisition" opens the same form blank.
@@ -26,9 +35,13 @@ const Requisition: React.FC = () => {
   const { organization } = useAuth();
   const requisitionsQuery = useRequisitionsQuery();
   const deleteMutation = useDeleteRequisitionMutation();
+  const statusMutation = useSetRequisitionStatusMutation();
+  const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
   const rows = requisitionsQuery.data ?? [];
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<RequisitionStatus | "">("");
+  const [showExport, setShowExport] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   // `null` = nothing open; `{ record: null }` = a new requisition; otherwise the saved one being viewed/edited.
   const [editing, setEditing] = useState<{ record: RequisitionRecord | null } | null>(null);
@@ -45,11 +58,37 @@ const Requisition: React.FC = () => {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.requisitionNo, r.requestedBy, r.data.projectLocation, r.createdByName, r.priority].some((v) => (v ?? "").toLowerCase().includes(q)),
+    return rows.filter(
+      (r) =>
+        (!statusFilter || statusOf(r) === statusFilter) &&
+        (!q ||
+          [r.requisitionNo, r.requestedBy, r.data.projectLocation, r.createdByName, r.priority].some((v) => (v ?? "").toLowerCase().includes(q))),
     );
-  }, [rows, search]);
+  }, [rows, search, statusFilter]);
+
+  const statusCounts = useMemo(() => {
+    const c: Record<RequisitionStatus, number> = { in_process: 0, approved: 0, declined: 0 };
+    for (const r of rows) c[statusOf(r)] += 1;
+    return c;
+  }, [rows]);
+
+  const changeStatus = async (rec: RequisitionRecord, status: RequisitionStatus) => {
+    if (status === statusOf(rec)) return;
+    setStatusSavingId(rec.id);
+    setActionError(null);
+    try {
+      await statusMutation.mutateAsync({ id: rec.id, status });
+    } catch (err) {
+      setActionError(getErrorMessage(err, "Failed to update the status."));
+    } finally {
+      setStatusSavingId(null);
+    }
+  };
+
+  const filterTabs: { key: RequisitionStatus | ""; label: string; count: number }[] = [
+    { key: "", label: "All", count: rows.length },
+    ...STATUS_ORDER.map((s) => ({ key: s, label: STATUS_META[s].label, count: statusCounts[s] })),
+  ];
 
   const refresh = async () => {
     setRefreshing(true);
@@ -95,14 +134,18 @@ const Requisition: React.FC = () => {
         <div className="p-6 lg:px-8 lg:py-8">
           <div className="flex flex-col w-full min-w-0 gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center flex-shrink-0 w-9 h-9 text-blue-900 rounded-full bg-blue-50">
-                  <ClipboardList size={16} />
-                </div>
-                <div>
-                  <h2 className="text-[17px] font-semibold text-slate-900">Requisitions</h2>
-                  <p className="text-[12px] text-slate-500">Click a requisition to see its details, or create a new one.</p>
-                </div>
+              <div className="inline-flex p-0.5 rounded-lg bg-slate-100 ring-1 ring-inset ring-slate-200">
+                {filterTabs.map((t) => (
+                  <button
+                    key={t.key || "all"}
+                    onClick={() => setStatusFilter(t.key)}
+                    className={`px-2.5 py-1.5 text-[12px] font-medium rounded-md whitespace-nowrap transition-colors ${
+                      statusFilter === t.key ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {t.label} <span className="ml-0.5 text-slate-400">{t.count}</span>
+                  </button>
+                ))}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
@@ -120,6 +163,14 @@ const Requisition: React.FC = () => {
                   title="Refresh"
                 >
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                </button>
+                <button
+                  onClick={() => setShowExport(true)}
+                  disabled={rows.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                  title="Export requisitions to Excel"
+                >
+                  <Download size={14} /> Export
                 </button>
                 <button
                   onClick={() => setEditing({ record: null })}
@@ -156,6 +207,7 @@ const Requisition: React.FC = () => {
                         <th className="px-3 py-2 font-medium text-left">Project Location</th>
                         <th className="px-3 py-2 font-medium text-left">Priority</th>
                         <th className="px-3 py-2 font-medium text-left">Items</th>
+                        <th className="px-3 py-2 font-medium text-left">Status</th>
                         <th className="px-3 py-2 font-medium text-left">Created By</th>
                         <th className="px-3 py-2 font-medium text-left">Saved</th>
                         <th className="px-3 py-2 font-medium text-right">Actions</th>
@@ -182,6 +234,27 @@ const Requisition: React.FC = () => {
                             )}
                           </td>
                           <td className="px-3 py-3 text-slate-600">{rec.itemCount}</td>
+                          <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative inline-flex items-center">
+                              <select
+                                value={statusOf(rec)}
+                                disabled={statusSavingId === rec.id}
+                                onChange={(e) => changeStatus(rec, e.target.value as RequisitionStatus)}
+                                className={`appearance-none cursor-pointer pl-2.5 pr-6 py-1 text-[11.5px] font-medium border rounded-full outline-none disabled:opacity-60 ${STATUS_META[statusOf(rec)].cls}`}
+                              >
+                                {STATUS_ORDER.map((s) => (
+                                  <option key={s} value={s}>
+                                    {STATUS_META[s].label}
+                                  </option>
+                                ))}
+                              </select>
+                              {statusSavingId === rec.id ? (
+                                <Loader2 size={11} className="absolute right-2 pointer-events-none animate-spin" />
+                              ) : (
+                                <ChevronDown size={11} className="absolute right-2 pointer-events-none" />
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-3 text-slate-600">{rec.createdByName || "--"}</td>
                           <td className="px-3 py-3 text-[11px] text-slate-500 whitespace-nowrap">
                             {fmtDateTime(rec.createdAt)}
@@ -227,6 +300,8 @@ const Requisition: React.FC = () => {
           }}
         />
       )}
+
+      {showExport && <RequisitionExportModal rows={rows} initialStatus={statusFilter} onClose={() => setShowExport(false)} />}
 
       {previewing && (
         <PdfPreviewModal
