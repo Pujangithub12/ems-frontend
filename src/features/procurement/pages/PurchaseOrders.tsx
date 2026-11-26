@@ -24,6 +24,7 @@ import VendorField from "../../inventory/components/VendorField";
 import VendorFormModal from "../../inventory/components/VendorFormModal";
 import { useOrganizationVendorsQuery } from "../../inventory/hooks/useInventory";
 import AccessManagementModal from "../components/AccessManagementModal";
+import PurchaseOrderExportModal from "../components/PurchaseOrderExportModal";
 import { formatPoMoney, purchaseOrderTotals } from "../utils/poLineItems";
 import { PurchaseOrderDetailModal } from "./PurchaseOrderDetail";
 
@@ -223,7 +224,7 @@ const PurchaseOrdersPage: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState<number | null>(null);
   const [accessOpen, setAccessOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -250,37 +251,6 @@ const PurchaseOrdersPage: React.FC = () => {
     });
     return result;
   }, [orders, search, statusFilter, typeFilter, projectFilter, dateSort]);
-
-  /** Downloads the table as it is now shown (current search / filters / sort) as an .xlsx file. The
-   * (large) xlsx library is only loaded here, when someone actually exports. */
-  const exportExcel = async () => {
-    setExporting(true);
-    try {
-      const XLSX = await import("xlsx");
-      const header = ["PO #", "Project", "Vendor", "Items", "Created", "Currency", "Sub Total", "VAT", "Grand Total"];
-      const data = filtered.map((o) => {
-        const totals = purchaseOrderTotals(o);
-        return [
-          o.poNumber || `#${o.id}`,
-          o.project?.name || "",
-          o.vendor?.name || "",
-          o.items.map((i) => i.itemName).join(", "),
-          new Date(o.createdAt).toLocaleDateString(),
-          o.currency?.trim() || "NPR",
-          totals.subTotal,
-          totals.vat,
-          totals.grandTotal,
-        ];
-      });
-      const sheet = XLSX.utils.aoa_to_sheet([header, ...data]);
-      sheet["!cols"] = [{ wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 40 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 16 }];
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, sheet, "Purchase Orders");
-      XLSX.writeFile(workbook, "purchase-orders.xlsx");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   if (ordersQuery.isLoading) {
     return (
@@ -365,12 +335,12 @@ const PurchaseOrdersPage: React.FC = () => {
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 </button>
                 <button
-                  onClick={exportExcel}
-                  disabled={exporting || filtered.length === 0}
+                  onClick={() => setShowExport(true)}
+                  disabled={orders.length === 0}
                   className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                  title="Export the table to Excel"
+                  title="Export purchase orders to Excel"
                 >
-                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export
+                  <Download size={14} /> Export
                 </button>
                 {user?.role === "super_admin" && (
                 <button
@@ -483,6 +453,9 @@ const PurchaseOrdersPage: React.FC = () => {
       )}
 
       {accessOpen && <AccessManagementModal page="purchase-orders" onClose={() => setAccessOpen(false)} />}
+      {showExport && (
+        <PurchaseOrderExportModal orders={orders} initialProjectId={projectFilter} onClose={() => setShowExport(false)} />
+      )}
 
     </div>
   );

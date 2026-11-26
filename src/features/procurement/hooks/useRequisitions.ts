@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../../../lib/queryKeys";
 import { useOrganizationId } from "../../../hooks/useOrganizationId";
-import { fetchRequisitions, createRequisition, updateRequisition, deleteRequisition } from "../api/requisition.api";
+import { fetchRequisitions, createRequisition, updateRequisition, deleteRequisition, setRequisitionStatus, type RequisitionStatus } from "../api/requisition.api";
 import type { RequisitionFormData } from "../pdf/generatePdf";
 
 export function useRequisitionsQuery(enabled = true) {
@@ -19,6 +19,15 @@ export function useSaveRequisitionMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: number | null; data: RequisitionFormData }) => (id == null ? createRequisition(data) : updateRequisition(id, data)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.requisitions(wsId) }),
+  });
+}
+
+export function useSetRequisitionStatusMutation() {
+  const wsId = useOrganizationId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: RequisitionStatus }) => setRequisitionStatus(id, status),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.requisitions(wsId) }),
   });
 }
